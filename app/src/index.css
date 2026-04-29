@@ -1,0 +1,21 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: #f8fafc;
+  color: #111827;
+  font-family:
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Segoe UI',
+    sans-serif;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
