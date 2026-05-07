@@ -3,7 +3,6 @@ import {
   Card,
   Col,
   Descriptions,
-  List,
   Row,
   Space,
   Steps,
@@ -19,6 +18,7 @@ import {
 } from '../../constants/workflow'
 import type { CourseRecord, CreateServiceTicketPayload, ServiceType } from '../../types'
 import { mergeAttachments } from '../../utils/attachments'
+import { summarizePageAssignments } from '../../utils/pageAssignments'
 import { StatusBadge } from '../common/StatusBadge'
 import { AttachmentList } from '../common/AttachmentList'
 import { ServiceTicketDrawer } from './ServiceTicketDrawer'
@@ -49,6 +49,15 @@ export function CourseDetail({
   const isArchived = course.status === 'archived'
   const isAftersales = course.status === 'aftersales'
   const canShowServiceActions = isArchived && (canCreateAftersales || canCreateIteration)
+  const archivedAttachmentSections = [
+    { label: '课件原稿', files: course.researchSourceFiles },
+    { label: '教案', files: course.lessonPlanFiles },
+    { label: '逐字稿', files: course.scriptFiles },
+    { label: '导学案', files: course.guideFiles },
+    { label: '其他附件', files: course.otherResearchFiles },
+    { label: '风格稿', files: course.styleAttachments },
+    { label: '内页成品', files: course.pageAttachments },
+  ].filter((section) => section.files.length > 0)
   const detailFiles =
     course.status === 'research'
       ? []
@@ -76,7 +85,7 @@ export function CourseDetail({
       {/* <Space> */}
       <Card
         title={
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Typography.Title level={4} className="card-title-reset">
               {course.title}
             </Typography.Title>
@@ -101,6 +110,13 @@ export function CourseDetail({
           <Descriptions.Item label="版权登记（文字）">{course.textCopyright}</Descriptions.Item>
           <Descriptions.Item label="单元/章节">{course.chapterName || '未填写'}</Descriptions.Item>
           <Descriptions.Item label="总页数">{course.totalPageCount ?? '未填写'}</Descriptions.Item>
+          <Descriptions.Item label="内页分工">
+            {course.pageAssignments && course.pageAssignments.length > 0
+              ? summarizePageAssignments(course.pageAssignments, course.pageLead)
+              : course.pageDesigners.length > 0
+                ? course.pageDesigners.join('、')
+                : '暂无'}
+          </Descriptions.Item>
           <Descriptions.Item label="实际交稿日期">
             {course.actualResearchSubmissionDate
               ? formatDateLabel(course.actualResearchSubmissionDate)
@@ -149,7 +165,7 @@ export function CourseDetail({
       </Card>
       {/* </Space> */}
 
-      <Space direction="vertical" size={16} className="panel-stack-full">
+      <Space orientation="vertical" size={16} className="panel-stack-full">
         {!isAftersales ? (
           <Card title="流程节点详情">
             <Steps
@@ -157,8 +173,8 @@ export function CourseDetail({
               current={currentFlowIndex}
               items={flowItems.map((item, index) => ({
                 title: item.title,
-                description: (
-                  <Space direction="vertical" size={2} className="flow-step-meta">
+                content: (
+                  <Space orientation="vertical" size={2} className="flow-step-meta">
                     <Typography.Text className="flow-step-line">
                       当前责任人：{item.owner}
                     </Typography.Text>
@@ -190,28 +206,41 @@ export function CourseDetail({
 
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={12}>
-            <Card title={isArchived ? '最终成品' : '下载资料'}>
-              <AttachmentList files={detailFiles} />
-            </Card>
+            {isArchived ? (
+              archivedAttachmentSections.length > 0 ? (
+                <Card title="相关附件">
+                  <Space orientation="vertical" size={12} className="panel-stack-full">
+                    {archivedAttachmentSections.map((section) => (
+                      <div key={section.label}>
+                        <Typography.Text strong>{section.label}</Typography.Text>
+                        <AttachmentList files={section.files} compact />
+                      </div>
+                    ))}
+                  </Space>
+                </Card>
+              ) : null
+            ) : (
+              <Card title="下载资料">
+                <AttachmentList files={detailFiles} />
+              </Card>
+            )}
           </Col>
 
           <Col xs={24} xl={12}>
             <Card title="流转日志">
-              <List
-                size="small"
-                dataSource={course.logs}
-                renderItem={(log) => (
-                  <List.Item>
-                    <Space direction="vertical" size={2}>
+              <Space orientation="vertical" size={12} className="plain-log-list">
+                {course.logs.map((log) => (
+                  <div key={log.id} className="plain-log-item">
+                    <Space orientation="vertical" size={2}>
                       <Typography.Text strong>{log.action}</Typography.Text>
                       <Typography.Text type="secondary">
                         {log.actor} · {log.time}
                       </Typography.Text>
                       <Typography.Text type="secondary">{log.detail}</Typography.Text>
                     </Space>
-                  </List.Item>
-                )}
-              />
+                  </div>
+                ))}
+              </Space>
             </Card>
           </Col>
         </Row>

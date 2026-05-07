@@ -40,7 +40,7 @@ export function AccountManagementPage() {
       title: '账号信息',
       dataIndex: 'username',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
           <Typography.Text type="secondary">
             {record.username} · {record.email}
@@ -163,7 +163,7 @@ export function AccountManagementPage() {
 
       <Drawer
         title={editingAccount ? '编辑账号' : '新增账号'}
-        width={520}
+        size={520}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

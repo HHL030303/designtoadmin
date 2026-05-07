@@ -1,26 +1,30 @@
-import { Alert, Card, Col, List, Progress, Row, Space, Table, Typography } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
+import { Card, Col, Progress, Row, Space, Typography } from 'antd'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
-  Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { StatCard } from '../components/common/StatCard'
-import { StatusBadge } from '../components/common/StatusBadge'
-import { roleLabelMap } from '../constants/roles'
-import { formatDateLabel, statusMeta } from '../constants/workflow'
 import { useAppState } from '../context/AppStateContext'
-import type { CourseRecord } from '../types'
+
+interface DashboardMetricRow {
+  label: string
+  subject: string
+  total: number
+  completed: number
+  pending: number
+}
+
+interface DashboardDesignerRow {
+  name: string
+  shouldComplete: number
+  completed: number
+  pending: number
+}
 
 function DashboardChartFrame({
   children,
@@ -60,166 +64,228 @@ function DashboardChartFrame({
   )
 }
 
-export function DashboardPage() {
-  const { courses, stats, role, currentUser } = useAppState()
-
-  const statusChartData = Object.entries(statusMeta).map(([key, meta]) => ({
-    name: meta.label,
-    value: courses.filter((course) => course.status === key).length,
-  }))
-
-  const orderTypeData = ['全新订单', '售后订单', '迭代订单'].map((type) => ({
-    name: type,
-    value: courses.filter((course) => course.orderType === type).length,
-  }))
-
-  const trendData = [
-    { name: '教研', value: courses.filter((course) => course.status === 'research').length },
-    {
-      name: '风格稿',
-      value: courses.filter((course) => ['pendingStyleDispatch', 'styleInProgress'].includes(course.status)).length,
-    },
-    {
-      name: '内页',
-      value: courses.filter((course) => ['pendingPageDispatch', 'pageInProgress'].includes(course.status)).length,
-    },
-    {
-      name: '入库',
-      value: courses.filter((course) => ['pendingArchive', 'packing'].includes(course.status)).length,
-    },
-    { name: '归档', value: courses.filter((course) => course.status === 'archived').length },
-  ]
-
-  const subjectDistribution = Object.entries(
-    courses.reduce<Record<string, number>>((acc, course) => {
-      acc[course.subject] = (acc[course.subject] ?? 0) + 1
-      return acc
-    }, {}),
+function ProgressSummaryCard({
+  title,
+  helper,
+  rows,
+}: {
+  title: string
+  helper: string
+  rows: DashboardMetricRow[]
+}) {
+  return (
+    <Card title={title} className="dashboard-static-card dashboard-static-card-lg">
+      <Space orientation="vertical" size={16} className="dashboard-stack">
+        <Typography.Text type="secondary">{helper}</Typography.Text>
+        <div className="dashboard-static-table">
+          <div className="dashboard-static-table-head dashboard-static-table-metric">
+            <span>年级</span>
+            <span>学科</span>
+            <span>总数</span>
+            <span>已完成</span>
+            <span>待完成</span>
+          </div>
+          {rows.map((row) => (
+            <div
+              key={`${title}-${row.label}-${row.subject}`}
+              className="dashboard-static-table-row dashboard-static-table-metric"
+            >
+              <span>{row.label}</span>
+              <span>{row.subject}</span>
+              <span>{row.total}</span>
+              <span className="dashboard-static-text-success">{row.completed}</span>
+              <span className="dashboard-static-text-accent">{row.pending}</span>
+            </div>
+          ))}
+        </div>
+      </Space>
+    </Card>
   )
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6)
+}
 
-  const overdueCourses = courses
-    .filter((course) => course.overdue)
-    .sort((a, b) => a.overallDueDate.localeCompare(b.overallDueDate))
-    .slice(0, 5)
+function DesignerWorkloadCard({
+  title,
+  helper,
+  rows,
+}: {
+  title: string
+  helper: string
+  rows: DashboardDesignerRow[]
+}) {
+  return (
+    <Card title={title} className="dashboard-static-card">
+      <Space orientation="vertical" size={16} className="dashboard-stack">
+        <Typography.Text type="secondary">{helper}</Typography.Text>
+        <div className="dashboard-static-table">
+          <div className="dashboard-static-table-head dashboard-static-table-designer">
+            <span>姓名</span>
+            <span>应完成</span>
+            <span>已完成</span>
+            <span>待完成</span>
+          </div>
+          {rows.map((row) => (
+            <div
+              key={`${title}-${row.name}`}
+              className="dashboard-static-table-row dashboard-static-table-designer"
+            >
+              <span>{row.name}</span>
+              <span>{row.shouldComplete}</span>
+              <span className="dashboard-static-text-success">{row.completed}</span>
+              <span className="dashboard-static-text-accent">{row.pending}</span>
+            </div>
+          ))}
+        </div>
+      </Space>
+    </Card>
+  )
+}
 
-  const upcomingCourses = courses
-    .filter((course) => course.status !== 'archived' && !course.overdue)
-    .sort((a, b) => a.overallDueDate.localeCompare(b.overallDueDate))
-    .slice(0, 6)
+const researchRows: DashboardMetricRow[] = [
+  { label: '一年级', subject: '语文', total: 12, completed: 8, pending: 4 },
+  { label: '三年级', subject: '数学', total: 10, completed: 7, pending: 3 },
+  { label: '五年级', subject: '英语', total: 8, completed: 5, pending: 3 },
+]
 
-  const serviceCourses = courses.filter((course) => course.orderType !== '全新订单')
-  const archivedRate = stats.total === 0 ? 0 : Math.round((stats.archived / stats.total) * 100)
-  const onTimeRate = stats.total === 0 ? 0 : Math.round(((stats.total - stats.overdue) / stats.total) * 100)
-  const pieColors = ['#3b82f6', '#93c5fd', '#cbd5e1']
+const designRows: DashboardMetricRow[] = [
+  { label: '一年级', subject: '语文', total: 9, completed: 6, pending: 3 },
+  { label: '三年级', subject: '数学', total: 11, completed: 8, pending: 3 },
+  { label: '初一', subject: '物理', total: 7, completed: 4, pending: 3 },
+]
 
-  const riskColumns: ColumnsType<CourseRecord> = [
-    {
-      title: '课件',
-      dataIndex: 'title',
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{record.title}</Typography.Text>
-          <Typography.Text type="secondary">{record.id}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: '当前状态',
-      dataIndex: 'status',
-      render: (_, record) => <StatusBadge status={record.status} />,
-    },
-    {
-      title: '责任人',
-      dataIndex: 'currentOwner',
-      ellipsis: true,
-    },
-    {
-      title: '截止时间',
-      dataIndex: 'overallDueDate',
-      render: (value: string) => (
-        <Typography.Text type="danger">{formatDateLabel(value)}</Typography.Text>
-      ),
-    },
-  ]
+const productRows: DashboardMetricRow[] = [
+  { label: '一年级', subject: '语文', total: 6, completed: 4, pending: 2 },
+  { label: '三年级', subject: '数学', total: 8, completed: 6, pending: 2 },
+  { label: '初一', subject: '化学', total: 5, completed: 3, pending: 2 },
+]
+
+const styleDesignerRows: DashboardDesignerRow[] = [
+  { name: '唐婧', shouldComplete: 18, completed: 13, pending: 5 },
+  { name: '陆鸣', shouldComplete: 14, completed: 10, pending: 4 },
+  { name: '南音', shouldComplete: 11, completed: 9, pending: 2 },
+]
+
+const pageDesignerRows: DashboardDesignerRow[] = [
+  { name: '江栩', shouldComplete: 36, completed: 24, pending: 12 },
+  { name: '余璟', shouldComplete: 28, completed: 19, pending: 9 },
+  { name: '闻溪', shouldComplete: 21, completed: 15, pending: 6 },
+]
+
+const bEndRows: DashboardMetricRow[] = [
+  { label: '一年级', subject: '语文', total: 5, completed: 3, pending: 2 },
+  { label: '四年级', subject: '数学', total: 7, completed: 5, pending: 2 },
+  { label: '初二', subject: '英语', total: 4, completed: 2, pending: 2 },
+]
+
+const subjectRows = [
+  { name: '语文', value: 12, total: 35 },
+  { name: '数学', value: 10, total: 28 },
+  { name: '英语', value: 8, total: 22 },
+  { name: '物理', value: 7, total: 18 },
+  { name: '化学', value: 6, total: 16 },
+  { name: '科学', value: 5, total: 14 },
+  { name: '历史', value: 4, total: 11 },
+  { name: '地理', value: 3, total: 9 },
+]
+
+const trendRows = [
+  { name: '教研', value: 1.2 },
+  { name: '风格稿', value: 2.1 },
+  { name: '内页', value: 1.4 },
+  { name: '入库', value: 2.0 },
+  { name: '归档', value: 1.1 },
+]
+
+export function DashboardPage() {
+  const { stats } = useAppState()
 
   return (
-    <Space direction="vertical" size={16} className="dashboard-stack">
+    <Space orientation="vertical" size={16} className="dashboard-stack">
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12} xl={6}>
-          <StatCard label="课件总量" value={stats.total} hint="当前主单规模" />
+          <StatCard label="课件总量" value={stats.total} hint="保留现有统计口径" />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <StatCard label="处理中" value={stats.active} hint="未归档课件" />
+          <StatCard label="处理中" value={stats.active} hint="保留现有在制统计" />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <StatCard label="逾期预警" value={stats.overdue} hint="需优先跟进" danger />
+          <StatCard label="逾期预警" value={stats.overdue} hint="保留现有风险统计" danger />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <StatCard label="售后/迭代" value={serviceCourses.length} hint="版本衍生任务" />
+          <StatCard label="售后/迭代" value={stats.archived} hint="保留现有卡片位置" />
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={8}>
-          <Card title="管理概览">
-            <Space direction="vertical" size={16} className="dashboard-stack">
-              <Alert
-                type="info"
-                showIcon
-                message={`${roleLabelMap[role]} · ${currentUser?.name ?? '当前用户'}`}
-                description="当前看板聚合了主流程在制、售后迭代、逾期预警和交付分布，可作为日常管理入口。"
-              />
-              <div className="dashboard-progress-block">
-                <div className="dashboard-progress-head">
-                  <Typography.Text strong>归档完成率</Typography.Text>
-                  <Typography.Text type="secondary">{archivedRate}%</Typography.Text>
-                </div>
-                <Progress percent={archivedRate} strokeColor="#3b82f6" showInfo={false} />
-              </div>
-              <div className="dashboard-progress-block">
-                <div className="dashboard-progress-head">
-                  <Typography.Text strong>按期完成率</Typography.Text>
-                  <Typography.Text type="secondary">{onTimeRate}%</Typography.Text>
-                </div>
-                <Progress percent={onTimeRate} strokeColor="#10b981" showInfo={false} />
-              </div>
-              <div className="dashboard-highlight-grid">
-                <div className="dashboard-highlight-card">
-                  <span className="dashboard-highlight-label">当前设计阶段在制</span>
-                  <strong className="dashboard-highlight-value">
-                    {
-                      courses.filter((course) =>
-                        ['pendingStyleDispatch', 'styleInProgress', 'pendingPageDispatch', 'pageInProgress'].includes(course.status),
-                      ).length
-                    }
-                  </strong>
-                </div>
-                <div className="dashboard-highlight-card">
-                  <span className="dashboard-highlight-label">待入库确认</span>
-                  <strong className="dashboard-highlight-value">
-                    {courses.filter((course) => course.status === 'pendingArchive').length}
-                  </strong>
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} xl={10}>
-          <Card title="状态分布">
+      <div className="dashboard-static-grid">
+        <ProgressSummaryCard
+          title="本月教研进度"
+          helper="静态展示示例，后续可替换为本月教研任务聚合数据。"
+          rows={researchRows}
+        />
+        <ProgressSummaryCard
+          title="本月设计进度"
+          helper="静态展示示例，后续可替换为设计统筹视角的月度进度统计。"
+          rows={designRows}
+        />
+        <ProgressSummaryCard
+          title="本月成品进度"
+          helper="静态展示示例，后续可替换为内页与归档成品汇总。"
+          rows={productRows}
+        />
+
+        <DesignerWorkloadCard
+          title="风格稿设计师本月任务量"
+          helper="按设计师展示本月应完成、已完成、待完成任务量。"
+          rows={styleDesignerRows}
+        />
+        <DesignerWorkloadCard
+          title="内页设计师本月任务量"
+          helper="按设计师展示本月页量承接与交付状态。"
+          rows={pageDesignerRows}
+        />
+
+        <Card title="学科分布" className="dashboard-static-card dashboard-static-card-tall">
+          <Space orientation="vertical" size={16} className="dashboard-stack">
+            <Typography.Text type="secondary">
+              静态展示当前看板中的学科分布样式，后续替换成真实汇总口径。
+            </Typography.Text>
+            <div className="dashboard-subject-list">
+              {subjectRows.map((item) => {
+                const percent = Math.round((item.value / item.total) * 100)
+
+                return (
+                  <div key={item.name} className="dashboard-subject-row">
+                    <div className="dashboard-subject-head">
+                      <Typography.Text>{item.name}</Typography.Text>
+                      <Typography.Text type="secondary">
+                        {item.value} / {item.total}
+                      </Typography.Text>
+                    </div>
+                    <Progress percent={percent} showInfo={false} strokeColor="#2563eb" />
+                  </div>
+                )
+              })}
+            </div>
+          </Space>
+        </Card>
+
+        <ProgressSummaryCard
+          title="B端交付进度"
+          helper="静态展示 B 端交付统计区块，后续接入 B 端课程口径。"
+          rows={bEndRows}
+        />
+
+        <Card title="流程阶段在制量" className="dashboard-static-card">
+          <Space orientation="vertical" size={16} className="dashboard-stack">
+            <Typography.Text type="secondary">
+              静态折线图占位，后续可替换为流程风险趋势或阶段在制量趋势。
+            </Typography.Text>
             <DashboardChartFrame>
               {({ width, height }) => (
-                <BarChart width={width} height={height} data={statusChartData}>
+                <LineChart width={width} height={height} data={trendRows}>
                   <CartesianGrid stroke="#e5e7eb" vertical={false} />
                   <XAxis
                     dataKey="name"
                     tick={{ fontSize: 12, fill: '#6b7280' }}
-                    interval={0}
-                    angle={-18}
-                    textAnchor="end"
-                    height={64}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -230,124 +296,19 @@ export function DashboardPage() {
                     tickLine={false}
                   />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={30} />
-                </BarChart>
-              )}
-            </DashboardChartFrame>
-          </Card>
-        </Col>
-        <Col xs={24} xl={6}>
-          <Card title="订单类型占比">
-            <DashboardChartFrame>
-              {({ width, height }) => (
-                <PieChart width={width} height={height}>
-                  <Pie data={orderTypeData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={82}>
-                    {orderTypeData.map((entry, index) => (
-                      <Cell key={entry.name} fill={pieColors[index % pieColors.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              )}
-            </DashboardChartFrame>
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={8}>
-          <Card title="学科分布">
-            <Space direction="vertical" size={14} className="dashboard-stack">
-              {subjectDistribution.map((item) => {
-                const percent = stats.total === 0 ? 0 : Math.round((item.value / stats.total) * 100)
-
-                return (
-                  <div key={item.name} className="dashboard-subject-row">
-                    <div className="dashboard-subject-head">
-                      <Typography.Text>{item.name}</Typography.Text>
-                      <Typography.Text type="secondary">
-                        {item.value} 个 / {percent}%
-                      </Typography.Text>
-                    </div>
-                    <Progress percent={percent} showInfo={false} strokeColor="#3b82f6" />
-                  </div>
-                )
-              })}
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} xl={8}>
-          <Card title="流程阶段在制量">
-            <DashboardChartFrame>
-              {({ width, height }) => (
-                <LineChart width={width} height={height} data={trendData}>
-                  <CartesianGrid stroke="#e5e7eb" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6' }} />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: '#2563eb' }}
+                  />
                 </LineChart>
               )}
             </DashboardChartFrame>
-          </Card>
-        </Col>
-        <Col xs={24} xl={8}>
-          <Card title="即将到期">
-            <List
-              dataSource={upcomingCourses}
-              locale={{ emptyText: '暂无即将到期任务' }}
-              renderItem={(course) => (
-                <List.Item>
-                  <div className="dashboard-list-item">
-                    <div>
-                      <Typography.Text strong>{course.title}</Typography.Text>
-                      <Typography.Text type="secondary" className="dashboard-list-note">
-                        {course.currentOwner}
-                      </Typography.Text>
-                    </div>
-                    <Space direction="vertical" size={4} align="end">
-                      <StatusBadge status={course.status} />
-                      <Typography.Text type="secondary">
-                        {formatDateLabel(course.overallDueDate)}
-                      </Typography.Text>
-                    </Space>
-                  </div>
-                </List.Item>
-              )}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={14}>
-          <Card title="逾期与风险清单">
-            <Table
-              rowKey="id"
-              size="small"
-              columns={riskColumns}
-              dataSource={overdueCourses}
-              pagination={false}
-              locale={{ emptyText: '当前没有逾期风险课件' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} xl={10}>
-          <Card title="近期待关注">
-            <List
-              dataSource={[
-                `教研中课件 ${courses.filter((course) => course.status === 'research').length} 个，需关注资料提交完整性`,
-                `待风格稿派单 ${courses.filter((course) => course.status === 'pendingStyleDispatch').length} 个，注意设计资源分配`,
-                `待内页派单 ${courses.filter((course) => course.status === 'pendingPageDispatch').length} 个，建议复核风格稿交付质量`,
-                `待入库确认 ${courses.filter((course) => course.status === 'pendingArchive').length} 个，注意校验报告与自动打包衔接`,
-                `售后/迭代 ${serviceCourses.length} 个，建议同步评估版本变更影响范围`,
-              ]}
-              renderItem={(item) => <List.Item>{item}</List.Item>}
-            />
-          </Card>
-        </Col>
-      </Row>
+          </Space>
+        </Card>
+      </div>
     </Space>
   )
 }

@@ -13,7 +13,6 @@ import {
 } from 'antd'
 import dayjs from 'dayjs'
 import type { CourseRecord, UpdateResearchPayload } from '../../types'
-import { AttachmentList } from '../common/AttachmentList'
 import { AttachmentUploadField } from '../common/AttachmentUploadField'
 
 export function ResearchTaskPanel({
@@ -97,9 +96,10 @@ export function ResearchTaskPanel({
             <Form.Item
               name="researchOwner"
               label="制作老师"
+              
               rules={[{ required: true, message: '请填写制作老师' }]}
             >
-              <Input disabled={!editable} placeholder="请输入制作老师" />
+              <Input disabled placeholder="请输入制作老师" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
@@ -138,73 +138,58 @@ export function ResearchTaskPanel({
           </Col>
         </Row>
 
-        <Form.Item
-          name="researchSourceFiles"
-          label="课件原稿（pptx）"
-          rules={[{ required: true, message: '请上传课件原稿' }]}
-        >
-          <AttachmentUploadField
-            disabled={!editable}
-            accept=".ppt,.pptx"
-            helperText="必传项，建议上传课件原稿 PPTX 文件。"
-          />
-        </Form.Item>
-
-        <Form.Item name="lessonPlanFiles" label="教案（docx）">
-          <AttachmentUploadField
-            disabled={!editable}
-            accept=".doc,.docx"
-            helperText="选传项，没有可留空。"
-          />
-        </Form.Item>
-
-        <Form.Item name="scriptFiles" label="逐字稿（docx）">
-          <AttachmentUploadField
-            disabled={!editable}
-            accept=".doc,.docx"
-            helperText="选传项，没有可留空。"
-          />
-        </Form.Item>
-
-        <Form.Item name="guideFiles" label="导学案（docx）">
-          <AttachmentUploadField
-            disabled={!editable}
-            accept=".doc,.docx"
-            helperText="选传项，没有可留空。"
-          />
-        </Form.Item>
-
-        <Form.Item name="otherResearchFiles" label="其他附件（MP3、MP4、docx...）">
-          <AttachmentUploadField
-            disabled={!editable}
-            helperText="选传项，可上传音视频、文档、压缩包等补充资料。"
-          />
-        </Form.Item>
-
         <Row gutter={12}>
           <Col xs={24} md={12}>
-            <Form.Item label="已上传课件原稿">
-              <AttachmentList files={course.researchSourceFiles} compact emptyText="暂无课件原稿" />
+            <Form.Item
+              name="researchSourceFiles"
+              label="课件原稿（pptx）"
+              rules={[{ required: true, message: '请上传课件原稿' }]}
+            >
+              <AttachmentUploadField
+                disabled={!editable}
+                accept=".ppt,.pptx"
+                helperText="必传项，建议上传课件原稿 PPTX 文件。"
+                compact
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item label="已上传教案">
-              <AttachmentList files={course.lessonPlanFiles} compact emptyText="暂无教案" />
+            <Form.Item name="lessonPlanFiles" label="教案（docx）">
+              <AttachmentUploadField
+                disabled={!editable}
+                accept=".doc,.docx"
+                helperText="选传项，没有可留空。"
+                compact
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item label="已上传逐字稿">
-              <AttachmentList files={course.scriptFiles} compact emptyText="暂无逐字稿" />
+            <Form.Item name="scriptFiles" label="逐字稿（docx）">
+              <AttachmentUploadField
+                disabled={!editable}
+                accept=".doc,.docx"
+                helperText="选传项，没有可留空。"
+                compact
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item label="已上传导学案">
-              <AttachmentList files={course.guideFiles} compact emptyText="暂无导学案" />
+            <Form.Item name="guideFiles" label="导学案（docx）">
+              <AttachmentUploadField
+                disabled={!editable}
+                accept=".doc,.docx"
+                helperText="选传项，没有可留空。"
+                compact
+              />
             </Form.Item>
           </Col>
           <Col span={24}>
-            <Form.Item label="已上传其他附件">
-              <AttachmentList files={course.otherResearchFiles} compact emptyText="暂无其他附件" />
+            <Form.Item name="otherResearchFiles" label="其他附件（MP3、MP4、docx...）">
+              <AttachmentUploadField
+                disabled={!editable}
+                helperText="选传项，可上传音视频、文档、压缩包等补充资料。"
+                compact
+              />
             </Form.Item>
           </Col>
         </Row>

@@ -17,6 +17,11 @@ import type {
   SkipStageOption,
 } from '../types'
 import { createAttachment, mergeAttachments } from '../utils/attachments'
+import {
+  sanitizePageAssignments,
+  summarizePageAssignments,
+  validatePageDispatchPayload,
+} from '../utils/pageAssignments'
 
 function getNextCourseSequence(courses: CourseRecord[]) {
   const maxSequence = courses.reduce((maxValue, course) => {
@@ -324,12 +329,21 @@ export function updatePageDispatch(
   course: CourseRecord,
   payload: DispatchPayload,
 ): CourseRecord {
-  const leadDesigner = payload.leadDesigner ?? payload.designers[0] ?? '待派单'
+  const validationError = validatePageDispatchPayload(payload, course.totalPageCount)
+  if (validationError) {
+    throw new Error(validationError)
+  }
+
+  const pageAssignments = sanitizePageAssignments(payload.pageAssignments)
+  const pageDesigners = pageAssignments.map((assignment) => assignment.designer)
+  const leadDesigner = payload.leadDesigner ?? pageDesigners[0] ?? '待派单'
+  const assignmentSummary = summarizePageAssignments(pageAssignments, leadDesigner)
 
   return {
     ...course,
-    pageDesigners: payload.designers,
+    pageDesigners,
     pageLead: leadDesigner,
+    pageAssignments,
     pageDueDate: payload.dueDate,
     currentOwner: `内页主设计师 · ${leadDesigner}`,
     stages: course.stages.map((stage) =>
@@ -337,7 +351,7 @@ export function updatePageDispatch(
         ? {
             ...stage,
             ownerRole: '内页设计师',
-            owner: payload.designers.join(' / '),
+            owner: assignmentSummary,
             deliverable: '内页成品',
             dueDate: payload.dueDate,
           }
@@ -347,7 +361,7 @@ export function updatePageDispatch(
       course,
       `设计统筹 · ${course.coordinator}`,
       '完成内页派单',
-      `指派 ${payload.designers.join('、')}，主设计师 ${leadDesigner}，截止 ${payload.dueDate}`,
+      `指派 ${assignmentSummary}，主设计师 ${leadDesigner}，截止 ${payload.dueDate}`,
     ),
   }
 }
@@ -453,6 +467,7 @@ export function createCourseRecord(
     styleNamingPassed: false,
     pageDesigners: [],
     pageLead: '待派单',
+    pageAssignments: [],
     pageDueDate: payload.finalDueDate,
     pageAttachments: [],
     pageNamingPassed: false,
@@ -508,6 +523,63 @@ export function createCourseRecord(
         state: 'pending',
       },
     ],
+  }
+}
+
+export function updateCourseRecord(
+  course: CourseRecord,
+  payload: CreateCoursePayload,
+): CourseRecord {
+  const updatedResearchOwner = payload.researchOwner || '待分配'
+
+  return {
+    ...course,
+    title: payload.title,
+    series: payload.series,
+    subject: payload.subject,
+    educationStage: payload.educationStage,
+    grade: payload.grade,
+    volume: payload.volume,
+    textbook: payload.textbook,
+    chapterName: payload.chapterName,
+    orderType: payload.orderType,
+    isBEnd: payload.isBEnd,
+    hasLessonPlan: payload.hasLessonPlan,
+    hasScript: payload.hasScript,
+    artCopyright: payload.artCopyright,
+    textCopyright: payload.textCopyright,
+    researchDueDate: payload.researchDueDate,
+    finalDueDate: payload.finalDueDate,
+    overallDueDate: payload.finalDueDate,
+    currentOwner: `教研老师 · ${updatedResearchOwner}`,
+    researchTeacher: updatedResearchOwner,
+    researchOwner: updatedResearchOwner,
+    styleDueDate: payload.finalDueDate,
+    pageDueDate: payload.finalDueDate,
+    stages: course.stages.map((stage) => {
+      if (stage.key === 'research') {
+        return {
+          ...stage,
+          owner: updatedResearchOwner,
+          dueDate: payload.researchDueDate,
+        }
+      }
+
+      if (stage.key === 'style' || stage.key === 'page' || stage.key === 'archive') {
+        return {
+          ...stage,
+          dueDate: payload.finalDueDate,
+        }
+      }
+
+      return stage
+    }),
+    logs: appendLog(
+      course,
+      '计划员 · 当前用户',
+      '编辑任务工单',
+      '更新了课件基础信息与交付时间',
+    ),
   }
 }
 

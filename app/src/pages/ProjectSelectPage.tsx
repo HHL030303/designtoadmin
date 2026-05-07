@@ -8,7 +8,7 @@ export function ProjectSelectPage() {
   return (
     <div className="project-select-shell">
       <div className="project-select-panel">
-        <Space direction="vertical" size={10} className="project-select-head">
+        <Space orientation="vertical" size={10} className="project-select-head">
           <Typography.Text className="section-label">Project Gateway</Typography.Text>
           <Typography.Title level={2} className="project-select-title">
             选择项目
@@ -22,7 +22,7 @@ export function ProjectSelectPage() {
           {projects.map((project) => (
             <Col xs={24} md={8} key={project.key}>
               <Card className="project-select-card">
-                <Space direction="vertical" size={14} className="project-select-card-stack">
+                <Space orientation="vertical" size={14} className="project-select-card-stack">
                   <div className="project-select-icon">
                     <AppstoreOutlined />
                   </div>

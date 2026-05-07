@@ -30,6 +30,7 @@ export function AttachmentUploadField({
   accept,
   multiple = true,
   helperText,
+  compact = false,
 }: {
   value?: AttachmentFile[]
   onChange?: (files: AttachmentFile[]) => void
@@ -37,6 +38,7 @@ export function AttachmentUploadField({
   accept?: string
   multiple?: boolean
   helperText?: string
+  compact?: boolean
 }) {
   const uploadProps: UploadProps = {
     accept,
@@ -53,7 +55,11 @@ export function AttachmentUploadField({
   }
 
   return (
-    <Space direction="vertical" size={12} className="attachment-upload-stack">
+    <Space
+      orientation="vertical"
+      size={compact ? 8 : 12}
+      className={`attachment-upload-stack${compact ? ' attachment-upload-stack-compact' : ''}`}
+    >
       <Upload.Dragger {...uploadProps}>
         <p className="ant-upload-drag-icon">
           <InboxOutlined />

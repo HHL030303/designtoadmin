@@ -1,9 +1,15 @@
-import { Card, Col, List, Row, Typography } from 'antd'
+import { Card, Col, Row, Space, Typography } from 'antd'
 
 function TemplateCard({ title, items }: { title: string; items: string[] }) {
   return (
     <Card title={title}>
-      <List size="small" dataSource={items} renderItem={(item) => <List.Item>{item}</List.Item>} />
+      <Space orientation="vertical" size={10} className="plain-list">
+        {items.map((item) => (
+          <div key={`${title}-${item}`} className="plain-list-item">
+            {item}
+          </div>
+        ))}
+      </Space>
     </Card>
   )
 }
@@ -13,15 +19,17 @@ export function SettingsPage() {
     <Row gutter={[16, 16]}>
       <Col xs={24} xl={10}>
         <Card title="流程边界" extra={<Typography.Text type="secondary">系统边界</Typography.Text>}>
-          <List
-            size="small"
-            dataSource={[
+          <Space orientation="vertical" size={10} className="plain-list">
+            {[
               '纳入系统：计划员、教研老师、设计统筹、风格稿设计师、内页设计师、售前、管理员',
               '系统外角色：教研审核员、风格稿审核员、内页审核员、最终质检员',
               '平台不设置审批流，只记录上传、派单、确认入库、自动归档等动作',
-            ]}
-            renderItem={(item) => <List.Item>{item}</List.Item>}
-          />
+            ].map((item) => (
+              <div key={item} className="plain-list-item">
+                {item}
+              </div>
+            ))}
+          </Space>
         </Card>
       </Col>
       <Col xs={24} xl={14}>

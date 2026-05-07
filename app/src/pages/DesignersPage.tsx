@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, List, Space, Table, Tabs, Typography } from 'antd'
+import { Card, Space, Table, Tabs, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { TableExpandTrigger } from '../components/common/TableExpandTrigger'
 import { PageUploadPanel } from '../components/course/PageUploadPanel'
@@ -112,7 +112,7 @@ export function DesignersPage() {
       title: '课件',
       dataIndex: 'title',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.title}</Typography.Text>
           <Typography.Text type="secondary">
             {record.id} · {record.currentOwner}
@@ -234,16 +234,18 @@ export function DesignersPage() {
             ) : (
               <div className="table-expanded-panel">
                 <Card>
-                  <List
-                    size="small"
-                    dataSource={[
+                  <Space orientation="vertical" size={10} className="plain-list">
+                    {[
                       '风格稿：课程名_风格稿_版本号',
                       '内页成品：课程名_内页成品_版本号',
                       '前端校验命名，不符合则阻断上传',
                       '后端校验数量，生成完整性报告供设计统筹确认',
-                    ]}
-                    renderItem={(item) => <List.Item>{item}</List.Item>}
-                  />
+                    ].map((item) => (
+                      <div key={item} className="plain-list-item">
+                        {item}
+                      </div>
+                    ))}
+                  </Space>
                 </Card>
               </div>
             ),

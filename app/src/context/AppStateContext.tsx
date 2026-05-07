@@ -73,6 +73,8 @@ type AppStateContextValue = {
   navigateToView: (view: ViewKey) => void
   selectCourse: (courseId: string, nextView?: ViewKey) => void
   createCourse: (payload: CreateCoursePayload) => Promise<void>
+  bulkCreateCourses: (payloads: CreateCoursePayload[]) => Promise<void>
+  updateCourse: (courseId: string, payload: CreateCoursePayload) => Promise<void>
   advanceCourse: (courseId: string) => Promise<void>
   createTicket: (payload: CreateServiceTicketPayload, courseId?: string) => Promise<void>
   updateResearch: (courseId: string, payload: UpdateResearchPayload) => Promise<void>
@@ -148,6 +150,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     mutating,
     error,
     createCourse: createCourseRecord,
+    bulkCreateCourses: bulkCreateCourseRecords,
+    updateCourse: updateCourseRecord,
     advanceCourse: advanceCourseRecord,
     updateResearch: updateResearchTask,
     saveStyleDispatch: saveStyleDispatchRecord,
@@ -338,6 +342,27 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     navigateToView('courses')
   }
 
+  async function bulkCreateCourses(payloads: CreateCoursePayload[]) {
+    if (!canCreateCourse || payloads.length === 0) {
+      return
+    }
+
+    const created = await bulkCreateCourseRecords(payloads)
+    setSelectedCourseId(created[0]?.id ?? '')
+    navigateToView('courses')
+  }
+
+  async function updateCourse(courseId: string, payload: CreateCoursePayload) {
+    const current = courses.find((course) => course.id === courseId)
+    if (!current || current.status !== 'research' || !canCreateCourse) {
+      return
+    }
+
+    const updated = await updateCourseRecord(courseId, payload)
+    setSelectedCourseId(updated.id)
+    navigateToView('courses')
+  }
+
   async function advanceCourse(courseId: string) {
     const current = courses.find((course) => course.id === courseId)
     if (!current || !canAdvanceCourse(role, current)) {
@@ -377,8 +402,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const updated = await saveStyleDispatchRecord(courseId, payload)
     setSelectedCourseId(updated.id)
-    const progressed = await advanceCourseRecord(courseId)
-    setSelectedCourseId(progressed.id)
+
+    if (current.status === 'pendingStyleDispatch') {
+      const progressed = await advanceCourseRecord(courseId)
+      setSelectedCourseId(progressed.id)
+    }
   }
 
   async function savePageDispatch(courseId: string, payload: DispatchPayload) {
@@ -389,8 +417,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const updated = await savePageDispatchRecord(courseId, payload)
     setSelectedCourseId(updated.id)
-    const progressed = await advanceCourseRecord(courseId)
-    setSelectedCourseId(progressed.id)
+
+    if (current.status === 'pendingPageDispatch') {
+      const progressed = await advanceCourseRecord(courseId)
+      setSelectedCourseId(progressed.id)
+    }
   }
 
   async function uploadStyle(courseId: string, payload: UploadStylePayload) {
@@ -443,6 +474,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       navigateToView,
       selectCourse,
       createCourse,
+      bulkCreateCourses,
+      updateCourse,
       advanceCourse,
       createTicket,
       updateResearch,
@@ -488,6 +521,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       navigateToView,
       selectCourse,
       createCourse,
+      bulkCreateCourses,
+      updateCourse,
       advanceCourse,
       createTicket,
       updateResearch,

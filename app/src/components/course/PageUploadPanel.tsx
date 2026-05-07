@@ -12,6 +12,7 @@ import type { CourseRecord, UploadPagePayload } from '../../types'
 import { StatusBadge } from '../common/StatusBadge'
 import { AttachmentList } from '../common/AttachmentList'
 import { AttachmentUploadField } from '../common/AttachmentUploadField'
+import { summarizePageAssignments } from '../../utils/pageAssignments'
 
 export function PageUploadPanel({
   course,
@@ -37,6 +38,13 @@ export function PageUploadPanel({
       <Descriptions column={1} size="small" className="panel-descriptions">
         <Descriptions.Item label="课件">{course.title}</Descriptions.Item>
         <Descriptions.Item label="主设计师">{course.pageLead}</Descriptions.Item>
+        <Descriptions.Item label="内页分工">
+          {course.pageAssignments && course.pageAssignments.length > 0
+            ? summarizePageAssignments(course.pageAssignments, course.pageLead)
+            : course.pageDesigners.length > 0
+              ? course.pageDesigners.join('、')
+              : '暂无'}
+        </Descriptions.Item>
         <Descriptions.Item label="交付截止时间">
           {course.pageDueDate ? formatDateLabel(course.pageDueDate) : '未设置'}
         </Descriptions.Item>
@@ -63,7 +71,7 @@ export function PageUploadPanel({
           />
         </Form.Item>
 
-        <Space direction="vertical" size={12} className="panel-stack-full">
+        <Space orientation="vertical" size={12} className="panel-stack-full">
           <Typography.Text type="secondary">
             上传成功后，系统自动校验文件数量与命名规范，并流转到“待入库确认”。
           </Typography.Text>

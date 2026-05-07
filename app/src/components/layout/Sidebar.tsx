@@ -3,11 +3,13 @@ import {
   BarsOutlined,
   BookOutlined,
   DeploymentUnitOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   SettingOutlined,
   ShoppingOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
-import { Layout, Menu, Space, Typography } from 'antd'
+import { Button, Layout, Menu, Space, Typography } from 'antd'
 import { navItems } from '../../constants/navigation'
 import type { UserRole } from '../../types'
 import { getAvailableViews } from '../../domain/permissions'
@@ -28,10 +30,14 @@ const iconMap = {
 export function Sidebar({
   view,
   role,
+  collapsed,
+  onToggleCollapsed,
   onChange,
 }: {
   view: string
   role: UserRole
+  collapsed: boolean
+  onToggleCollapsed: () => void
   onChange: (path: string) => void
 }) {
   const availableViews = getAvailableViews(role)
@@ -71,17 +77,37 @@ export function Sidebar({
     .filter(Boolean)
 
   return (
-    <Layout.Sider width={240} theme="dark" className="app-sider">
+    <Layout.Sider
+      width={240}
+      collapsedWidth={72}
+      collapsible
+      trigger={null}
+      collapsed={collapsed}
+      theme="dark"
+      className="app-sider"
+    >
       <div className="app-brand">
-        <Space direction="vertical" size={8}>
-          <Typography.Title level={4} className="app-brand-title">
-            设计交付后台
-          </Typography.Title>
-        </Space>
+        <div className="app-brand-row">
+          {!collapsed ? (
+            <Space orientation="vertical" size={8}>
+              <Typography.Title level={4} className="app-brand-title">
+                设计交付后台
+              </Typography.Title>
+            </Space>
+          ) : null}
+          <Button
+            type="text"
+            className="app-sider-toggle"
+            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          />
+        </div>
       </div>
       <Menu
         className="app-menu"
         mode="inline"
+        inlineCollapsed={collapsed}
         selectedKeys={[view]}
         defaultOpenKeys={['settings-root']}
         items={menuItems}

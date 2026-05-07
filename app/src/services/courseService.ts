@@ -3,6 +3,7 @@ import {
   canCompleteResearch,
   createCourseRecord,
   createDerivedServiceCourse,
+  updateCourseRecord,
   updatePageDispatch,
   updateResearchTask,
   updateStyleDispatch,
@@ -44,6 +45,37 @@ export const courseService = {
     const record = createCourseRecord(payload, courseDb)
     courseDb = [record, ...courseDb]
     return delay(structuredClone(record))
+  },
+
+  async bulkCreateCourses(payloads: CreateCoursePayload[]) {
+    const created: CourseRecord[] = []
+
+    payloads.forEach((payload) => {
+      const record = createCourseRecord(payload, [...created, ...courseDb])
+      created.push(record)
+    })
+
+    courseDb = [...created, ...courseDb]
+    return delay(structuredClone(created))
+  },
+
+  async updateCourse(courseId: string, payload: CreateCoursePayload) {
+    let updated: CourseRecord | undefined
+
+    courseDb = courseDb.map((course) => {
+      if (course.id !== courseId) {
+        return course
+      }
+
+      updated = updateCourseRecord(course, payload)
+      return updated
+    })
+
+    if (!updated) {
+      throw new Error('未找到对应课件')
+    }
+
+    return delay(structuredClone(updated))
   },
 
   async advanceCourse(courseId: string) {

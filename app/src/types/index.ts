@@ -94,10 +94,16 @@ export interface CreateTicketResult {
   created: CourseRecord
 }
 
+export interface DesignerPageAssignment {
+  designer: string
+  pageCount: number
+}
+
 export interface DispatchPayload {
   designers: string[]
   leadDesigner?: string
   dueDate: string
+  pageAssignments?: DesignerPageAssignment[]
 }
 
 export interface UploadStylePayload {
@@ -150,6 +156,7 @@ export interface CourseRecord {
   styleNamingPassed: boolean
   pageDesigners: string[]
   pageLead: string
+  pageAssignments?: DesignerPageAssignment[]
   pageDueDate?: string
   pageAttachments: AttachmentFile[]
   pageNamingPassed: boolean

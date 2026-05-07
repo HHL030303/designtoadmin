@@ -11,9 +11,11 @@ export function TableExpandTrigger({
   onClick: () => void
 }) {
   const icon = expanded ? <UpOutlined /> : <DownOutlined />
-  const label = expanded ? '收起详情' : actionable ? '展开处理' : '查看详情'
+
+  const label = expanded ? '收起' : actionable ? '展开' : '查看详情'
 
   return (
+    <>
     <Button
       type={expanded || actionable ? 'primary' : 'default'}
       size="small"
@@ -23,5 +25,7 @@ export function TableExpandTrigger({
     >
       {label}
     </Button>
+
+    </>
   )
 }

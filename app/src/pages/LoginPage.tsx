@@ -59,7 +59,7 @@ export function LoginPage() {
       <div className="login-panel">
         <Row gutter={[24, 24]} align="middle">
           <Col xs={24} xl={13}>
-            <Space direction="vertical" size={20} className="login-hero">
+            <Space orientation="vertical" size={20} className="login-hero">
               <div className="login-visual-stage">
                 <div className="login-orbit-ring login-orbit-ring-lg" />
                 <div className="login-orbit-ring login-orbit-ring-sm" />
@@ -99,7 +99,7 @@ export function LoginPage() {
 
           <Col xs={24} xl={11}>
             <div className="login-form-card">
-              <Space direction="vertical" size={20} className="login-form-stack">
+              <Space orientation="vertical" size={20} className="login-form-stack">
                 <div>
                   <Typography.Title level={3} className="login-form-title">
                     欢迎登录

@@ -86,7 +86,7 @@ export function ServiceTicketDrawer({
     <Drawer
       title={drawerTitle}
       placement="right"
-      width={520}
+      size={520}
       open={open}
       onClose={onClose}
       destroyOnClose

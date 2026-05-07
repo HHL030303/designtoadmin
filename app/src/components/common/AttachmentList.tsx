@@ -1,4 +1,4 @@
-import { Button, Empty, List, Space, Typography } from 'antd'
+import { Button, Empty, Space, Typography } from 'antd'
 import { DownloadOutlined, PaperClipOutlined } from '@ant-design/icons'
 import type { AttachmentFile } from '../../types'
 import { makeDemoDownload } from '../../utils/attachments'
@@ -18,7 +18,7 @@ export function AttachmentList({
 
   if (compact) {
     return (
-      <Space direction="vertical" size={8} className="attachment-list-compact">
+      <Space orientation="vertical" size={8} className="attachment-list-compact">
         {files.map((file) => (
           <Space key={file.uid} className="attachment-list-row">
             <Space size={8}>
@@ -40,29 +40,24 @@ export function AttachmentList({
   }
 
   return (
-    <List
-      size="small"
-      dataSource={files}
-      renderItem={(file) => (
-        <List.Item
-          actions={[
-            <Button
-              key="download"
-              type="link"
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={() => makeDemoDownload(file)}
-            >
-              下载
-            </Button>,
-          ]}
-        >
+    <Space orientation="vertical" size={10} className="attachment-list">
+      {files.map((file) => (
+        <div key={file.uid} className="attachment-list-item">
           <Space size={8}>
             <PaperClipOutlined />
             <Typography.Text>{file.name}</Typography.Text>
           </Space>
-        </List.Item>
-      )}
-    />
+          <Button
+            key="download"
+            type="link"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => makeDemoDownload(file)}
+          >
+            下载
+          </Button>
+        </div>
+      ))}
+    </Space>
   )
 }

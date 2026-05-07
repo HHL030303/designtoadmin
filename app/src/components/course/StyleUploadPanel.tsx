@@ -60,7 +60,7 @@ export function StyleUploadPanel({
           />
         </Form.Item>
 
-        <Space direction="vertical" size={12} className="panel-stack-full">
+        <Space orientation="vertical" size={12} className="panel-stack-full">
           <Typography.Text type="secondary">
             上传成功即视为线下审核通过，系统自动流转到“待内页派单”。
           </Typography.Text>

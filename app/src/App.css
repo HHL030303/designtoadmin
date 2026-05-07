@@ -19,6 +19,21 @@
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+.app-sider.ant-layout-sider-collapsed .app-brand {
+  padding: 20px 12px 16px;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-brand-row {
+  justify-content: center;
+}
+
+.app-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .app-brand-label {
   color: #94a3b8;
   font-size: 11px;
@@ -37,10 +52,56 @@
   line-height: 1.6;
 }
 
+.app-sider-toggle.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: #cbd5e1;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-sider-toggle.ant-btn:hover,
+.app-sider-toggle.ant-btn:focus {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-sider.ant-layout-sider-collapsed .app-sider-toggle.ant-btn:hover,
+.app-sider.ant-layout-sider-collapsed .app-sider-toggle.ant-btn:focus {
+  background: transparent;
+}
+
 .app-menu {
   padding: 12px 12px 20px;
   background: #1e293b !important;
   border-inline-end: none !important;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-menu {
+  padding-inline: 8px;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-menu.ant-menu-inline-collapsed {
+  width: 100%;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-menu .ant-menu-item,
+.app-sider.ant-layout-sider-collapsed .app-menu .ant-menu-submenu-title {
+  inset-inline-start: 0;
+  padding-inline: 0 !important;
+  text-align: center;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-menu .ant-menu-item .ant-menu-item-icon,
+.app-sider.ant-layout-sider-collapsed .app-menu .ant-menu-submenu-title .ant-menu-item-icon,
+.app-sider.ant-layout-sider-collapsed .app-menu .ant-menu-submenu-title .anticon {
+  margin-inline: 0;
 }
 
 .app-main {
@@ -474,6 +535,34 @@
   margin-bottom: 16px;
 }
 
+.attachment-upload-stack-compact .ant-upload-wrapper .ant-upload-drag {
+  padding: 12px 16px;
+}
+
+.attachment-upload-stack-compact .ant-upload-wrapper .ant-upload-drag-icon {
+  margin-bottom: 8px;
+}
+
+.attachment-upload-stack-compact .ant-upload-wrapper .ant-upload-drag-icon .anticon {
+  font-size: 22px;
+}
+
+.attachment-upload-stack-compact .ant-upload-wrapper .ant-upload-text {
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.attachment-upload-stack-compact .ant-upload-wrapper .ant-upload-hint {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.attachment-upload-stack-compact .ant-btn {
+  height: 30px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
 .attachment-list-row,
 .health-pill-row,
 .ticket-card-head {
@@ -689,13 +778,15 @@
 }
 
 .table-expand-trigger.ant-btn {
-  min-width: 92px;
+  /* min-width: 92px; */
   height: 30px;
   padding-inline: 12px;
   border-radius: 999px;
   box-shadow: none;
   font-size: 12px;
   font-weight: 600;
+  margin-right: 4px;
+  margin-bottom: 4px;
 }
 
 .table-expand-trigger.ant-btn-default {
@@ -817,6 +908,78 @@
   gap: 12px;
 }
 
+.dashboard-static-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-static-card {
+  height: 100%;
+}
+
+.dashboard-static-card-lg {
+  min-height: 280px;
+}
+
+.dashboard-static-card-tall {
+  grid-row: span 2;
+}
+
+.dashboard-static-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-static-table-head,
+.dashboard-static-table-row {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-static-table-head {
+  padding: 0 2px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dashboard-static-table-row {
+  padding: 12px 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: #fbfdff;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.dashboard-static-table-metric {
+  grid-template-columns: 1.2fr 1fr 0.8fr 0.9fr 0.9fr;
+}
+
+.dashboard-static-table-designer {
+  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+}
+
+.dashboard-static-text-success {
+  color: #059669;
+  font-weight: 600;
+}
+
+.dashboard-static-text-accent {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.dashboard-subject-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .dashboard-highlight-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -868,6 +1031,30 @@
 .dashboard-list-note {
   display: block;
   margin-top: 4px;
+}
+
+.plain-list,
+.plain-log-list,
+.attachment-list {
+  width: 100%;
+}
+
+.plain-list-item,
+.plain-log-item,
+.attachment-list-item {
+  padding: 12px 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: #fbfdff;
+  color: #374151;
+  font-size: 14px;
+}
+
+.attachment-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .card-helper-text {
@@ -1125,6 +1312,148 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
 }
 
+.dispatch-form {
+  margin-top: 20px;
+}
+
+.dispatch-form .ant-form-item-label > label {
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dispatch-form .ant-form-item-explain-error {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.dispatch-form-section {
+  padding: 20px;
+  border: 1px solid #e7edf5;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  margin-bottom: 10px;
+}
+
+.dispatch-form-section + .dispatch-form-section,
+.dispatch-form-section + .ant-form-item,
+.dispatch-form-section + .ant-space,
+.dispatch-form .ant-space + .dispatch-form-summary,
+.dispatch-form-summary + .ant-form-item {
+  margin-top: 16px;
+}
+
+.dispatch-form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dispatch-form-section-header .ant-typography:first-child {
+  color: #111827;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dispatch-form-section-header .ant-typography:last-child {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.dispatch-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dispatch-grid-lead {
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr);
+  align-items: start;
+}
+
+.dispatch-grid-row {
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) 92px;
+}
+
+.dispatch-grid-head {
+  padding: 0 14px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dispatch-grid-body {
+  padding: 14px;
+  border: 1px solid #edf2f7;
+  border-radius: 12px;
+  background: #fbfdff;
+  align-items: start;
+}
+
+.dispatch-form-item-compact {
+  margin-bottom: 0 !important;
+}
+
+.dispatch-control {
+  width: 100%;
+}
+
+.dispatch-select{
+  /* width: 500px !important; */
+}
+
+.dispatch-control.ant-input-number {
+  width: 100%;
+}
+
+.dispatch-row-action {
+  align-self: stretch;
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+.dispatch-add-button.ant-btn {
+  width: fit-content;
+  border-style: dashed;
+  background: #ffffff;
+  border-radius: 10px;
+  color: #2563eb;
+  font-weight: 600;
+  margin: 20px;
+}
+
+.dispatch-form-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.dispatch-form-summary-count.ant-typography {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.dispatch-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.dispatch-form-actions .ant-btn {
+  min-width: 132px;
+  height: 40px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
 .ant-menu-dark,
 .ant-menu-dark .ant-menu-sub,
 .ant-menu.app-menu {
@@ -1179,6 +1508,37 @@
   .workspace-filter-select {
     width: 100%;
     max-width: none;
+  }
+
+  .dashboard-static-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-static-card-tall {
+    grid-row: auto;
+  }
+
+  .dashboard-static-table-metric,
+  .dashboard-static-table-designer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dispatch-form-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dispatch-grid-lead,
+  .dispatch-grid-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatch-grid-head {
+    display: none;
+  }
+
+  .dispatch-row-action {
+    width: 100%;
   }
 
   .project-select-shell {

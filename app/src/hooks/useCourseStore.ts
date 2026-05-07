@@ -50,6 +50,38 @@ export function useCourseStore() {
     }
   }, [])
 
+  const bulkCreateCourses = useCallback(async (payloads: CreateCoursePayload[]) => {
+    try {
+      setMutating(true)
+      setError(null)
+      const created = await courseService.bulkCreateCourses(payloads)
+      setCourses((current) => [...created, ...current])
+      return created
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : '批量创建失败')
+      throw createError
+    } finally {
+      setMutating(false)
+    }
+  }, [])
+
+  const updateCourse = useCallback(async (courseId: string, payload: CreateCoursePayload) => {
+    try {
+      setMutating(true)
+      setError(null)
+      const updated = await courseService.updateCourse(courseId, payload)
+      setCourses((current) =>
+        current.map((course) => (course.id === updated.id ? updated : course)),
+      )
+      return updated
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : '更新失败')
+      throw updateError
+    } finally {
+      setMutating(false)
+    }
+  }, [])
+
   const advanceCourse = useCallback(async (courseId: string) => {
     try {
       setMutating(true)
@@ -197,6 +229,8 @@ export function useCourseStore() {
     error,
     reload: loadCourses,
     createCourse,
+    bulkCreateCourses,
+    updateCourse,
     advanceCourse,
     updateResearch,
     saveStyleDispatch,

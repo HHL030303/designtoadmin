@@ -44,9 +44,29 @@ export function canEditResearchTask(role: UserRole, course: CourseRecord) {
   return course.status === 'research' && ['researcher', 'admin'].includes(role)
 }
 
-export function canManageDispatch(role: UserRole, course: CourseRecord) {
+export function canEditStyleDispatch(role: UserRole, course: CourseRecord) {
   return ['coordinator', 'admin'].includes(role) &&
-    ['pendingStyleDispatch', 'pendingPageDispatch', 'pendingArchive'].includes(course.status)
+    (
+      course.status === 'pendingStyleDispatch' ||
+      (course.status === 'styleInProgress' && course.styleAttachments.length === 0)
+    )
+}
+
+export function canEditPageDispatch(role: UserRole, course: CourseRecord) {
+  return ['coordinator', 'admin'].includes(role) &&
+    (
+      course.status === 'pendingPageDispatch' ||
+      (course.status === 'pageInProgress' && course.pageAttachments.length === 0)
+    )
+}
+
+export function canManageDispatch(role: UserRole, course: CourseRecord) {
+  return canEditStyleDispatch(role, course) ||
+    canEditPageDispatch(role, course) ||
+    (
+      ['coordinator', 'admin'].includes(role) &&
+      course.status === 'pendingArchive'
+    )
 }
 
 export function canUploadStyleDraft(role: UserRole, course: CourseRecord) {

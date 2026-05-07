@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Button, Card, List, Space, Table, Tabs, Typography } from 'antd'
+import { Button, Card, Empty, Space, Table, Tabs, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { TableExpandTrigger } from '../components/common/TableExpandTrigger'
 import { ServiceTicketDrawer } from '../components/course/ServiceTicketDrawer'
@@ -54,7 +54,7 @@ export function ServicePage() {
       title: '课件',
       dataIndex: 'title',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.title}</Typography.Text>
           <Typography.Text type="secondary">
             {record.id} · 当前版本 {record.version}
@@ -72,7 +72,7 @@ export function ServicePage() {
         }
 
         return (
-          <Space direction="vertical" size={0}>
+          <Space orientation="vertical" size={0}>
             <Typography.Text strong>{linkedTicket.linkedCourseId}</Typography.Text>
             <Typography.Text type="secondary">
               {linkedTicket.linkedVersion} → {linkedTicket.targetVersion}
@@ -160,7 +160,7 @@ export function ServicePage() {
             <div className="table-expanded-panel">
               <Card
                 title={
-                  <Space direction="vertical" size={0}>
+                  <Space orientation="vertical" size={0}>
                     <Typography.Title level={4} className="card-title-reset">
                       {record.title}
                     </Typography.Title>
@@ -205,13 +205,13 @@ export function ServicePage() {
                   ) : null}
                 </Space>
 
-                <List
-                  locale={{ emptyText: '当前课件还没有售后或迭代记录。' }}
-                  dataSource={record.tickets}
-                  renderItem={(ticket) => (
-                    <List.Item>
-                      <Card size="small" className="ticket-card">
-                        <Space direction="vertical" size={4}>
+                {record.tickets.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前课件还没有售后或迭代记录。" />
+                ) : (
+                  <Space orientation="vertical" size={12} className="panel-stack-full">
+                    {record.tickets.map((ticket) => (
+                      <Card key={ticket.id} size="small" className="ticket-card">
+                        <Space orientation="vertical" size={4} className="panel-stack-full">
                           <Space className="ticket-card-head">
                             <Typography.Text strong>
                               {ticket.type}单 {ticket.id}
@@ -238,9 +238,9 @@ export function ServicePage() {
                           </Typography.Text>
                         </Space>
                       </Card>
-                    </List.Item>
-                  )}
-                />
+                    ))}
+                  </Space>
+                )}
               </Card>
             </div>
           ),

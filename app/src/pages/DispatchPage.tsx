@@ -6,7 +6,11 @@ import { DispatchPanel } from '../components/course/DispatchPanel'
 import { StatusBadge } from '../components/common/StatusBadge'
 import { formatDateLabel } from '../constants/workflow'
 import { useAppState } from '../context/AppStateContext'
-import { canManageDispatch } from '../domain/permissions'
+import {
+  canEditPageDispatch,
+  canEditStyleDispatch,
+  canManageDispatch,
+} from '../domain/permissions'
 import type { CourseRecord } from '../types'
 
 export function DispatchPage() {
@@ -25,8 +29,8 @@ export function DispatchPage() {
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([])
 
   const buckets = {
-    style: courses.filter((course) => course.status === 'pendingStyleDispatch'),
-    page: courses.filter((course) => course.status === 'pendingPageDispatch'),
+    style: courses.filter((course) => canEditStyleDispatch(role, course)),
+    page: courses.filter((course) => canEditPageDispatch(role, course)),
     archive: courses.filter((course) => course.status === 'pendingArchive'),
   }
 
@@ -38,7 +42,7 @@ export function DispatchPage() {
   const overdueTasks = useMemo(() => todoTasks.filter((course) => course.overdue), [todoTasks])
 
   const activeCourse =
-    selectedCourse && ['pendingStyleDispatch', 'pendingPageDispatch', 'pendingArchive'].includes(selectedCourse.status)
+    selectedCourse && canManageDispatch(role, selectedCourse)
       ? selectedCourse
       : buckets.style[0] || buckets.page[0] || buckets.archive[0]
 
@@ -47,7 +51,7 @@ export function DispatchPage() {
       title: '课件',
       dataIndex: 'title',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.title}</Typography.Text>
           <Typography.Text type="secondary">
             {record.id} · {record.currentOwner}
@@ -80,7 +84,7 @@ export function DispatchPage() {
     {
       title: '操作',
       render: (_, record) => {
-        const actionable = ['pendingStyleDispatch', 'pendingPageDispatch', 'pendingArchive'].includes(record.status)
+        const actionable = canManageDispatch(role, record)
         const expanded = expandedRowKeys.includes(record.id)
 
         return (
@@ -137,7 +141,7 @@ export function DispatchPage() {
             setExpandedRowKeys(expanded ? [record.id] : [])
           },
           expandedRowRender: (record) =>
-            ['pendingStyleDispatch', 'pendingPageDispatch', 'pendingArchive'].includes(record.status) ? (
+            canManageDispatch(role, record) ? (
               <div className="table-expanded-panel">
                 <DispatchPanel
                   course={record}

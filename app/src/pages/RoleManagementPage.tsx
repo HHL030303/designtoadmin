@@ -44,7 +44,7 @@ export function RoleManagementPage() {
     {
       title: '角色信息',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
           <Typography.Text type="secondary">
             {record.code} · {record.scope}
@@ -167,7 +167,7 @@ export function RoleManagementPage() {
 
       <Drawer
         title={editingRole ? '编辑角色' : '新增角色'}
-        width={560}
+        size={560}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         destroyOnClose

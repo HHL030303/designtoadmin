@@ -12,9 +12,9 @@ export function AppFeedback({
   }
 
   return (
-    <Space direction="vertical" size={12} className="app-feedback-stack">
-      {loading ? <Alert message="正在加载课件数据..." type="info" showIcon /> : null}
-      {error ? <Alert message={error} type="error" showIcon /> : null}
+    <Space orientation="vertical" size={12} className="app-feedback-stack">
+      {loading ? <Alert title="正在加载课件数据..." type="info" showIcon /> : null}
+      {error ? <Alert title={error} type="error" showIcon /> : null}
     </Space>
   )
 }

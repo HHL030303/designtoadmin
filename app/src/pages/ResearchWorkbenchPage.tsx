@@ -60,7 +60,7 @@ export function ResearchWorkbenchPage() {
       title: '课件',
       dataIndex: 'title',
       render: (_, record) => (
-        <Space direction="vertical" size={0}>
+        <Space orientation="vertical" size={0}>
           <Typography.Text strong>{record.title}</Typography.Text>
           <Typography.Text type="secondary">
             {record.id} · {record.series}
