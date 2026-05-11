@@ -138,7 +138,7 @@ function parseDefaultValue(
   }
 
   if (fieldType === 'boolean') {
-    return rawValue
+    return parseBooleanValue(rawValue, rowNumber, 'default_value')
   }
 
   return rawValue
@@ -327,7 +327,7 @@ export async function parseFormConfigBuffer(buffer: ArrayBuffer): Promise<FieldC
     }
 
     const optionConfig = optionSetKey ? groupedOptions.get(optionSetKey) ?? [] : undefined
-    if ((fieldType === 'select' || fieldType === 'boolean') && (!optionConfig || !optionConfig.length)) {
+    if (fieldType === 'select' && (!optionConfig || !optionConfig.length)) {
       throw new Error(`第 ${rowNumber} 行字段“${fieldName}”缺少有效选项配置`)
     }
 
@@ -336,7 +336,7 @@ export async function parseFormConfigBuffer(buffer: ArrayBuffer): Promise<FieldC
       field_key: fieldKey,
       field_name: fieldName,
       field_type: fieldType,
-      option_config: optionConfig,
+      option_config: fieldType === 'boolean' ? undefined : optionConfig,
       placeholder: placeholder || undefined,
       required: parseBooleanValue(requiredRaw, rowNumber, 'required'),
       searchable: parseBooleanValue(searchableRaw, rowNumber, 'searchable'),
@@ -481,8 +481,12 @@ export function validateFieldConfigJson(
     throw new Error(`field_key“${fieldKey}”已存在，请保持唯一`)
   }
 
-  if ((fieldType === 'select' || fieldType === 'boolean') && (!optionConfig || !optionConfig.length)) {
+  if (fieldType === 'select' && (!optionConfig || !optionConfig.length)) {
     throw new Error(`${fieldName} 为 ${fieldType} 类型时，option_config 不能为空`)
+  }
+
+  if (fieldType === 'boolean' && optionConfig && optionConfig.length > 0) {
+    throw new Error(`${fieldName} 为 boolean 类型时，不需要 option_config`)
   }
 
   if (fieldType !== 'select' && fieldType !== 'boolean' && optionConfig && optionConfig.length > 0) {
@@ -515,7 +519,7 @@ export function validateFieldConfigJson(
       value.id === undefined || value.id === null || value.id === ''
         ? undefined
         : String(value.id),
-    option_config: optionConfig,
+    option_config: fieldType === 'boolean' ? undefined : optionConfig,
     placeholder,
     required,
     searchable,

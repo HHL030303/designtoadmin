@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Radio,
   Row,
   Select,
   Space,
@@ -372,13 +373,6 @@ function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
     .sort((left, right) => left.sort_value - right.sort_value)
 }
 
-function buildBooleanOptions(field: FieldConfig) {
-  return (field.option_config ?? []).map((option) => ({
-    label: option.label,
-    value: normalizeBooleanLike(option.value ?? option.label),
-  }))
-}
-
 function renderFieldControl(field: FieldConfig) {
   const textPlaceholder = field.placeholder || `请输入${field.field_name}`
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
@@ -400,7 +394,17 @@ function renderFieldControl(field: FieldConfig) {
   }
 
   if (field.field_type === 'boolean') {
-    return <Select placeholder={selectPlaceholder} options={buildBooleanOptions(field)} />
+    return (
+      <Radio.Group
+        optionType="button"
+        buttonStyle="solid"
+        className="boolean-choice-group"
+        options={[
+          { label: '是', value: true },
+          { label: '否', value: false },
+        ]}
+      />
+    )
   }
 
   if (field.field_type === 'number') {
@@ -454,10 +458,12 @@ function buildTaskPayload(
   const expectCompleteAt = dayjs.isDayjs(finalDueDateValue)
     ? finalDueDateValue.format('YYYY-MM-DD')
     : undefined
+  const ownerId = normalizeTaskOwnerId(values.taskOwnerUserId)
 
   return {
     expect_complete_at: expectCompleteAt,
     field_values: fieldValues,
+    owner_id: ownerId,
     order_type: mapOrderTypeToApi(values.orderType),
     stage_assignments: buildSecondStageAssignment(
       secondStage,
@@ -533,14 +539,15 @@ function buildSecondStageAssignment(
   stage: { id?: string } | undefined,
   userIdValue: TaskFormValue,
 ) {
-  if (!stage || typeof userIdValue !== 'string' || userIdValue.trim().length === 0) {
+  const userId = normalizeTaskOwnerId(userIdValue)
+
+  if (!stage || userId === undefined) {
     return undefined
   }
 
-  const userId = Number(userIdValue)
   const templateStageId = Number(stage.id)
 
-  if (!Number.isFinite(userId) || !Number.isFinite(templateStageId)) {
+  if (!Number.isFinite(templateStageId)) {
     return undefined
   }
 
@@ -554,10 +561,18 @@ function buildSecondStageAssignment(
           user_id: userId,
         },
       ],
-      owner_id: userId,
       template_stage_id: templateStageId,
     },
   ]
+}
+
+function normalizeTaskOwnerId(value: TaskFormValue): number | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined
+  }
+
+  const userId = Number(value)
+  return Number.isFinite(userId) ? userId : undefined
 }
 
 export function CoursesPage() {
@@ -724,6 +739,7 @@ export function CoursesPage() {
     }
 
     form.setFieldValue('secondStageAssigneeUserId', undefined)
+    form.setFieldValue('taskOwnerUserId', undefined)
 
     async function loadSecondStageMembers() {
       try {
@@ -1208,6 +1224,24 @@ export function CoursesPage() {
                     options={workflowTemplates.map((template) => ({
                       label: template.isDefault ? `${template.name}（默认）` : template.name,
                       value: template.id,
+                    }))}
+                  />
+                </Form.Item>
+              </Col>
+            ) : null}
+            {shouldShowSecondStageAssigneeField && secondWorkflowRole && secondWorkflowStage ? (
+              <Col span={24}>
+                <Form.Item
+                  label="任务所有者"
+                  name="taskOwnerUserId"
+                  rules={[{ required: true, message: '请选择任务所有者' }]}
+                >
+                  <Select
+                    placeholder="请选择任务所有者"
+                    loading={secondStageLoading}
+                    options={secondStageMembers.map((member) => ({
+                      label: `${member.userName} · ${member.userEmail}`,
+                      value: member.userId,
                     }))}
                   />
                 </Form.Item>

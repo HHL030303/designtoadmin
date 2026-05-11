@@ -1,5 +1,19 @@
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons'
-import { Button, Col, DatePicker, Form, Input, InputNumber, Popconfirm, Row, Select, Space, Tooltip, Typography } from 'antd'
+import {
+  Button,
+  Col,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Popconfirm,
+  Radio,
+  Row,
+  Select,
+  Space,
+  Tooltip,
+  Typography,
+} from 'antd'
 import dayjs from 'dayjs'
 import type { FieldConfig } from '../../types'
 
@@ -37,7 +51,7 @@ function renderFieldControl(field: FieldConfig) {
     return <Input.TextArea placeholder={commonPlaceholder} rows={4} />
   }
 
-  if (field.field_type === 'select' || field.field_type === 'boolean') {
+  if (field.field_type === 'select') {
     return (
       <Select
         placeholder={field.placeholder || `请选择${field.field_name}`}
@@ -45,6 +59,20 @@ function renderFieldControl(field: FieldConfig) {
           label: option.label,
           value: option.value,
         }))}
+      />
+    )
+  }
+
+  if (field.field_type === 'boolean') {
+    return (
+      <Radio.Group
+        optionType="button"
+        buttonStyle="solid"
+        className="project-field-config-boolean-group"
+        options={[
+          { label: '是', value: true },
+          { label: '否', value: false },
+        ]}
       />
     )
   }
@@ -115,7 +143,15 @@ export function DynamicTaskFormPreview(
               name={field.field_key}
               rules={
                 field.required
-                  ? [{ required: true, message: `${field.field_type === 'select' ? '请选择' : '请输入'}${field.field_name}` }]
+                  ? [
+                      {
+                        required: true,
+                        message:
+                          `${field.field_type === 'select' || field.field_type === 'boolean'
+                            ? '请选择'
+                            : '请输入'}${field.field_name}`,
+                      },
+                    ]
                   : undefined
               }
             >

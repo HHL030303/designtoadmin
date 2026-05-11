@@ -124,6 +124,7 @@ type TaskWorkflowStageAssigneeResponse = {
 type CreateTaskPayload = {
   expect_complete_at?: string
   field_values: Record<string, unknown>
+  owner_id?: number
   order_type: 'new' | 'aftersales' | 'iteration'
   stage_assignments?: Array<{
     assignees: Array<{
@@ -132,7 +133,6 @@ type CreateTaskPayload = {
       is_primary: boolean
       user_id: number
     }>
-    owner_id?: number
     template_stage_id: number
   }>
   title: string

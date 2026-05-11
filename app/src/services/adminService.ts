@@ -246,13 +246,15 @@ function normalizeTaskFieldOptions(rawValue: unknown): FieldOptionConfig[] | und
 }
 
 function mapTaskFieldRecord(field: TaskFieldItem): FieldConfig {
+  const fieldType = field.field_type
+
   return {
     default_value: field.default_value ?? undefined,
     field_key: field.field_key,
     field_name: field.field_name,
-    field_type: field.field_type,
+    field_type: fieldType,
     id: field.id ? String(field.id) : undefined,
-    option_config: normalizeTaskFieldOptions(field.option_config),
+    option_config: fieldType === 'boolean' ? undefined : normalizeTaskFieldOptions(field.option_config),
     required: field.required ?? false,
     searchable: field.searchable ?? false,
     sort_value: field.sort_value ?? 0,
@@ -560,7 +562,7 @@ export const adminService = {
         field_key: field.field_key,
         field_name: field.field_name,
         field_type: field.field_type,
-        option_config: field.option_config ?? null,
+        option_config: field.field_type === 'boolean' ? null : field.option_config ?? null,
         required: field.required,
         searchable: field.searchable,
         sort_value: field.sort_value,
