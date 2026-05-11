@@ -9,6 +9,20 @@ export const navItems: NavItem[] = [
   { key: 'designers', viewKey: 'designers', label: '设计师任务台', hint: '上传与交付', path: '/designers' },
   { key: 'service', viewKey: 'service', label: '售后与迭代', hint: '版本衍生任务', path: '/service' },
   {
+    key: 'project-root',
+    label: '项目管理',
+    hint: '项目与成员维护',
+    children: [
+      {
+        key: 'projectManagement',
+        viewKey: 'projectManagement',
+        label: '项目列表',
+        hint: '维护项目与成员',
+        path: '/project-management/projects',
+      },
+    ],
+  },
+  {
     key: 'settings-root',
     label: '系统设置',
     hint: '账号与权限配置',
@@ -19,13 +33,6 @@ export const navItems: NavItem[] = [
         label: '账号管理',
         hint: '维护登录账号',
         path: '/settings/users',
-      },
-      {
-        key: 'settingsRoles',
-        viewKey: 'settingsRoles',
-        label: '角色管理',
-        hint: '维护角色权限',
-        path: '/settings/roles',
       },
     ],
   },
@@ -42,12 +49,21 @@ export const pathViewMap = Object.fromEntries(
   leafNavItems.map((item) => [item.path, item.viewKey]),
 ) as Record<string, ViewKey>
 
+function normalizePath(pathname: string) {
+  if (!pathname || pathname === '/') {
+    return '/'
+  }
+
+  const normalized = pathname.replace(/\/+$/, '')
+  return normalized || '/'
+}
+
 export function getPathForView(view: ViewKey) {
   return viewPathMap[view]
 }
 
 export function getViewForPath(pathname: string) {
-  return pathViewMap[pathname] ?? 'dashboard'
+  return pathViewMap[normalizePath(pathname)]
 }
 
 export function getNavItemByView(view: ViewKey) {

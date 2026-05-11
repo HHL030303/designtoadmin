@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.1",
+    "@xyflow/react": "^12.10.2",
     "antd": "^6.3.6",
     "exceljs": "^4.4.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.14.1",
+    "reactflow": "^11.11.4",
     "recharts": "^3.8.1"
   },
   "devDependencies": {

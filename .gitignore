@@ -24,6 +24,9 @@ dist/
 dist-ssr/
 app/node_modules/
 app/dist/
+.codex_tmp
+outputs
+nginx.conf.example
 
 # Environment / local-only config
 .env

@@ -1,33 +1,37 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
-import { getPathForView } from '../constants/navigation'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { getPathForView, getViewForPath } from '../constants/navigation'
 import { getAvailableViews } from '../domain/permissions'
+import { canAccessView } from '../domain/permissions'
 import { useAppState } from '../context/AppStateContext'
 import { AppLayout } from './AppLayout'
-import { DashboardPage } from '../pages/DashboardPage'
-import { AllTicketsPage } from '../pages/AllTicketsPage'
-import { ResearchWorkbenchPage } from '../pages/ResearchWorkbenchPage'
-import { CoursesPage } from '../pages/CoursesPage'
-import { DispatchPage } from '../pages/DispatchPage'
-import { DesignersPage } from '../pages/DesignersPage'
-import { ServicePage } from '../pages/ServicePage'
-import { LoginPage } from '../pages/LoginPage'
-import { AccountManagementPage } from '../pages/AccountManagementPage'
-import { RoleManagementPage } from '../pages/RoleManagementPage'
-import { ProjectSelectPage } from '../pages/ProjectSelectPage'
+import { privateRoutes, publicRoutes } from './routeConfig'
 
 export function AppRouter() {
   const { role, isAuthenticated, hasSelectedProject } = useAppState()
+  const location = useLocation()
+  const normalizedPathname =
+    location.pathname === '/'
+      ? '/'
+      : location.pathname.replace(/\/+$/, '') || '/'
   const fallbackPath = getPathForView(getAvailableViews(role)[0])
+  const matchedView = getViewForPath(normalizedPathname)
+  const preservedPrivatePath =
+    matchedView && canAccessView(role, matchedView) ? normalizedPathname : fallbackPath
+  const loginRoute = publicRoutes.find((route) => route.path === '/login')
+  const projectSelectRoute = publicRoutes.find((route) => route.path === '/project-select')
 
   return (
     <Routes>
+      {location.pathname !== normalizedPathname ? (
+        <Route path="*" element={<Navigate to={normalizedPathname} replace />} />
+      ) : null}
       <Route
         path="/login"
         element={
           isAuthenticated ? (
-            <Navigate to={hasSelectedProject ? fallbackPath : '/project-select'} replace />
+            <Navigate to={hasSelectedProject ? preservedPrivatePath : '/project-select'} replace />
           ) : (
-            <LoginPage />
+            loginRoute?.element ?? <Navigate to="/login" replace />
           )
         }
       />
@@ -35,7 +39,11 @@ export function AppRouter() {
         path="/project-select"
         element={
           isAuthenticated ? (
-            hasSelectedProject ? <Navigate to={fallbackPath} replace /> : <ProjectSelectPage />
+            hasSelectedProject ? (
+              <Navigate to={preservedPrivatePath} replace />
+            ) : (
+              projectSelectRoute?.element ?? <Navigate to="/login" replace />
+            )
           ) : (
             <Navigate to="/login" replace />
           )
@@ -45,7 +53,11 @@ export function AppRouter() {
         path="/"
         element={
           <Navigate
-            to={isAuthenticated ? (hasSelectedProject ? fallbackPath : '/project-select') : '/login'}
+            to={
+              isAuthenticated
+                ? (hasSelectedProject ? preservedPrivatePath : '/project-select')
+                : '/login'
+            }
             replace
           />
         }
@@ -59,21 +71,19 @@ export function AppRouter() {
           )
         }
       >
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/tickets" element={<AllTicketsPage />} />
-        <Route path="/research" element={<ResearchWorkbenchPage />} />
-        <Route path="/courses" element={<CoursesPage />} />
-        <Route path="/dispatch" element={<DispatchPage />} />
-        <Route path="/designers" element={<DesignersPage />} />
-        <Route path="/service" element={<ServicePage />} />
-        <Route path="/settings/users" element={<AccountManagementPage />} />
-        <Route path="/settings/roles" element={<RoleManagementPage />} />
+        {privateRoutes.map((route) => (
+          <Route key={route.path} path={route.path} element={route.element} />
+        ))}
       </Route>
       <Route
         path="*"
         element={
           <Navigate
-            to={isAuthenticated ? (hasSelectedProject ? fallbackPath : '/project-select') : '/login'}
+            to={
+              isAuthenticated
+                ? (hasSelectedProject ? preservedPrivatePath : '/project-select')
+                : '/login'
+            }
             replace
           />
         }

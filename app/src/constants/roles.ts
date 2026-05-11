@@ -12,14 +12,36 @@ export const roleOptions: RoleOption[] = [
 
 export const roleViewAccess: Record<UserRole, ViewKey[]> = {
   planner: ['dashboard', 'courses', 'service'],
-  researcher: ['dashboard', 'research'],
-  coordinator: ['dashboard', 'dispatch'],
-  styleDesigner: ['dashboard', 'designers'],
-  pageDesigner: ['dashboard', 'designers'],
-  sales: ['dashboard', 'service'],
-  admin: ['dashboard', 'allTickets', 'research', 'courses', 'dispatch', 'designers', 'service', 'settingsUsers', 'settingsRoles'],
+  researcher: ['dashboard', 'courses', 'research'],
+  coordinator: ['dashboard', 'courses', 'dispatch'],
+  styleDesigner: ['dashboard', 'courses', 'designers'],
+  pageDesigner: ['dashboard', 'courses', 'designers'],
+  sales: ['dashboard', 'courses', 'service'],
+  admin: [
+    'dashboard',
+    'allTickets',
+    'research',
+    'courses',
+    'dispatch',
+    'designers',
+    'service',
+    'projectManagement',
+    'settingsUsers',
+    'settingsProjectMembers',
+  ],
 }
 
 export const roleLabelMap: Record<UserRole, string> = Object.fromEntries(
   roleOptions.map((role) => [role.key, role.label]),
 ) as Record<UserRole, string>
+
+export const backendRoleMap: Record<string, UserRole> = {
+  planner: 'planner',
+  researcher: 'researcher',
+  design_coordinator: 'coordinator',
+  style_designer: 'styleDesigner',
+  page_designer: 'pageDesigner',
+  presales: 'sales',
+  project_admin: 'admin',
+  super_admin: 'admin',
+}

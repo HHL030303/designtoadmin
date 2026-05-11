@@ -22,9 +22,12 @@ const iconMap = {
   dispatch: <DeploymentUnitOutlined />,
   designers: <TeamOutlined />,
   service: <ShoppingOutlined />,
+  'project-root': <DeploymentUnitOutlined />,
+  projectManagement: <DeploymentUnitOutlined />,
   'settings-root': <SettingOutlined />,
   settingsUsers: <TeamOutlined />,
   settingsRoles: <SettingOutlined />,
+  settingsProjectMembers: <TeamOutlined />,
 }
 
 export function Sidebar({
@@ -109,7 +112,7 @@ export function Sidebar({
         mode="inline"
         inlineCollapsed={collapsed}
         selectedKeys={[view]}
-        defaultOpenKeys={['settings-root']}
+        defaultOpenKeys={['project-root', 'settings-root']}
         items={menuItems}
         onClick={({ key }) => onChange(String(key))}
       />

@@ -6,8 +6,10 @@ export type ViewKey =
   | 'dispatch'
   | 'designers'
   | 'service'
+  | 'projectManagement'
   | 'settingsUsers'
   | 'settingsRoles'
+  | 'settingsProjectMembers'
 
 export type CourseStatus =
   | 'research'
@@ -40,6 +42,115 @@ export type VolumeOption =
 export type YesNoOption = '是' | '否'
 export type HasOption = '有' | '无'
 export type ResearchReviewStatus = '免审' | '待审核' | '审核通过'
+export type FormFieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'boolean'
+export type FieldConfigStatus = 'enabled' | 'disabled'
+
+export interface FieldOptionConfig {
+  label: string
+  value: string
+  sort_value?: number
+  status?: FieldConfigStatus
+}
+
+export interface FieldConfig {
+  id?: string
+  field_key: string
+  field_name: string
+  field_type: FormFieldType
+  required: boolean
+  searchable: boolean
+  option_config?: FieldOptionConfig[]
+  default_value?: string | number | boolean
+  sort_value: number
+  status: FieldConfigStatus
+  placeholder?: string
+  span?: 12 | 24
+}
+
+export interface TaskVersionRecord {
+  id: string
+  versionNo: string
+  status: string
+  publishStatus: string
+  totalPageCount: number
+  expectCompleteAt?: string
+  completedAt?: string | null
+  archivedAt?: string | null
+}
+
+export interface TaskSubTaskRecord {
+  id: string
+  subTaskType: string
+  status: string
+  description: string
+  targetVersion?: string | null
+}
+
+export interface TaskListRecord {
+  id: string
+  title: string
+  status: string
+  readonly: boolean
+  createdAt: string
+  archivedAt?: string | null
+  currentVersion: TaskVersionRecord
+  activeSubTasks: TaskSubTaskRecord[]
+  fieldValues: Record<string, unknown>
+}
+
+export interface TaskWorkflowStageAssigneeRecord {
+  id: string
+  userId: string
+  userName: string
+  assigneeRole: string
+  assigneeRoleName?: string
+  isPrimary: boolean
+  assignedAt?: string
+  assignedPageCount: number
+  completedAt?: string | null
+}
+
+export interface TaskWorkflowFileRuleRecord {
+  id: string
+  itemName: string
+  fileCategory: string
+  filenamePattern: string
+  requiredCount: number
+  required: boolean
+  enabled: boolean
+}
+
+export interface TaskWorkflowStageRecord {
+  id: string
+  stageName: string
+  sortValue: number
+  status: string
+  ownerId?: string
+  ownerRoleCode?: string
+  operatorRoleCode?: string
+  canAssign: boolean
+  canSkip: boolean
+  collectTotalPageCount: boolean
+  allowPageAssignment: boolean
+  requiresFileUpload: boolean
+  requiresValidation: boolean
+  triggersPackage: boolean
+  dueDate?: string
+  overdueStatus?: string
+  validationStatus?: string
+  remark?: string | null
+  fileRules: TaskWorkflowFileRuleRecord[]
+  stageAssignees: TaskWorkflowStageAssigneeRecord[]
+}
+
+export interface TaskDetailRecord {
+  task: Pick<TaskListRecord, 'id' | 'title' | 'status' | 'readonly' | 'createdAt' | 'archivedAt'>
+  currentVersion: TaskVersionRecord
+  fieldValues: Record<string, unknown>
+  workflowStages: TaskWorkflowStageRecord[]
+  files: AttachmentFile[]
+  subTasks: TaskSubTaskRecord[]
+}
 
 export interface AttachmentFile {
   uid: string
@@ -228,12 +339,42 @@ export interface MockUser {
   role: UserRole
 }
 
-export type AuthUser = Omit<MockUser, 'password'>
+export interface ProjectRole {
+  id: number
+  code: string
+  name: string
+}
+
+export interface AvailableProjectRole {
+  code: string
+  name: string
+  role: UserRole
+}
+
+export interface ProjectPermission {
+  resource: string
+  resourceName: string
+  action: string
+}
 
 export interface ProjectOption {
   key: string
+  id: string
+  code: string
   name: string
   description: string
+  status: 'enabled' | 'disabled'
+  roles: ProjectRole[]
+  permissions: ProjectPermission[]
+}
+
+export interface AuthUser {
+  id: string
+  email: string
+  name: string
+  role: UserRole
+  status: 'enabled' | 'disabled'
+  projects: ProjectOption[]
 }
 
 export type AccountStatus = '启用' | '停用'
@@ -242,23 +383,17 @@ export interface AdminAccountRecord {
   id: string
   username: string
   name: string
-  role: UserRole
   status: AccountStatus
-  phone: string
   email: string
-  note?: string
-  lastLoginAt?: string
   createdAt: string
+  updatedAt: string
 }
 
 export interface SaveAdminAccountPayload {
-  username: string
   name: string
-  role: UserRole
-  status: AccountStatus
-  phone: string
   email: string
-  note?: string
+  password?: string
+  status?: AccountStatus
 }
 
 export interface SystemRoleRecord {
@@ -266,7 +401,6 @@ export interface SystemRoleRecord {
   code: string
   name: string
   description: string
-  status: AccountStatus
   memberCount: number
   scope: string
   viewAccess: ViewKey[]
@@ -276,9 +410,71 @@ export interface SaveSystemRolePayload {
   code: string
   name: string
   description: string
-  status: AccountStatus
   scope: string
   viewAccess: ViewKey[]
+}
+
+export interface ProjectMemberRecord {
+  id: string
+  memberIds: string[]
+  memberIdByRoleId: Record<string, string>
+  projectId: string
+  projectName: string
+  userId: string
+  userName: string
+  userEmail: string
+  userStatus: AccountStatus
+  roleIds: string[]
+  roleNames: string[]
+  roleCodes: string[]
+}
+
+export interface ProjectManagementRecord {
+  id: string
+  name: string
+  code: string
+  status: 'enabled' | 'disabled'
+  createdAt: string
+  updatedAt: string
+}
+
+export type WorkflowTemplateStatus = 'enabled' | 'disabled'
+
+export interface WorkflowStageFileRule {
+  id?: string
+  itemName: string
+  fileCategory: string
+  filenamePattern: string
+  requiredCount: number
+  required: boolean
+}
+
+export interface WorkflowStageConfig {
+  id?: string
+  localId: string
+  stageName: string
+  sortValue: number
+  defaultDueDays?: number
+  ownerRoleCode?: string
+  operatorRoleCode?: string
+  canAssign: boolean
+  canSkip: boolean
+  requiresFileUpload: boolean
+  requiresValidation: boolean
+  triggersPackage: boolean
+  isMerged: boolean
+  status: WorkflowTemplateStatus
+  nextStageIds: string[]
+  fileRules: WorkflowStageFileRule[]
+  configJson?: Record<string, unknown>
+}
+
+export interface WorkflowTemplateRecord {
+  id: string
+  name: string
+  isDefault: boolean
+  status: WorkflowTemplateStatus
+  stages: WorkflowStageConfig[]
 }
 
 export interface RoleActionSummary {

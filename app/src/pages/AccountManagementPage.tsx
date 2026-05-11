@@ -1,33 +1,53 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Card,
   Drawer,
   Form,
   Input,
-  Popconfirm,
   Select,
   Space,
   Table,
   Tag,
   Typography,
+  message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { roleLabelMap, roleOptions } from '../constants/roles'
-import { useAppState } from '../context/AppStateContext'
+import { adminService } from '../services/adminService'
 import type { AdminAccountRecord, SaveAdminAccountPayload } from '../types'
 
+type AccountFormValues = SaveAdminAccountPayload
+
 export function AccountManagementPage() {
-  const { accounts, currentUser, saveAdminAccount, deleteAdminAccount } = useAppState()
+  const [accounts, setAccounts] = useState<AdminAccountRecord[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [keyword, setKeyword] = useState('')
   const [editingAccount, setEditingAccount] = useState<AdminAccountRecord | null>(null)
-  const [form] = Form.useForm<SaveAdminAccountPayload>()
+  const [keyword, setKeyword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [form] = Form.useForm<AccountFormValues>()
+
+  async function loadAccounts(searchKeyword = '') {
+    setLoading(true)
+
+    try {
+      const nextAccounts = await adminService.listUsers(searchKeyword)
+      setAccounts(nextAccounts)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载账号列表失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadAccounts()
+  }, [])
 
   const filteredAccounts = useMemo(
     () =>
       accounts.filter((account) =>
-        [account.name, account.username, account.phone, roleLabelMap[account.role]]
+        [account.name, account.email, account.status]
           .join(' ')
           .toLowerCase()
           .includes(keyword.trim().toLowerCase()),
@@ -40,18 +60,14 @@ export function AccountManagementPage() {
       title: '账号信息',
       dataIndex: 'username',
       render: (_, record) => (
-        <Space orientation="vertical" size={0}>
+        <Space direction="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
-          <Typography.Text type="secondary">
-            {record.username} · {record.email}
-          </Typography.Text>
+          <Typography.Text type="secondary">{record.email}</Typography.Text>
         </Space>
       ),
     },
-    { title: '角色', render: (_, record) => roleLabelMap[record.role] },
-    { title: '手机号', dataIndex: 'phone' },
     { title: '创建时间', dataIndex: 'createdAt' },
-    { title: '最近登录', dataIndex: 'lastLoginAt' },
+    { title: '更新时间', dataIndex: 'updatedAt' },
     {
       title: '状态',
       render: (_, record) =>
@@ -63,57 +79,23 @@ export function AccountManagementPage() {
     },
     {
       title: '操作',
-      width: 240,
+      width: 120,
       render: (_, record) => (
-        <Space size={8}>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingAccount(record)
-              form.setFieldsValue({
-                username: record.username,
-                name: record.name,
-                role: record.role,
-                status: record.status,
-                phone: record.phone,
-                email: record.email,
-                note: record.note,
-              })
-              setDrawerOpen(true)
-            }}
-          >
-            编辑
-          </Button>
-          <Button
-            size="small"
-            onClick={() =>
-              saveAdminAccount(
-                {
-                  username: record.username,
-                  name: record.name,
-                  role: record.role,
-                  status: record.status === '启用' ? '停用' : '启用',
-                  phone: record.phone,
-                  email: record.email,
-                  note: record.note,
-                },
-                record.id,
-              )
-            }
-            disabled={currentUser?.id === record.id}
-          >
-            {record.status === '启用' ? '停用' : '启用'}
-          </Button>
-          <Popconfirm
-            title="确认删除该账号吗？"
-            onConfirm={() => deleteAdminAccount(record.id)}
-            disabled={currentUser?.id === record.id}
-          >
-            <Button danger size="small" disabled={currentUser?.id === record.id}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <Button
+          size="small"
+          onClick={() => {
+            setEditingAccount(record)
+            form.setFieldsValue({
+              email: record.email,
+              name: record.name,
+              password: '',
+              status: record.status,
+            })
+            setDrawerOpen(true)
+          }}
+        >
+          编辑
+        </Button>
       ),
     },
   ]
@@ -121,14 +103,39 @@ export function AccountManagementPage() {
   function openCreateDrawer() {
     setEditingAccount(null)
     form.resetFields()
-    form.setFieldsValue({ role: 'planner', status: '启用' })
+    form.setFieldsValue({ status: '启用' })
     setDrawerOpen(true)
   }
 
-  function handleFinish(values: SaveAdminAccountPayload) {
-    saveAdminAccount(values, editingAccount?.id)
-    setDrawerOpen(false)
-    form.resetFields()
+  async function handleFinish(values: AccountFormValues) {
+    setSubmitting(true)
+
+    try {
+      if (editingAccount) {
+        await adminService.updateUser(editingAccount.id, {
+          name: values.name.trim(),
+          status: values.status === '停用' ? 'disabled' : 'enabled',
+        })
+
+        if (values.password?.trim()) {
+          await adminService.resetUserPassword(editingAccount.id, values.password.trim())
+        }
+
+        message.success('账号更新成功')
+      } else {
+        await adminService.createUser(values)
+        message.success('账号创建成功')
+      }
+
+      setDrawerOpen(false)
+      setEditingAccount(null)
+      form.resetFields()
+      await loadAccounts(keyword)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存账号失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -154,47 +161,66 @@ export function AccountManagementPage() {
         <Input
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
-          placeholder="搜索姓名 / 账号 / 手机号 / 角色"
+          placeholder="搜索姓名 / 邮箱 / 状态"
           className="workspace-filter-input"
         />
       </div>
 
-      <Table rowKey="id" columns={columns} dataSource={filteredAccounts} pagination={{ pageSize: 8 }} />
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={filteredAccounts}
+        loading={loading}
+        pagination={{ pageSize: 8 }}
+      />
 
       <Drawer
         title={editingAccount ? '编辑账号' : '新增账号'}
         size={520}
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false)
+          setEditingAccount(null)
+        }}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={handleFinish}>
+        <Form form={form} layout="vertical" onFinish={(values) => void handleFinish(values)}>
           <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input placeholder="请输入姓名" />
           </Form.Item>
-          <Form.Item label="账号" name="username" rules={[{ required: true, message: '请输入账号' }]}>
-            <Input placeholder="请输入登录账号" />
+          <Form.Item
+            label="邮箱"
+            name="email"
+            rules={[{ required: true, message: '请输入邮箱' }]}
+          >
+            <Input placeholder="请输入登录邮箱" disabled={Boolean(editingAccount)} />
           </Form.Item>
-          <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]}>
-            <Select options={roleOptions.map((item) => ({ label: item.label, value: item.key }))} />
+          <Form.Item
+            label={editingAccount ? '新密码' : '初始密码'}
+            name="password"
+            rules={
+              editingAccount
+                ? []
+                : [{ required: true, message: '请输入初始密码' }]
+            }
+          >
+            <Input.Password
+              placeholder={editingAccount ? '不修改密码可留空' : '请输入初始密码'}
+            />
           </Form.Item>
-          <Form.Item label="手机号" name="phone" rules={[{ required: true, message: '请输入手机号' }]}>
-            <Input placeholder="请输入手机号" />
-          </Form.Item>
-          <Form.Item label="邮箱" name="email" rules={[{ required: true, message: '请输入邮箱' }]}>
-            <Input placeholder="请输入邮箱" />
-          </Form.Item>
-          <Form.Item label="状态" name="status" rules={[{ required: true, message: '请选择状态' }]}>
-            <Select options={[{ label: '启用', value: '启用' }, { label: '停用', value: '停用' }]} />
-          </Form.Item>
-          <Form.Item label="备注" name="note">
-            <Input.TextArea rows={3} placeholder="请输入备注" />
+          <Form.Item label="状态" name="status" initialValue="启用">
+            <Select
+              options={[
+                { label: '启用', value: '启用' },
+                { label: '停用', value: '停用' },
+              ]}
+            />
           </Form.Item>
 
           <Space className="form-footer-actions">
             <Button onClick={() => setDrawerOpen(false)}>取消</Button>
-            <Button type="primary" htmlType="submit">
-              保存账号
+            <Button type="primary" htmlType="submit" loading={submitting}>
+              {editingAccount ? '保存修改' : '保存账号'}
             </Button>
           </Space>
         </Form>

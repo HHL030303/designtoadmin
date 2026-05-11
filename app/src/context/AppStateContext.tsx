@@ -7,9 +7,13 @@ import {
   type ReactNode,
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  AUTH_STORAGE_KEY,
+  PROJECT_ROLE_STORAGE_KEY,
+  PROJECT_STORAGE_KEY,
+} from '../constants/storage'
 import { getPathForView, getViewForPath } from '../constants/navigation'
-import { projectOptions } from '../constants/projects'
-import { roleLabelMap } from '../constants/roles'
+import { backendRoleMap, roleLabelMap } from '../constants/roles'
 import {
   canAccessView,
   canAdvanceCourse,
@@ -23,9 +27,8 @@ import {
 } from '../domain/permissions'
 import { useCourseStore } from '../hooks/useCourseStore'
 import { authService } from '../services/authService'
-import { initialAdminAccounts, initialSystemRoles } from '../services/mockAdminData'
 import type {
-  AdminAccountRecord,
+  AvailableProjectRole,
   AuthUser,
   CreateCoursePayload,
   CreateServiceTicketPayload,
@@ -34,9 +37,6 @@ import type {
   CourseStatus,
   DispatchPayload,
   ProjectOption,
-  SaveAdminAccountPayload,
-  SaveSystemRolePayload,
-  SystemRoleRecord,
   UpdateResearchPayload,
   UploadPagePayload,
   UploadStylePayload,
@@ -44,9 +44,59 @@ import type {
   ViewKey,
 } from '../types'
 
+function getProjectRoles(project: ProjectOption | null) {
+  if (!project || !Array.isArray(project.roles)) {
+    return []
+  }
+
+  const uniqueRoles = new Map<UserRole, AvailableProjectRole>()
+
+  project.roles.forEach((item) => {
+    const mappedRole = backendRoleMap[item.code]
+
+    if (!mappedRole || uniqueRoles.has(mappedRole)) {
+      return
+    }
+
+    uniqueRoles.set(mappedRole, {
+      code: item.code,
+      name: item.name,
+      role: mappedRole,
+    })
+  })
+
+  return Array.from(uniqueRoles.values())
+}
+
+function getProjectRole(project: ProjectOption | null, fallbackRole: UserRole) {
+  return getProjectRoles(project)[0]?.role ?? fallbackRole
+}
+
+function getStoredProjectRoleMap() {
+  const raw = window.localStorage.getItem(PROJECT_ROLE_STORAGE_KEY)
+
+  if (!raw) {
+    return {}
+  }
+
+  try {
+    return JSON.parse(raw) as Record<string, UserRole>
+  } catch {
+    window.localStorage.removeItem(PROJECT_ROLE_STORAGE_KEY)
+    return {}
+  }
+}
+
+function setStoredProjectRole(projectId: string, role: UserRole) {
+  const current = getStoredProjectRoleMap()
+  current[projectId] = role
+  window.localStorage.setItem(PROJECT_ROLE_STORAGE_KEY, JSON.stringify(current))
+}
+
 type AppStateContextValue = {
   view: ViewKey
   role: UserRole
+  availableRoles: AvailableProjectRole[]
   currentUser: AuthUser | null
   currentProject: ProjectOption | null
   projects: ProjectOption[]
@@ -54,8 +104,6 @@ type AppStateContextValue = {
   hasSelectedProject: boolean
   authenticating: boolean
   courses: CourseRecord[]
-  accounts: AdminAccountRecord[]
-  systemRoles: SystemRoleRecord[]
   selectedCourse?: CourseRecord
   selectedResearchCourse?: CourseRecord
   stats: ReturnType<typeof useCourseStore>['stats']
@@ -65,9 +113,10 @@ type AppStateContextValue = {
   search: string
   statusFilter: 'all' | CourseStatus
   canCreateCourse: boolean
-  login: (username: string, password: string) => Promise<void>
-  logout: () => void
+  login: (email: string, password: string) => Promise<void>
+  logout: () => Promise<void>
   selectProject: (projectKey: string) => void
+  switchRole: (role: UserRole) => void
   setSearch: (value: string) => void
   setStatusFilter: (value: 'all' | CourseStatus) => void
   navigateToView: (view: ViewKey) => void
@@ -82,10 +131,6 @@ type AppStateContextValue = {
   savePageDispatch: (courseId: string, payload: DispatchPayload) => Promise<void>
   uploadStyle: (courseId: string, payload: UploadStylePayload) => Promise<void>
   uploadPage: (courseId: string, payload: UploadPagePayload) => Promise<void>
-  saveAdminAccount: (payload: SaveAdminAccountPayload, accountId?: string) => void
-  deleteAdminAccount: (accountId: string) => void
-  saveSystemRole: (payload: SaveSystemRolePayload, roleId?: string) => void
-  deleteSystemRole: (roleId: string) => void
   canAdvanceSelected: boolean
   canCreateAftersales: boolean
   canCreateIteration: boolean
@@ -94,8 +139,6 @@ type AppStateContextValue = {
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null)
-const AUTH_STORAGE_KEY = 'design-delivery-auth-user'
-const PROJECT_STORAGE_KEY = 'design-delivery-current-project'
 
 function getStoredUser(): AuthUser | null {
   const raw = window.localStorage.getItem(AUTH_STORAGE_KEY)
@@ -120,27 +163,76 @@ function getStoredProject(): ProjectOption | null {
   }
 
   try {
-    const parsed = JSON.parse(raw) as ProjectOption
-    return projectOptions.find((item) => item.key === parsed.key) ?? null
+    const parsed = JSON.parse(raw) as Partial<ProjectOption>
+
+    if (
+      typeof parsed?.id !== 'string' ||
+      typeof parsed?.key !== 'string' ||
+      !Array.isArray(parsed?.roles)
+    ) {
+      window.localStorage.removeItem(PROJECT_STORAGE_KEY)
+      return null
+    }
+
+    return parsed as ProjectOption
   } catch {
     window.localStorage.removeItem(PROJECT_STORAGE_KEY)
     return null
   }
 }
 
+function getInitialActiveRole(
+  currentProject: ProjectOption | null,
+  currentUser: AuthUser | null,
+): UserRole {
+  if (!currentProject) {
+    return currentUser?.role ?? 'planner'
+  }
+
+  const storedRole = getStoredProjectRoleMap()[currentProject.id]
+  const availableRoles = getProjectRoles(currentProject)
+
+  if (availableRoles.some((item) => item.role === storedRole)) {
+    return storedRole
+  }
+
+  return getProjectRole(currentProject, currentUser?.role ?? 'planner')
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser())
   const [currentProject, setCurrentProject] = useState<ProjectOption | null>(() => getStoredProject())
+  const [activeRole, setActiveRole] = useState<UserRole>(() =>
+    getInitialActiveRole(getStoredProject(), getStoredUser()),
+  )
   const [authenticating, setAuthenticating] = useState(false)
   const [selectedCourseId, setSelectedCourseId] = useState<string>('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | CourseStatus>('all')
-  const [accounts, setAccounts] = useState<AdminAccountRecord[]>(initialAdminAccounts)
-  const [systemRoles, setSystemRoles] = useState<SystemRoleRecord[]>(initialSystemRoles)
   const location = useLocation()
   const navigate = useNavigate()
-  const view = useMemo<ViewKey>(() => getViewForPath(location.pathname), [location.pathname])
-  const role = currentUser?.role ?? 'planner'
+  const projects = currentUser?.projects ?? []
+  const availableRoles = useMemo(() => getProjectRoles(currentProject), [currentProject])
+  const storedProjectRole = useMemo(
+    () => (currentProject ? getStoredProjectRoleMap()[currentProject.id] : undefined),
+    [currentProject],
+  )
+  const role = useMemo(() => {
+    if (availableRoles.some((item) => item.role === storedProjectRole)) {
+      return storedProjectRole as UserRole
+    }
+
+    if (availableRoles.some((item) => item.role === activeRole)) {
+      return activeRole
+    }
+
+    return getProjectRole(currentProject, currentUser?.role ?? 'planner')
+  }, [activeRole, availableRoles, currentProject, currentUser?.role, storedProjectRole])
+  const matchedView = useMemo(() => getViewForPath(location.pathname), [location.pathname])
+  const view = useMemo<ViewKey>(() => {
+    const availableViews = getAvailableViews(role)
+    return matchedView ?? availableViews[0] ?? 'dashboard'
+  }, [matchedView, role])
   const courseStore = useCourseStore()
 
   const {
@@ -166,6 +258,46 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSelectedCourseId(courses[0].id)
     }
   }, [courses, selectedCourseId])
+
+  useEffect(() => {
+    if (!currentProject) {
+      setActiveRole(currentUser?.role ?? 'planner')
+      return
+    }
+
+    const matched = projects.find((item) => item.key === currentProject.key)
+    if (matched) {
+      if (
+        matched.name !== currentProject.name ||
+        matched.roles.length !== currentProject.roles.length
+      ) {
+        setCurrentProject(matched)
+        window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
+      }
+      return
+    }
+
+    setCurrentProject(null)
+    window.localStorage.removeItem(PROJECT_STORAGE_KEY)
+  }, [currentProject, currentUser?.role, projects])
+
+  useEffect(() => {
+    if (!currentProject) {
+      return
+    }
+
+    const storedRole = getStoredProjectRoleMap()[currentProject.id]
+    const fallbackRole = getProjectRole(currentProject, currentUser?.role ?? 'planner')
+    const nextRole = availableRoles.some((item) => item.role === storedRole)
+      ? storedRole
+      : fallbackRole
+
+    if (nextRole !== activeRole) {
+      setActiveRole(nextRole)
+    }
+
+    setStoredProjectRole(currentProject.id, nextRole)
+  }, [activeRole, availableRoles, currentProject, currentUser?.role])
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId) ?? courses[0],
@@ -200,13 +332,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (!canAccessView(role, view)) {
+    if (matchedView && !canAccessView(role, matchedView)) {
       const nextView = getAvailableViews(role)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
     }
-  }, [hasSelectedProject, isAuthenticated, location.pathname, navigate, role, view])
+  }, [hasSelectedProject, isAuthenticated, location.pathname, matchedView, navigate, role])
 
   function navigateToView(nextView: ViewKey) {
     navigate(getPathForView(nextView))
@@ -219,13 +351,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(username: string, password: string) {
+  async function login(email: string, password: string) {
     setAuthenticating(true)
 
     try {
-      const user = await authService.login(username, password)
+      const user = await authService.login(email, password)
       setCurrentUser(user)
+      setActiveRole(user.role)
       window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
+      window.localStorage.removeItem(PROJECT_STORAGE_KEY)
+      setCurrentProject(null)
       navigate('/project-select', { replace: true })
     } finally {
       setAuthenticating(false)
@@ -233,103 +368,53 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function selectProject(projectKey: string) {
-    const matched = projectOptions.find((item) => item.key === projectKey)
+    const matched = projects.find((item) => item.key === projectKey)
     if (!matched) {
       return
     }
 
     setCurrentProject(matched)
+    const storedRole = getStoredProjectRoleMap()[matched.id]
+    const nextRole = getProjectRoles(matched).some((item) => item.role === storedRole)
+      ? storedRole
+      : getProjectRole(matched, currentUser?.role ?? 'planner')
+    setActiveRole(nextRole)
+    setStoredProjectRole(matched.id, nextRole)
     window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
-    const nextView = getAvailableViews(role)[0]
+    const nextView = getAvailableViews(nextRole)[0]
     if (nextView) {
       navigate(getPathForView(nextView), { replace: true })
     }
   }
 
-  function logout() {
+  function switchRole(nextRole: UserRole) {
+    if (!availableRoles.some((item) => item.role === nextRole)) {
+      return
+    }
+
+    setActiveRole(nextRole)
+
+    if (currentProject) {
+      setStoredProjectRole(currentProject.id, nextRole)
+    }
+  }
+
+  async function logout() {
+    try {
+      await authService.logout()
+    } catch {
+      // Keep local logout resilient even when the session is already invalid.
+    }
+
     setCurrentUser(null)
     setCurrentProject(null)
+    setActiveRole('planner')
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_STORAGE_KEY)
     setSelectedCourseId('')
     setSearch('')
     setStatusFilter('all')
     navigate('/login', { replace: true })
-  }
-
-  function saveAdminAccount(payload: SaveAdminAccountPayload, accountId?: string) {
-    setAccounts((current) => {
-      if (accountId) {
-        const next = current.map((account) =>
-          account.id === accountId
-            ? {
-                ...account,
-                ...payload,
-              }
-            : account,
-        )
-
-        const updatedAccount = next.find((account) => account.id === accountId)
-        if (updatedAccount && currentUser?.id === accountId) {
-          const nextCurrentUser = {
-            ...currentUser,
-            username: updatedAccount.username,
-            name: updatedAccount.name,
-            role: updatedAccount.role,
-          }
-          setCurrentUser(nextCurrentUser)
-          window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextCurrentUser))
-        }
-
-        return next
-      }
-
-      return [
-        {
-          id: `U-${String(current.length + 1).padStart(3, '0')}`,
-          createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-          lastLoginAt: '未登录',
-          ...payload,
-        },
-        ...current,
-      ]
-    })
-  }
-
-  function deleteAdminAccount(accountId: string) {
-    if (currentUser?.id === accountId) {
-      return
-    }
-
-    setAccounts((current) => current.filter((account) => account.id !== accountId))
-  }
-
-  function saveSystemRole(payload: SaveSystemRolePayload, roleId?: string) {
-    setSystemRoles((current) => {
-      if (roleId) {
-        return current.map((item) =>
-          item.id === roleId
-            ? {
-                ...item,
-                ...payload,
-              }
-            : item,
-        )
-      }
-
-      return [
-        {
-          id: `R-${String(current.length + 1).padStart(3, '0')}`,
-          memberCount: 0,
-          ...payload,
-        },
-        ...current,
-      ]
-    })
-  }
-
-  function deleteSystemRole(roleId: string) {
-    setSystemRoles((current) => current.filter((item) => item.id !== roleId))
   }
 
   async function createCourse(payload: CreateCoursePayload) {
@@ -448,15 +533,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     () => ({
       view,
       role,
+      availableRoles,
       currentUser,
       currentProject,
-      projects: projectOptions,
+      projects,
       isAuthenticated,
       hasSelectedProject,
       authenticating,
       courses,
-      accounts,
-      systemRoles,
       selectedCourse,
       selectedResearchCourse,
       stats,
@@ -469,6 +553,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       selectProject,
+      switchRole,
       setSearch,
       setStatusFilter,
       navigateToView,
@@ -483,10 +568,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       savePageDispatch,
       uploadStyle,
       uploadPage,
-      saveAdminAccount,
-      deleteAdminAccount,
-      saveSystemRole,
-      deleteSystemRole,
       canAdvanceSelected: selectedCourse ? canAdvanceCourse(role, selectedCourse) : false,
       canCreateAftersales: selectedCourse ? canCreateTicket(role, '售后', selectedCourse) : false,
       canCreateIteration: selectedCourse ? canCreateTicket(role, '迭代', selectedCourse) : false,
@@ -498,14 +579,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       view,
       role,
+      availableRoles,
       currentUser,
       currentProject,
+      projects,
       isAuthenticated,
       hasSelectedProject,
       authenticating,
       courses,
-      accounts,
-      systemRoles,
       selectedCourse,
       selectedResearchCourse,
       stats,
@@ -518,6 +599,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       selectProject,
+      switchRole,
       navigateToView,
       selectCourse,
       createCourse,
@@ -530,10 +612,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       savePageDispatch,
       uploadStyle,
       uploadPage,
-      saveAdminAccount,
-      deleteAdminAccount,
-      saveSystemRole,
-      deleteSystemRole,
     ],
   )
 

@@ -11,35 +11,19 @@ import {
   Typography,
 } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
-import { roleLabelMap } from '../constants/roles'
 import { useAppState } from '../context/AppStateContext'
-import { mockUsers } from '../services/mockUsers'
 
 type LoginFormValues = {
-  username: string
+  email: string
   password: string
-}
-
-type DemoAccount = {
-  name: string
-  username: string
-  password: string
-  role: string
 }
 
 export function LoginPage() {
   const { login, authenticating } = useAppState()
   const [error, setError] = useState<string | null>(null)
   const [form] = Form.useForm<LoginFormValues>()
-
-  const accounts = useMemo<DemoAccount[]>(
-    () =>
-      mockUsers.map((user) => ({
-        name: user.name,
-        username: user.username,
-        password: user.password,
-        role: roleLabelMap[user.role],
-      })),
+  const helperText = useMemo(
+    () => '使用 Apifox 文档对应的真实账号登录，成功后会进入项目选择页。',
     [],
   )
 
@@ -47,7 +31,7 @@ export function LoginPage() {
     setError(null)
 
     try {
-      await login(values.username, values.password)
+      await login(values.email, values.password)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : '登录失败，请稍后重试')
     }
@@ -91,7 +75,7 @@ export function LoginPage() {
                   设计交付管理系统
                 </Typography.Title>
                 <Typography.Paragraph className="login-copy">
-                  使用 mock 账号模拟不同角色登录，直接进入各自权限页面，便于演示主流程、派单、上传与售后迭代场景。
+                  登录认证已经切换到真实后台接口，完成登录后会先进入项目选择页，再按所选项目加载后续管理数据。
                 </Typography.Paragraph>
               </div>
             </Space>
@@ -105,7 +89,7 @@ export function LoginPage() {
                     欢迎登录
                   </Typography.Title>
                   <Typography.Text className="login-form-subtitle">
-                    输入演示账号后进入对应角色工作台
+                    输入后台账号后进入项目选择页
                   </Typography.Text>
                 </div>
 
@@ -114,17 +98,17 @@ export function LoginPage() {
                 <Form
                   form={form}
                   layout="vertical"
-                  initialValues={{ username: 'planner', password: '123456' }}
+                  initialValues={{ email: 'admin@example.com', password: '123456' }}
                   onFinish={(values) => void handleFinish(values)}
                 >
                   <Form.Item
-                    label="账号"
-                    name="username"
-                    rules={[{ required: true, message: '请输入账号' }]}
+                    label="邮箱"
+                    name="email"
+                    rules={[{ required: true, message: '请输入邮箱' }]}
                   >
                     <Input
                       prefix={<UserOutlined className="login-input-icon" />}
-                      placeholder="请输入用户名"
+                      placeholder="请输入登录邮箱"
                       className="login-input"
                     />
                   </Form.Item>
@@ -155,25 +139,23 @@ export function LoginPage() {
 
                 <div className="login-demo-panel">
                   <div className="login-demo-head">
-                    <Typography.Text strong>演示账号</Typography.Text>
+                    <Typography.Text strong>登录说明</Typography.Text>
                     <Typography.Text className="login-demo-helper">
-                      默认：`planner / 123456`
+                      默认：`admin@example.com / 123456`
                     </Typography.Text>
                   </div>
                   <div className="login-demo-list">
-                    {accounts.map((account) => (
-                      <div key={account.username} className="login-demo-item">
-                        <div className="login-demo-main">
-                          <Space size={8} wrap>
-                            <Tag className="login-demo-tag">{account.role}</Tag>
-                            <Typography.Text strong>{account.name}</Typography.Text>
-                          </Space>
-                          <Typography.Text className="login-demo-account">
-                            {account.username} / {account.password}
-                          </Typography.Text>
-                        </div>
+                    <div className="login-demo-item">
+                      <div className="login-demo-main">
+                        <Space size={8} wrap>
+                          <Tag className="login-demo-tag">API</Tag>
+                          <Typography.Text strong>真实认证</Typography.Text>
+                        </Space>
+                        <Typography.Text className="login-demo-account">
+                          {helperText}
+                        </Typography.Text>
                       </div>
-                    ))}
+                    </div>
                   </div>
                 </div>
               </Space>

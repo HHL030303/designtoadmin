@@ -9,7 +9,17 @@ import { useAppState } from '../context/AppStateContext'
 export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { view, role, currentUser, currentProject, loading, error, logout } = useAppState()
+  const {
+    view,
+    role,
+    availableRoles,
+    currentUser,
+    currentProject,
+    loading,
+    error,
+    logout,
+    switchRole,
+  } = useAppState()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
@@ -28,9 +38,11 @@ export function AppLayout() {
             <Topbar
               view={view}
               role={role}
+              availableRoles={availableRoles}
               currentUser={currentUser}
               currentProject={currentProject}
-              onLogout={logout}
+              onSwitchRole={switchRole}
+              onLogout={() => void logout()}
             />
           </div>
           <div className="app-content">

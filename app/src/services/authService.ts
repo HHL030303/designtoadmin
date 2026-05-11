@@ -1,35 +1,111 @@
-import type { AuthUser } from '../types'
-import { mockUsers } from './mockUsers'
+import { backendRoleMap } from '../constants/roles'
+import type {
+  AuthUser,
+  ProjectOption,
+  ProjectPermission,
+  ProjectRole,
+  UserRole,
+} from '../types'
+import { apiRequest } from './apiClient'
 
-const LATENCY = 240
+type AuthProjectResponse = {
+  id: number
+  code: string
+  name: string
+  status: 'enabled' | 'disabled'
+  roles: Array<{
+    id: number
+    code: string
+    name: string
+  }>
+  permissions: Array<{
+    resource: string
+    resource_name: string
+    action: string
+  }>
+}
 
-function delay<T>(value: T, duration = LATENCY): Promise<T> {
-  return new Promise((resolve) => {
-    window.setTimeout(() => resolve(value), duration)
-  })
+type AuthResponse = {
+  id: number
+  email: string
+  name: string
+  status: 'enabled' | 'disabled'
+  projects: AuthProjectResponse[]
+}
+
+function mapRoleCodeToUserRole(roleCodes: string[]): UserRole {
+  const matchedRole = roleCodes
+    .map((code) => backendRoleMap[code])
+    .find((role): role is UserRole => Boolean(role))
+
+  return matchedRole ?? 'planner'
+}
+
+function mapProjectRole(role: AuthProjectResponse['roles'][number]): ProjectRole {
+  return {
+    id: role.id,
+    code: role.code,
+    name: role.name,
+  }
+}
+
+function mapProjectPermission(
+  permission: AuthProjectResponse['permissions'][number],
+): ProjectPermission {
+  return {
+    resource: permission.resource,
+    resourceName: permission.resource_name,
+    action: permission.action,
+  }
+}
+
+function mapProject(project: AuthProjectResponse): ProjectOption {
+  const roles = project.roles.map(mapProjectRole)
+
+  return {
+    key: String(project.id),
+    id: String(project.id),
+    code: project.code,
+    description:
+      roles.length > 0
+        ? `当前账号角色：${roles.map((role) => role.name).join('、')}`
+        : '当前账号暂未分配项目角色',
+    name: project.name,
+    permissions: project.permissions.map(mapProjectPermission),
+    roles,
+    status: project.status,
+  }
+}
+
+function mapAuthUser(payload: AuthResponse): AuthUser {
+  const projects = payload.projects.map(mapProject)
+  const roleCodes = projects.flatMap((project) => project.roles.map((role) => role.code))
+
+  return {
+    email: payload.email,
+    id: String(payload.id),
+    name: payload.name,
+    projects,
+    role: mapRoleCodeToUserRole(roleCodes),
+    status: payload.status,
+  }
 }
 
 export const authService = {
-  async login(username: string, password: string) {
-    const matched = mockUsers.find(
-      (user) => user.username === username.trim() && user.password === password,
-    )
+  async login(email: string, password: string) {
+    const data = await apiRequest<AuthResponse>('/api/auth/login', {
+      body: { email: email.trim(), password },
+      includeProjectHeader: false,
+      method: 'POST',
+    })
 
-    if (!matched) {
-      await delay(null)
-      throw new Error('账号或密码错误，请使用演示账号登录')
-    }
-
-    const { password: _password, ...safeUser } = matched
-    return delay<AuthUser>(safeUser)
+    return mapAuthUser(data)
   },
 
-  async listAccounts() {
-    return delay(
-      mockUsers.map(({ password, ...user }) => ({
-        ...user,
-        passwordHint: password,
-      })),
-    )
+  async logout() {
+    await apiRequest<null>('/api/auth/logout', {
+      includeProjectHeader: false,
+      method: 'POST',
+    })
   },
 }

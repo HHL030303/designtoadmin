@@ -5,7 +5,30 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '0.0.0.0', // 监听所有地址，支持局域网访问
-    port: 5173,      // 可选，指定端口号
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: {
+      '/api': {
+        changeOrigin: true,
+        cookieDomainRewrite: {
+          '*': '',
+        },
+        rewrite: (path) => `/byy/workflow_server${path}`,
+        target: 'http://192.168.30.20:4001',
+      },
+      '/admin_api': {
+        changeOrigin: true,
+        cookieDomainRewrite: {
+          '*': '',
+        },
+        rewrite: (path) => `/byy/workflow_server${path}`,
+        target: 'http://192.168.30.20:4001',
+      },
+      // '/': {
+      //   changeOrigin: true,
+      //   // rewrite: (path) => `/byy/workflow_server${path}`,
+      //   target: 'http://192.168.30.20:4000/byy/workflow_server',
+      // },
+    },
   },
 })

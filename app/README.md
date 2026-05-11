@@ -22,6 +22,29 @@ npm run dev
 npm run build
 ```
 
+## 部署与刷新 404
+
+项目使用的是 `react-router-dom` 的 `BrowserRouter`。开发环境下路由刷新正常，但部署成静态站点后，
+如果服务器没有把未知路径回退到 `index.html`，直接刷新 `/login`、`/dashboard` 这类地址时就会返回
+`404`。
+
+仓库里已经补了几种常见部署配置，你按实际环境启用对应方案即可：
+
+- `public/_redirects`：适用于 Netlify，构建后会输出到 `dist/_redirects`
+- `vercel.json`：适用于 Vercel，统一把前端路由重写到 `index.html`
+- `public/.htaccess`：适用于 Apache
+- `nginx.conf.example`：适用于 Nginx，核心是 `try_files $uri $uri/ /index.html;`
+
+如果你是自己用 Nginx 托管 `dist/`，至少需要类似下面的配置：
+
+```nginx
+location / {
+    try_files $uri $uri/ /index.html;
+}
+```
+
+这样浏览器访问或刷新任意前端路由时，都会先返回 `index.html`，再由 React Router 接管页面渲染。
+
 ## 当前实现说明
 
 - 目前为前端原型，使用本地示例数据驱动页面

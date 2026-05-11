@@ -1,4 +1,4 @@
-import { Avatar, Badge, Breadcrumb, Button, Dropdown, Space, Tag, Typography } from 'antd'
+import { Avatar, Badge, Breadcrumb, Button, Dropdown, Select, Space, Tag, Typography } from 'antd'
 import {
   BellOutlined,
   DownOutlined,
@@ -7,20 +7,30 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import { getNavItemByView } from '../../constants/navigation'
-import type { AuthUser, ProjectOption, UserRole, ViewKey } from '../../types'
+import type {
+  AuthUser,
+  AvailableProjectRole,
+  ProjectOption,
+  UserRole,
+  ViewKey,
+} from '../../types'
 import { roleLabelMap } from '../../constants/roles'
 
 export function Topbar({
   view,
   role,
+  availableRoles,
   currentUser,
   currentProject,
+  onSwitchRole,
   onLogout,
 }: {
   view: ViewKey
   role: UserRole
+  availableRoles: AvailableProjectRole[]
   currentUser: AuthUser | null
   currentProject: ProjectOption | null
+  onSwitchRole: (role: UserRole) => void
   onLogout: () => void
 }) {
   const { current, parent } = getNavItemByView(view)
@@ -49,11 +59,23 @@ export function Topbar({
               <Tag className="topbar-role-tag">{roleLabelMap[role]}</Tag>
             </Space>
             <Typography.Text className="topbar-role-label">
-              账号：{currentUser?.username ?? '-'}
+              账号：{currentUser?.email ?? '-'}
             </Typography.Text>
             <Typography.Text className="topbar-role-label">
               项目：{currentProject?.name ?? '-'}
             </Typography.Text>
+            {availableRoles.length > 1 ? (
+              <Select
+                value={role}
+                size="small"
+                className="topbar-role-select"
+                options={availableRoles.map((item) => ({
+                  label: item.name,
+                  value: item.role,
+                }))}
+                onChange={onSwitchRole}
+              />
+            ) : null}
           </div>
         </Space>
       </div>
