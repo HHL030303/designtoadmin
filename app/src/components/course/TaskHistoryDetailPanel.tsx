@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import dayjs, { type Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
 import {
   Button,
   Card,
-  DatePicker,
   Descriptions,
   Empty,
   Form,
+  InputNumber,
   Modal,
   Select,
   Space,
@@ -24,7 +24,7 @@ import { makeDemoDownload } from '../../utils/attachments'
 import './TaskHistoryDetailPanel.css'
 
 type CurrentAssigneeFormValues = {
-  dueDate?: Dayjs
+  dueDays?: number
   userId?: string
 }
 
@@ -127,7 +127,7 @@ export function TaskHistoryDetailPanel({
     }
 
     currentAssigneeForm.setFieldsValue({
-      dueDate: currentWorkflowStage.dueDate ? dayjs(currentWorkflowStage.dueDate) : undefined,
+      dueDays: currentWorkflowStage.dueDays,
       userId: currentPrimaryAssignee?.userId,
     })
     setModalOpen(true)
@@ -155,14 +155,14 @@ export function TaskHistoryDetailPanel({
   }
 
   async function handleSubmit(values: CurrentAssigneeFormValues) {
-    if (!currentWorkflowStage?.id || !values.userId || !values.dueDate) {
+    if (!currentWorkflowStage?.id || !values.userId || !values.dueDays) {
       return
     }
 
     try {
       setSubmitting(true)
       await taskService.assignWorkflowStage(currentWorkflowStage.id, {
-        due_date: values.dueDate.format('YYYY-MM-DD'),
+        due_days: values.dueDays,
         assignees: [
           {
             user_id: Number(values.userId),
@@ -328,11 +328,16 @@ export function TaskHistoryDetailPanel({
             />
           </Form.Item>
           <Form.Item
-            label="截止日期"
-            name="dueDate"
-            rules={[{ required: true, message: '请选择截止日期' }]}
+            label="预期完成天数"
+            name="dueDays"
+            rules={[{ required: true, message: '请输入预期完成天数' }]}
           >
-            <DatePicker className="full-width-control" placeholder="请选择截止日期" />
+            <InputNumber
+              className="full-width-control"
+              min={1}
+              precision={0}
+              placeholder="请输入预期完成天数"
+            />
           </Form.Item>
         </Form>
       </Modal>

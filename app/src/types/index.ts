@@ -148,6 +148,7 @@ export interface TaskWorkflowStageRecord {
   requiresFileUpload: boolean
   requiresValidation: boolean
   triggersPackage: boolean
+  dueDays?: number
   dueDate?: string
   overdueStatus?: string
   validationStatus?: string
@@ -174,6 +175,7 @@ export interface TaskDetailRecord {
 
 export interface AttachmentFile {
   uid: string
+  fileRecordId?: string
   checksum?: string
   fileExt?: string
   name: string

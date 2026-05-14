@@ -11,10 +11,20 @@ type CreateFileRecordPayload = {
     workflow_stage_id: number
 }
 
+type CreateFileRecordResponse = {
+    id?: number | string
+}
+
 export const fileService = {
     async createFileRecord(payload: CreateFileRecordPayload) {
-        await apiRequest<null>('/api/files', {
+        return apiRequest<CreateFileRecordResponse>('/api/files', {
             body: payload,
+            method: 'POST',
+        })
+    },
+
+    async deleteFileRecord(fileId: string) {
+        await apiRequest<null>(`/api/files/${fileId}/delete`, {
             method: 'POST',
         })
     },

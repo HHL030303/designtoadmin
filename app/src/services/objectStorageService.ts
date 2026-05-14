@@ -36,9 +36,14 @@ function buildDateSegment() {
     return `${year}${month}${day}`
 }
 
-function buildObjectKey(file: File, prefix?: string) {
+function buildObjectKey(file: File, prefix?: string, taskId?: string) {
     const extension = getFileExtension(file)
     const normalizedPrefix = (prefix || 'task-attachments').replace(/^\/+|\/+$/g, '')
+
+    if (taskId) {
+        return `${normalizedPrefix}/${taskId}/${taskId}${extension}`
+    }
+
     const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`
     return `${normalizedPrefix}/${buildDateSegment()}/${uniqueName}`
 }
@@ -117,11 +122,12 @@ class ObjectStorageService {
         options?: {
             onProgress?: onProgress
             prefix?: string
+            taskId?: string
         },
     ): Promise<UploadedObjectFile> {
         const client = this.getClient()
         const token = await this.getUploadToken()
-        const key = buildObjectKey(file, options?.prefix)
+        const key = buildObjectKey(file, options?.prefix, options?.taskId)
         const uploadResult = await client.uploadFile({
             Body: file,
             Bucket: token.Bucket,

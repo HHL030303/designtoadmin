@@ -115,6 +115,7 @@ type TaskWorkflowStageResponse = {
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
+  due_days?: number | null
   due_date?: number | string | null
   overdue_status?: string | null
   validation_status?: string | null
@@ -172,7 +173,7 @@ type UpdateTaskPayload = {
 
 type CompleteWorkflowStagePayload = {
   remark?: string
-  next_stage_due_date: string
+  due_days?: number
   next_stage_assignees: Array<{
     user_id: number
     assignee_role: 'operator'
@@ -182,7 +183,7 @@ type CompleteWorkflowStagePayload = {
 }
 
 type AssignWorkflowStagePayload = {
-  due_date: string
+  due_days?: number
   assignees: Array<{
     user_id: number
     assignee_role: 'operator'
@@ -234,6 +235,10 @@ function mapAttachment(file: AttachmentFileResponse): AttachmentFile {
   const displayName = file.original_name ?? file.name ?? file.filename ?? '未命名文件'
 
   return {
+    fileRecordId:
+      file.id !== undefined && file.id !== null
+        ? String(file.id)
+        : undefined,
     fileExt: displayName.includes('.')
       ? displayName.split('.').pop()?.toLowerCase()
       : undefined,
@@ -287,6 +292,7 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
     canAssign: stage.can_assign ?? false,
     canSkip: stage.can_skip ?? false,
     collectTotalPageCount: stage.collect_total_page_count ?? false,
+    dueDays: stage.due_days ?? undefined,
     dueDate: normalizeDate(stage.due_date),
     fileRules: (stage.file_rules ?? []).map(mapFileRule),
     id: String(stage.id),

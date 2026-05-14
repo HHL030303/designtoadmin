@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import dayjs, { type Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
 import {
   Button,
   Card,
-  DatePicker,
   Descriptions,
   Empty,
   Form,
@@ -36,8 +35,8 @@ import { ObjectStorageUploadField } from '../common/ObjectStorageUploadField'
 import './TaskProcessModal.css'
 
 type StageCompletionFormValues = {
+  due_days?: number
   remark?: string
-  nextStageDueDate?: Dayjs
   nextStageUserId?: string
   nextStageAssignees?: Array<{
     assignedPageCount?: number
@@ -117,22 +116,6 @@ function buildDefaultNextStageAssignees() {
       userId: undefined,
     },
   ]
-}
-
-function isPastDueDate(value?: Dayjs) {
-  return Boolean(value && value.isBefore(dayjs().startOf('day'), 'day'))
-}
-
-function getDisabledDueDate(current: Dayjs) {
-  return current.isBefore(dayjs().startOf('day'), 'day')
-}
-
-function validateDueDate(_: unknown, value?: Dayjs) {
-  if (!value || !isPastDueDate(value)) {
-    return Promise.resolve()
-  }
-
-  return Promise.reject(new Error('截止时间不能早于当前日期'))
 }
 
 function buildEmptyFilesByRuleId(fileRules: TaskWorkflowFileRuleRecord[]) {
@@ -222,11 +205,17 @@ function DynamicFileRuleSection({
   fileRules,
   filesByRuleId,
   onFilesChange,
+  onFileUploaded,
+  onFileDeleted,
+  taskId,
 }: {
   disabled?: boolean
   fileRules: TaskWorkflowFileRuleRecord[]
   filesByRuleId: Record<string, AttachmentFile[]>
   onFilesChange: (ruleId: string, files: AttachmentFile[]) => void
+  onFileUploaded: (file: AttachmentFile) => Promise<AttachmentFile>
+  onFileDeleted: (file: AttachmentFile) => Promise<void>
+  taskId?: string
 }) {
   return (
     <Space direction="vertical" size={12} className="panel-stack-full">
@@ -244,6 +233,9 @@ function DynamicFileRuleSection({
             <ObjectStorageUploadField
               value={filesByRuleId[rule.id] ?? []}
               onChange={(files) => onFilesChange(rule.id, files)}
+              onUploaded={onFileUploaded}
+              onDelete={onFileDeleted}
+              taskId={taskId}
               accept={`.${rule.fileCategory}`}
               fileNamePattern={rule.filenamePattern}
               maxCount={rule.requiredCount}
@@ -352,6 +344,7 @@ export function TaskProcessModal({
     )
     form.resetFields()
     form.setFieldsValue({
+      due_days: currentStage.dueDays,
       nextStageAssignees: buildDefaultNextStageAssignees(),
     })
   }, [currentStage, detail, form])
@@ -390,6 +383,36 @@ export function TaskProcessModal({
 
     void loadNextStageMembers()
   }, [allowPageAssignment, currentProject?.id, form, nextStage?.operatorRoleCode, shouldSelectNextStageAssignee])
+
+  async function handleFileUploaded(file: AttachmentFile) {
+    if (!detail || !currentStage || !file.checksum) {
+      throw new Error('文件缺少登记所需信息')
+    }
+
+    const created = await fileService.createFileRecord({
+      checksum: file.checksum,
+      file_ext: file.fileExt || '',
+      file_path: file.url || '',
+      original_name: file.name,
+      size_bytes: file.size ?? 0,
+      task_id: Number(detail.task.id),
+      version_id: Number(detail.currentVersion.id),
+      workflow_stage_id: Number(currentStage.id),
+    })
+
+    return {
+      ...file,
+      fileRecordId: created?.id !== undefined && created?.id !== null ? String(created.id) : undefined,
+    }
+  }
+
+  async function handleFileDeleted(file: AttachmentFile) {
+    if (!file.fileRecordId) {
+      return
+    }
+
+    await fileService.deleteFileRecord(file.fileRecordId)
+  }
 
   async function handleSubmit(values: StageCompletionFormValues) {
     if (!detail || !currentStage) {
@@ -463,25 +486,6 @@ export function TaskProcessModal({
     try {
       setSubmitting(true)
 
-      const uploadedFiles = currentStage.fileRules.flatMap((rule) => filesByRuleId[rule.id] ?? [])
-
-      for (const file of uploadedFiles) {
-        if (!file.checksum) {
-          continue
-        }
-
-        await fileService.createFileRecord({
-          checksum: file.checksum,
-          file_ext: file.fileExt || '',
-          file_path: file.url || '',
-          original_name: file.name,
-          size_bytes: file.size ?? 0,
-          task_id: Number(detail.task.id),
-          version_id: Number(detail.currentVersion.id),
-          workflow_stage_id: Number(currentStage.id),
-        })
-      }
-
       if (isLastStage) {
         await fileService.checkFileCompleteness({
           taskId: Number(detail.task.id),
@@ -492,7 +496,10 @@ export function TaskProcessModal({
       await taskService.completeWorkflowStage(currentStage.id, {
         remark: values.remark?.trim() || undefined,
         next_stage_assignees: nextStageAssignments,
-        next_stage_due_date: nextStage ? values.nextStageDueDate?.format('YYYY-MM-DD') ?? '' : '',
+        due_days:
+          nextStage && typeof values.due_days === 'number'
+            ? values.due_days
+            : undefined,
       })
 
       message.success(isLastStage ? '文件校验通过，当前阶段已完成' : '当前阶段已提交')
@@ -575,6 +582,9 @@ export function TaskProcessModal({
               <DynamicFileRuleSection
                 fileRules={currentStage.fileRules}
                 filesByRuleId={filesByRuleId}
+                onFileUploaded={handleFileUploaded}
+                onFileDeleted={handleFileDeleted}
+                taskId={detail.task.id}
                 onFilesChange={(ruleId, files) =>
                   setFilesByRuleId((current) => ({
                     ...current,
@@ -747,17 +757,17 @@ export function TaskProcessModal({
                     {nextStage ? (
                       <Form.Item
                         className="task-process-modal__dual-field-item"
-                        label="下一阶段截止时间"
-                        name="nextStageDueDate"
+                        label={`预期完成天数`}
+                        name="due_days"
                         rules={[
-                          { required: true, message: '请选择下一阶段截止时间' },
-                          { validator: validateDueDate },
+                          { required: true, message: '请输入预期完成天数' },
                         ]}
                       >
-                        <DatePicker
+                        <InputNumber
                           className="full-width-control task-process-modal__field-control"
-                          disabledDate={getDisabledDueDate}
-                          placeholder="请选择截止时间"
+                          min={1}
+                          precision={0}
+                          placeholder="请输入预期完成天数"
                         />
                       </Form.Item>
                     ) : null}

@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import dayjs, { type Dayjs } from 'dayjs'
 import {
     Button,
     Card,
-    DatePicker,
     Descriptions,
     Empty,
     Form,
     Input,
+    InputNumber,
     Modal,
     Select,
     Space,
@@ -34,12 +33,12 @@ import type {
 
 type StageCompletionFormValues = {
     remark?: string
-    nextStageDueDate?: Dayjs
+    nextStageDueDays?: number
     nextStageUserId?: string
 }
 
 type CurrentAssigneeFormValues = {
-    dueDate?: Dayjs
+    dueDays?: number
     userId?: string
 }
 
@@ -77,22 +76,6 @@ const preferredSummaryFieldKeys = [
     'researchDueDate',
     'finalDueDate',
 ]
-
-function isPastDueDate(value?: Dayjs) {
-    return Boolean(value && value.isBefore(dayjs().startOf('day'), 'day'))
-}
-
-function getDisabledDueDate(current: Dayjs) {
-    return current.isBefore(dayjs().startOf('day'), 'day')
-}
-
-function validateDueDate(_: unknown, value?: Dayjs) {
-    if (!value || !isPastDueDate(value)) {
-        return Promise.resolve()
-    }
-
-    return Promise.reject(new Error('截止时间不能早于当前日期'))
-}
 
 function getStatusLabel(status: string) {
     return taskStatusMeta[status]?.label ?? status
@@ -391,11 +374,17 @@ function DynamicFileRuleSection({
     fileRules,
     filesByRuleId,
     onFilesChange,
+    onFileUploaded,
+    onFileDeleted,
+    taskId,
     disabled,
 }: {
     fileRules: TaskWorkflowFileRuleRecord[]
     filesByRuleId: Record<string, AttachmentFile[]>
     onFilesChange: (ruleId: string, files: AttachmentFile[]) => void
+    onFileUploaded: (file: AttachmentFile) => Promise<AttachmentFile>
+    onFileDeleted: (file: AttachmentFile) => Promise<void>
+    taskId?: string
     disabled?: boolean
 }) {
     return (
@@ -414,6 +403,9 @@ function DynamicFileRuleSection({
                         <ObjectStorageUploadField
                             value={filesByRuleId[rule.id] ?? []}
                             onChange={(files) => onFilesChange(rule.id, files)}
+                            onUploaded={onFileUploaded}
+                            onDelete={onFileDeleted}
+                            taskId={taskId}
                             accept={`.${rule.fileCategory}`}
                             fileNamePattern={rule.filenamePattern}
                             maxCount={rule.requiredCount}
@@ -577,6 +569,39 @@ function RoleTaskCard({
         value: assignee.userId,
     }))
 
+    async function handleFileUploaded(file: AttachmentFile) {
+        if (!currentStage || !file.checksum) {
+            throw new Error(`文件 ${file.name} 缺少登记所需信息`)
+        }
+
+        const created = await fileService.createFileRecord({
+            checksum: file.checksum,
+            file_ext: file.fileExt || '',
+            file_path: file.url || '',
+            original_name: file.name,
+            size_bytes: file.size ?? 0,
+            task_id: Number(detail.task.id),
+            version_id: Number(detail.currentVersion.id),
+            workflow_stage_id: Number(currentStage.id),
+        })
+
+        return {
+            ...file,
+            fileRecordId:
+                created?.id !== undefined && created?.id !== null
+                    ? String(created.id)
+                    : undefined,
+        }
+    }
+
+    async function handleFileDeleted(file: AttachmentFile) {
+        if (!file.fileRecordId) {
+            return
+        }
+
+        await fileService.deleteFileRecord(file.fileRecordId)
+    }
+
     async function handleOpenCurrentAssigneeModal() {
         if (!currentWorkflowStage?.id || !currentProject?.id || !currentRoleCode) {
             message.warning('当前阶段缺少角色配置，暂时无法编辑责任人')
@@ -584,7 +609,7 @@ function RoleTaskCard({
         }
 
         currentAssigneeForm.setFieldsValue({
-            dueDate: currentWorkflowStage.dueDate ? dayjs(currentWorkflowStage.dueDate) : undefined,
+            dueDays: currentWorkflowStage.dueDays,
             userId: currentPrimaryAssignee?.userId,
         })
         setCurrentAssigneeModalOpen(true)
@@ -624,7 +649,10 @@ function RoleTaskCard({
         try {
             setCurrentAssigneeSubmitting(true)
             await taskService.assignWorkflowStage(currentWorkflowStage.id, {
-                due_date: values.dueDate?.format('YYYY-MM-DD') ?? '',
+                due_days:
+                    typeof values.dueDays === 'number'
+                        ? values.dueDays
+                        : undefined,
                 assignees: [
                     {
                         user_id: Number(values.userId),
@@ -677,27 +705,6 @@ function RoleTaskCard({
         try {
             setSubmitting(true)
 
-            const uploadedFiles = displayStage.fileRules.flatMap(
-                (rule) => filesByRuleId[rule.id] ?? [],
-            )
-
-            for (const file of uploadedFiles) {
-                if (!file.checksum) {
-                    throw new Error(`文件 ${file.name} 缺少校验和，无法提交`)
-                }
-
-                await fileService.createFileRecord({
-                    checksum: file.checksum,
-                    file_ext: file.fileExt || '',
-                    file_path: file.url || '',
-                    original_name: file.name,
-                    size_bytes: file.size ?? 0,
-                    task_id: Number(detail.task.id),
-                    version_id: Number(detail.currentVersion.id),
-                    workflow_stage_id: Number(currentStage.id),
-                })
-            }
-
             await taskService.completeWorkflowStage(currentStage.id, {
                 remark: values.remark?.trim() || undefined,
                 next_stage_assignees: [
@@ -707,7 +714,10 @@ function RoleTaskCard({
                         user_id: Number(nextStageUserId),
                     },
                 ],
-                next_stage_due_date: values.nextStageDueDate?.format('YYYY-MM-DD') ?? '',
+                due_days:
+                    typeof values.nextStageDueDays === 'number'
+                        ? values.nextStageDueDays
+                        : undefined,
             })
             message.success('当前阶段已提交')
             await onStageCompleted()
@@ -773,6 +783,9 @@ function RoleTaskCard({
                         <DynamicFileRuleSection
                             fileRules={displayStage.fileRules}
                             filesByRuleId={filesByRuleId}
+                            onFileUploaded={handleFileUploaded}
+                            onFileDeleted={handleFileDeleted}
+                            taskId={detail.task.id}
                             onFilesChange={(ruleId, files) =>
                                 setFilesByRuleId((current) => ({
                                     ...current,
@@ -843,17 +856,15 @@ function RoleTaskCard({
                                         </Form.Item>
                                     ) : null}
                                     <Form.Item
-                                        label="下一阶段截止时间"
-                                        name="nextStageDueDate"
-                                        rules={[
-                                            { required: true, message: '请选择下一阶段截止时间' },
-                                            { validator: validateDueDate },
-                                        ]}
+                                        label={`预期完成天数`}
+                                        name="nextStageDueDays"
+                                        rules={[{ required: true, message: '请输入预期完成天数' }]}
                                     >
-                                        <DatePicker
+                                        <InputNumber
                                             className="full-width-control"
-                                            disabledDate={getDisabledDueDate}
-                                            placeholder="请选择截止时间"
+                                            min={1}
+                                            precision={0}
+                                            placeholder="请输入预期完成天数"
                                         />
                                     </Form.Item>
                                     <Form.Item label="备注" name="remark">
@@ -904,17 +915,17 @@ function RoleTaskCard({
                         />
                     </Form.Item>
                     <Form.Item
-                        label="截止日期"
-                        name="dueDate"
+                        label="预期完成天数"
+                        name="dueDays"
                         rules={[
-                            { required: true, message: '请选择截止日期' },
-                            { validator: validateDueDate },
+                            { required: true, message: '请输入预期完成天数' },
                         ]}
                     >
-                        <DatePicker
+                        <InputNumber
                             className="full-width-control"
-                            disabledDate={getDisabledDueDate}
-                            placeholder="请选择截止日期"
+                            min={1}
+                            precision={0}
+                            placeholder="请输入预期完成天数"
                         />
                     </Form.Item>
                 </Form>

@@ -48,6 +48,8 @@ function toAttachmentFile(
 export function ObjectStorageUploadField({
     value = [],
     onChange,
+    onUploaded,
+    onDelete,
     disabled,
     accept,
     helperText,
@@ -56,10 +58,13 @@ export function ObjectStorageUploadField({
     maxCount,
     maxFileSizeInMb = 200,
     multiple = true,
+    taskId,
     uploadPrefix,
 }: {
     value?: AttachmentFile[]
     onChange?: (files: AttachmentFile[]) => void
+    onUploaded?: (file: AttachmentFile) => Promise<AttachmentFile | void> | AttachmentFile | void
+    onDelete?: (file: AttachmentFile) => Promise<void> | void
     disabled?: boolean
     accept?: string
     helperText?: string
@@ -68,6 +73,7 @@ export function ObjectStorageUploadField({
     maxCount?: number
     maxFileSizeInMb?: number
     multiple?: boolean
+    taskId?: string
     uploadPrefix?: string
 }) {
     const [uploadingItems, setUploadingItems] = useState<UploadingItem[]>([])
@@ -95,6 +101,14 @@ export function ObjectStorageUploadField({
 
     function removeUploadingFile(uid: string) {
         setUploadingItems((current) => current.filter((item) => item.file.uid !== uid))
+    }
+
+    async function removeUploadedFile(file: AttachmentFile) {
+        if (onDelete) {
+            await onDelete(file)
+        }
+
+        onChange?.(value.filter((item) => item.uid !== file.uid))
     }
 
     function isFileNameMatched(fileName: string) {
@@ -143,12 +157,19 @@ export function ObjectStorageUploadField({
                         })
                         onProgress?.({ percent })
                     },
+                    taskId,
                     prefix: uploadPrefix,
                 })
                 const checksum = await buildFileChecksum(uploadFile)
 
+                const uploadedFile = toAttachmentFile(uploadFile, uploaded, checksum)
+
+                const registeredFile = onUploaded
+                    ? (await onUploaded(uploadedFile)) ?? uploadedFile
+                    : uploadedFile
+
                 removeUploadingFile(uploadFile.uid)
-                onChange?.([...value, toAttachmentFile(uploadFile, uploaded, checksum)])
+                onChange?.([...value, registeredFile])
                 onSuccess?.(uploaded)
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : '上传失败'
@@ -191,8 +212,18 @@ export function ObjectStorageUploadField({
                 return true
             }
 
-            onChange?.(value.filter((item) => item.uid !== file.uid))
-            return true
+            const matchedFile = value.find((item) => item.uid === file.uid)
+
+            if (!matchedFile) {
+                return true
+            }
+
+            return removeUploadedFile(matchedFile)
+                .then(() => true)
+                .catch((error) => {
+                    message.error(error instanceof Error ? error.message : '文件删除失败')
+                    return false
+                })
         },
         showUploadList: false,
     }
@@ -241,7 +272,15 @@ export function ObjectStorageUploadField({
                                                 return
                                             }
 
-                                            onChange?.(value.filter((item) => item.uid !== file.uid))
+                                            const matchedFile = value.find((item) => item.uid === file.uid)
+
+                                            if (!matchedFile) {
+                                                return
+                                            }
+
+                                            void removeUploadedFile(matchedFile).catch((error) => {
+                                                message.error(error instanceof Error ? error.message : '文件删除失败')
+                                            })
                                         }}
                                     />
                                 </div>
