@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import {
   Button,
   Card,
@@ -9,11 +9,11 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Radio,
   Row,
   Select,
   Space,
-  Spin,
   Table,
   Tabs,
   Tag,
@@ -24,9 +24,7 @@ import type { ColumnsType } from 'antd/es/table'
 import type { TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
-import { EditOutlined } from '@ant-design/icons'
-import { TableExpandTrigger } from '../components/common/TableExpandTrigger'
-import { TaskDetailPanel } from '../components/course/TaskDetailPanel'
+import { RightOutlined } from '@ant-design/icons'
 import {
   courseFormOptions,
   createCourseFormInitialValues,
@@ -38,6 +36,9 @@ import {
   downloadCourseImportTemplate,
   parseCourseImportFile,
 } from '../utils/courseImport'
+import { TaskProcessModal } from '../components/course/TaskProcessModal'
+import { TaskHistoryDetailPanel } from '../components/course/TaskHistoryDetailPanel'
+import './CoursesPage.css'
 import type {
   CreateCoursePayload,
   FieldConfig,
@@ -45,6 +46,7 @@ import type {
   ProjectMemberRecord,
   TaskDetailRecord,
   TaskListRecord,
+  UserRole,
   WorkflowTemplateRecord,
 } from '../types'
 
@@ -59,6 +61,7 @@ const taskStatusMeta: Record<string, { color: string; label: string }> = {
 }
 
 const DEFAULT_TASK_STATUS_META = { color: 'default', label: '未知状态' }
+const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
 
 function getTaskStatusMeta(status: string) {
   return taskStatusMeta[status] ?? {
@@ -373,12 +376,29 @@ function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
     .sort((left, right) => left.sort_value - right.sort_value)
 }
 
+function isNotBeforeTodayField(field: FieldConfig) {
+  return notBeforeTodayFieldKeys.has(field.field_key)
+}
+
+function getDisabledPastDate(current: Dayjs) {
+  return current.isBefore(dayjs().startOf('day'), 'day')
+}
+
+function validateNotBeforeToday(_: unknown, value?: Dayjs) {
+  if (!value || !value.isBefore(dayjs().startOf('day'), 'day')) {
+    return Promise.resolve()
+  }
+
+  return Promise.reject(new Error('日期不得早于当天'))
+}
+
 function renderFieldControl(field: FieldConfig) {
   const textPlaceholder = field.placeholder || `请输入${field.field_name}`
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
 
   if (field.field_type === 'textarea') {
-    return <Input.TextArea placeholder={textPlaceholder} rows={4} />
+    // return <Input.TextArea placeholder={textPlaceholder} rows={4} />
+    return <Input placeholder={textPlaceholder}  />
   }
 
   if (field.field_type === 'select') {
@@ -417,7 +437,13 @@ function renderFieldControl(field: FieldConfig) {
   }
 
   if (field.field_type === 'date') {
-    return <DatePicker className="control-full-width" placeholder={selectPlaceholder} />
+    return (
+      <DatePicker
+        className="control-full-width"
+        placeholder={selectPlaceholder}
+        disabledDate={isNotBeforeTodayField(field) ? getDisabledPastDate : undefined}
+      />
+    )
   }
 
   return <Input placeholder={textPlaceholder} />
@@ -520,6 +546,22 @@ function isTaskOverdue(task: TaskListRecord) {
   return dayjs(task.currentVersion.expectCompleteAt).endOf('day').isBefore(dayjs())
 }
 
+function canDeleteTaskRecord(
+  task: TaskListRecord,
+  currentUserId: string | undefined,
+  role: UserRole,
+) {
+  if (role === 'admin') {
+    return true
+  }
+
+  if (task.creatorUserId && currentUserId) {
+    return task.creatorUserId === currentUserId
+  }
+
+  return !task.readonly
+}
+
 function resolveTaskStatusQuery(
   tabKey: 'todo' | 'done' | 'overdue',
   statusFilter: string,
@@ -575,27 +617,67 @@ function normalizeTaskOwnerId(value: TaskFormValue): number | undefined {
   return Number.isFinite(userId) ? userId : undefined
 }
 
-export function CoursesPage() {
+function resolveWorkflowTemplateId(
+  detail: TaskDetailRecord,
+  templates: WorkflowTemplateRecord[],
+): string | undefined {
+  const templateStageIds = detail.workflowStages
+    .map((stage) => stage.templateStageId)
+    .filter((stageId): stageId is string => Boolean(stageId))
+
+  if (templateStageIds.length === 0) {
+    return undefined
+  }
+
+  const templateStageIdSet = new Set(templateStageIds)
+
+  return templates.find((template) => {
+    const workflowStageIds = template.stages
+      .map((stage) => stage.id)
+      .filter((stageId): stageId is string => Boolean(stageId))
+
+    return (
+      workflowStageIds.length === templateStageIdSet.size &&
+      workflowStageIds.every((stageId) => templateStageIdSet.has(stageId))
+    )
+  })?.id
+}
+
+function resolveFirstStageAssigneeUserId(detail: TaskDetailRecord): string | undefined {
+  const firstStage = detail.workflowStages[0]
+
+  if (!firstStage) {
+    return undefined
+  }
+
+  return firstStage.stageAssignees.find((assignee) => assignee.isPrimary)?.userId
+    ?? firstStage.stageAssignees[0]?.userId
+}
+
+export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks' }) {
   const { currentProject, canCreateCourse, currentUser, role } = useAppState()
+  const isMyTasksPage = mode === 'myTasks'
   const [tasks, setTasks] = useState<TaskListRecord[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [mutating, setMutating] = useState(false)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [search] = useState('')
+  const [statusFilter] = useState('all')
   const [tabKey, setTabKey] = useState<'todo' | 'done' | 'overdue'>('todo')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
-  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([])
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
-  const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetailRecord>>({})
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
+  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null)
+  const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetailRecord>>({})
   const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>(buildFallbackFieldConfigs())
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false)
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateRecord[]>([])
   const [workflowLoading, setWorkflowLoading] = useState(false)
+  const [taskOwnerMembers, setTaskOwnerMembers] = useState<ProjectMemberRecord[]>([])
+  const [taskOwnerLoading, setTaskOwnerLoading] = useState(false)
   const [secondStageMembers, setSecondStageMembers] = useState<ProjectMemberRecord[]>([])
   const [secondStageLoading, setSecondStageLoading] = useState(false)
   const deferredSearch = useDeferredValue(search)
@@ -603,7 +685,7 @@ export function CoursesPage() {
   const listRequestIdRef = useRef(0)
   const [form] = Form.useForm<TaskFormValues>()
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
-  const canManageTaskActions = role === 'planner' || role === 'admin'
+  const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
 
   const loadTasks = useCallback(
     async (
@@ -626,8 +708,10 @@ export function CoursesPage() {
       try {
         setTasksLoading(true)
         const response = await taskService.listTasks({
-          assigneeId: canManageTaskActions ? undefined : currentUser?.id,
+          assigneeId: isMyTasksPage ? currentUser?.id : canManageTaskActions ? undefined : currentUser?.id,
           keyword: nextKeyword.trim() || undefined,
+          mineScope:
+            nextTabKey === 'todo' && (isMyTasksPage || !canManageTaskActions) ? 'todo' : undefined,
           page: nextPage,
           pageSize: nextPageSize,
           status: resolveTaskStatusQuery(nextTabKey, nextStatusFilter),
@@ -641,13 +725,6 @@ export function CoursesPage() {
         setCurrentPage(response.page)
         setPageSize(response.pageSize)
         setTotal(response.total)
-        setSelectedTaskId((current) => {
-          if (current && response.items.some((task) => task.id === current)) {
-            return current
-          }
-
-          return response.items[0]?.id || ''
-        })
       } catch (error) {
         message.error(error instanceof Error ? error.message : '任务列表加载失败')
       } finally {
@@ -712,47 +789,83 @@ export function CoursesPage() {
 
     void loadWorkflows()
   }, [canManageTaskActions, currentProject?.id])
-
   const selectedWorkflowTemplate = workflowTemplates.find(
     (template) => template.id === selectedWorkflowTemplateId,
   )
-  const secondWorkflowStage = selectedWorkflowTemplate?.stages[1]
-  const secondWorkflowRoleCode =
-    secondWorkflowStage?.operatorRoleCode || secondWorkflowStage?.ownerRoleCode
-  const secondWorkflowRole = secondWorkflowRoleCode
-    ? currentProject?.roles.find((role) => role.code === secondWorkflowRoleCode)
-    : undefined
+  const firstWorkflowStage = selectedWorkflowTemplate?.stages[0]
+  const firstWorkflowRoleCode = firstWorkflowStage?.operatorRoleCode
+  const firstWorkflowRoleName = firstWorkflowStage?.operatorRoleName ?? firstWorkflowStage?.stageName
+  const shouldShowTaskOwnerField = Boolean(
+      selectedWorkflowTemplate,
+  )
   const shouldShowSecondStageAssigneeField = Boolean(
-    !editingTaskId &&
-      secondWorkflowStage &&
-      secondWorkflowRole &&
-      secondStageMembers.length > 0,
+      selectedWorkflowTemplate &&
+      firstWorkflowRoleCode,
   )
 
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
-    const roleId = secondWorkflowRole ? String(secondWorkflowRole.id) : ''
 
-    if (!projectId || !roleId || editingTaskId || !canManageTaskActions) {
-      setSecondStageMembers([])
+    if (!projectId || !canManageTaskActions || !selectedWorkflowTemplate) {
+      setTaskOwnerMembers([])
       return
     }
 
-    form.setFieldValue('secondStageAssigneeUserId', undefined)
-    form.setFieldValue('taskOwnerUserId', undefined)
+    if (!editingTaskId) {
+      form.setFieldValue('taskOwnerUserId', undefined)
+    }
 
-    async function loadSecondStageMembers() {
+    async function loadTaskOwnerMembers() {
       try {
-        setSecondStageLoading(true)
+        setTaskOwnerLoading(true)
         const response = await adminService.listProjectMembers({
           page: 1,
           pageSize: 100,
           projectId,
-          roleId,
+        })
+        setTaskOwnerMembers(response.items)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '任务所有者成员加载失败')
+        setTaskOwnerMembers([])
+      } finally {
+        setTaskOwnerLoading(false)
+      }
+    }
+
+    void loadTaskOwnerMembers()
+  }, [
+    canManageTaskActions,
+    currentProject?.id,
+    editingTaskId,
+    form,
+    selectedWorkflowTemplate,
+  ])
+
+  useEffect(() => {
+    const projectId = currentProject?.id ?? ''
+    const roleCode = firstWorkflowRoleCode ?? ''
+
+    if (!projectId || !canManageTaskActions || !selectedWorkflowTemplate || !roleCode) {
+      setSecondStageMembers([])
+      return
+    }
+
+    if (!editingTaskId) {
+      form.setFieldValue('secondStageAssigneeUserId', undefined)
+    }
+
+    async function loadSecondStageMembers() {
+      try {
+        setSecondStageLoading(true)
+        const response = await adminService.listProjectRoleUsers({
+          page: 1,
+          pageSize: 100,
+          roleCode,
+          projectId,
         })
         setSecondStageMembers(response.items)
       } catch (error) {
-        message.error(error instanceof Error ? error.message : '第二阶段角色成员加载失败')
+        message.error(error instanceof Error ? error.message : '第一阶段角色成员加载失败')
         setSecondStageMembers([])
       } finally {
         setSecondStageLoading(false)
@@ -760,17 +873,16 @@ export function CoursesPage() {
     }
 
     void loadSecondStageMembers()
-  }, [canManageTaskActions, currentProject?.id, editingTaskId, form, secondWorkflowRole])
+  }, [
+    canManageTaskActions,
+    currentProject?.id,
+    editingTaskId,
+    firstWorkflowRoleCode,
+    form,
+    selectedWorkflowTemplate,
+  ])
 
   const enabledFieldConfigs = getEnabledFieldConfigs(taskFieldConfigs)
-  const roleLabelsByCode = useMemo(
-    () =>
-      Object.fromEntries(
-        (currentProject?.roles ?? []).map((projectRole) => [projectRole.code, projectRole.name]),
-      ),
-    [currentProject?.roles],
-  )
-
   const filteredTasks = (() => {
     if (tabKey === 'done') {
       return tasks.filter(isTaskDone)
@@ -783,21 +895,19 @@ export function CoursesPage() {
     return tasks.filter((task) => !isTaskDone(task))
   })()
 
-  const activeTask = filteredTasks.find((task) => task.id === selectedTaskId) ?? filteredTasks[0]
-  const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
-    label: getTaskStatusMeta(status).label,
-    value: status,
-  }))
+  // const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
+  //   label: getTaskStatusMeta(status).label,
+  //   value: status,
+  // }))
 
   function openCreateDrawer() {
     setEditingTaskId(null)
+    setTaskOwnerMembers([])
     setSecondStageMembers([])
     form.resetFields()
-    const defaultWorkflow = workflowTemplates.find((template) => template.isDefault)
-      ?? workflowTemplates[0]
     form.setFieldsValue({
       ...buildFormInitialValues(enabledFieldConfigs),
-      workflowTemplateId: defaultWorkflow?.id,
+      workflowTemplateId: undefined,
     })
     setDrawerOpen(true)
   }
@@ -807,22 +917,47 @@ export function CoursesPage() {
       return taskDetails[taskId]
     }
 
-    try {
-      setLoadingDetailId(taskId)
-      const detail = await taskService.getTaskDetail(taskId)
-      setTaskDetails((current) => ({ ...current, [taskId]: detail }))
-      return detail
-    } finally {
-      setLoadingDetailId((current) => (current === taskId ? null : current))
+    const detail = await taskService.getTaskDetail(taskId)
+    setTaskDetails((current) => ({ ...current, [taskId]: detail }))
+    return detail
+  }
+
+  async function handleExpandTask(expanded: boolean, taskId: string) {
+    if (expanded) {
+      setExpandedRowKeys((current) => [...new Set([...current, taskId])])
+
+      if (!taskDetails[taskId]) {
+        try {
+          setLoadingDetailId(taskId)
+          await ensureTaskDetail(taskId)
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '任务详情加载失败')
+          setExpandedRowKeys((current) => current.filter((key) => key !== taskId))
+        } finally {
+          setLoadingDetailId((current) => (current === taskId ? null : current))
+        }
+      }
+
+      return
     }
+
+    setExpandedRowKeys((current) => current.filter((key) => key !== taskId))
   }
 
   async function openEditDrawer(task: TaskListRecord) {
     try {
       const detail = await ensureTaskDetail(task.id)
+      const workflowTemplateId = resolveWorkflowTemplateId(detail, workflowTemplates)
+      const firstStageAssigneeUserId = resolveFirstStageAssigneeUserId(detail)
+
       setEditingTaskId(task.id)
       form.resetFields()
-      form.setFieldsValue(buildFormInitialValues(enabledFieldConfigs, detail.fieldValues))
+      form.setFieldsValue({
+        ...buildFormInitialValues(enabledFieldConfigs, detail.fieldValues),
+        secondStageAssigneeUserId: firstStageAssigneeUserId,
+        taskOwnerUserId: detail.task.ownerId,
+        workflowTemplateId,
+      })
       setDrawerOpen(true)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '任务详情加载失败')
@@ -832,8 +967,13 @@ export function CoursesPage() {
   function handleCloseDrawer() {
     setDrawerOpen(false)
     setEditingTaskId(null)
+    setTaskOwnerMembers([])
     setSecondStageMembers([])
     form.resetFields()
+  }
+
+  function handleCloseProcessModal() {
+    setProcessingTaskId(null)
   }
 
   async function refreshTaskDetail(taskId: string) {
@@ -843,7 +983,7 @@ export function CoursesPage() {
   }
 
   async function handleFinish(values: TaskFormValues) {
-    const payload = buildTaskPayload(enabledFieldConfigs, values, secondWorkflowStage)
+    const payload = buildTaskPayload(enabledFieldConfigs, values, firstWorkflowStage)
 
     try {
       setMutating(true)
@@ -852,14 +992,9 @@ export function CoursesPage() {
         await taskService.updateTask(editingTaskId, payload)
         await Promise.all([loadTasks(), refreshTaskDetail(editingTaskId)])
         message.success('任务信息已更新')
-        setSelectedTaskId(editingTaskId)
       } else {
-        const created = await taskService.createTask(payload)
+        await taskService.createTask(payload)
         await loadTasks()
-        const createdTaskId = String(created.task.id)
-        setSelectedTaskId(createdTaskId)
-        setExpandedRowKeys([createdTaskId])
-        await refreshTaskDetail(createdTaskId)
         message.success('任务创建成功')
       }
 
@@ -896,6 +1031,24 @@ export function CoursesPage() {
     }
   }
 
+  async function handleDeleteTask(taskId: string) {
+    try {
+      setMutating(true)
+      await taskService.deleteTask(taskId)
+      setTaskDetails((current) => {
+        const next = { ...current }
+        delete next[taskId]
+        return next
+      })
+      await loadTasks()
+      message.success('任务已删除')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '任务删除失败')
+    } finally {
+      setMutating(false)
+    }
+  }
+
   const baseColumns: ColumnsType<TaskListRecord> = [
     {
       title: '任务',
@@ -912,30 +1065,39 @@ export function CoursesPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      render: (status: string) => {
-        const meta = getTaskStatusMeta(status)
-        return <Tag color={meta.color}>{meta.label}</Tag>
+      render: (status: string, record) => {
+        const displayLabel = record.currentStage?.stageName || getTaskStatusMeta(status).label
+        const meta = getTaskStatusMeta(record.currentStage?.status || status)
+        return <Tag color={meta.color}>{displayLabel}</Tag>
       },
       width: 140,
     },
     {
-      title: '关联子任务',
+      title: '当前责任人',
       render: (_, record) => {
-        if (record.activeSubTasks.length === 0) {
-          return <Typography.Text type="secondary">-</Typography.Text>
-        }
-
-        return (
-          <Space direction="vertical" size={0}>
-            {record.activeSubTasks.map((subTask) => (
-              <Typography.Text key={subTask.id}>
-                {subTask.subTaskType} · {subTask.description}
-              </Typography.Text>
-            ))}
-          </Space>
-        )
+        const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
+        return assigneeNames.length > 0 ? assigneeNames.join('/') : '-'
       },
+      width: 160,
     },
+    // {
+    //   title: '关联子任务',
+    //   render: (_, record) => {
+    //     if (record.activeSubTasks.length === 0) {
+    //       return <Typography.Text type="secondary">-</Typography.Text>
+    //     }
+
+    //     return (
+    //       <Space direction="vertical" size={0}>
+    //         {record.activeSubTasks.map((subTask) => (
+    //           <Typography.Text key={subTask.id}>
+    //             {subTask.subTaskType} · {subTask.description}
+    //           </Typography.Text>
+    //         ))}
+    //       </Space>
+    //     )
+    //   },
+    // },
     {
       title: '学科',
       render: (_, record) => String(record.fieldValues.subject ?? '-'),
@@ -969,49 +1131,61 @@ export function CoursesPage() {
     },
   ]
 
-  const columns: ColumnsType<TaskListRecord> = canManageTaskActions
-    ? [
-        ...baseColumns,
-        {
-          title: '操作',
-          width: 120,
-          render: (_, record) => {
-            const expanded = expandedRowKeys.includes(record.id)
+  const columns: ColumnsType<TaskListRecord> = [
+    ...baseColumns,
+    {
+      title: '操作',
+      width: 180,
+      render: (_, record) => {
+        const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
+        const canProcessTask = Boolean(
+          currentUser?.id &&
+            record.currentStage?.assignees.some((assignee) => assignee.userId === currentUser.id),
+        )
 
-            return (
-              <Space size="small">
-                {!record.readonly ? (
-                  <Button
-                    type="primary"
-                    className="table-expand-trigger"
-                    icon={<EditOutlined />}
-                    size="small"
-                    onClick={() => void openEditDrawer(record)}
-                  >
-                    编辑
-                  </Button>
-                ) : null}
-                <TableExpandTrigger
-                  expanded={expanded}
-                  actionable
-                  onClick={() => {
-                    setSelectedTaskId(record.id)
-                    setExpandedRowKeys(expanded ? [] : [record.id])
-                    if (!expanded) {
-                      void ensureTaskDetail(record.id).catch((error) => {
-                        message.error(
-                          error instanceof Error ? error.message : '任务详情加载失败',
-                        )
-                      })
-                    }
-                  }}
-                />
-              </Space>
-            )
-          },
-        },
-      ]
-    : baseColumns
+        return (
+          <Space size="small">
+            {canProcessTask ? (
+              <Button
+                danger
+                size="small"
+                onClick={() => {
+                  setProcessingTaskId(record.id)
+                }}
+              >
+                处理
+              </Button>
+            ) : null}
+            {canManageTaskActions && !record.readonly ? (
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => void openEditDrawer(record)}
+              >
+                编辑
+              </Button>
+            ) : null}
+            {canManageTaskActions && canDeleteTask ? (
+              <Popconfirm
+                title="确认删除该任务吗？"
+                description="删除后不可恢复，请谨慎操作。"
+                okButtonProps={{ danger: true, loading: mutating }}
+                onConfirm={() => void handleDeleteTask(record.id)}
+              >
+                <Button
+                  danger
+                  size="small"
+                  loading={mutating}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        )
+      },
+    },
+  ]
 
   function handleTableChange(pagination: TablePaginationConfig) {
     const nextPage = pagination.current ?? 1
@@ -1026,7 +1200,7 @@ export function CoursesPage() {
       <div className="workspace-header">
         <div className="workspace-header-main">
           <Typography.Title level={4} className="workspace-header-title">
-            任务工单
+            {isMyTasksPage ? '我的任务' : '任务工单'}
           </Typography.Title>
         </div>
         <div className="workspace-header-side">
@@ -1062,7 +1236,7 @@ export function CoursesPage() {
         onChange={(event) => void handleImportChange(event)}
       />
 
-      <div className="workspace-filter-bar">
+      {/* <div className="workspace-filter-bar">
         <Input
           value={search}
           onChange={(event) => {
@@ -1081,7 +1255,7 @@ export function CoursesPage() {
           }}
           options={[{ label: '全部状态', value: 'all' }, ...statusOptions]}
         />
-      </div>
+      </div> */}
 
       <Tabs
         activeKey={tabKey}
@@ -1109,6 +1283,7 @@ export function CoursesPage() {
       <Table
         rowKey="id"
         size="small"
+        className="task-table"
         loading={tasksLoading}
         columns={columns}
         dataSource={filteredTasks}
@@ -1121,80 +1296,44 @@ export function CoursesPage() {
           total,
         }}
         onChange={handleTableChange}
+        expandable={
+          isMyTasksPage
+            ? undefined
+            : {
+                expandedRowKeys,
+                expandRowByClick: false,
+                onExpand: (expanded, record) => {
+                  void handleExpandTask(expanded, record.id)
+                },
+                expandIcon: ({ expanded, onExpand, record }) => (
+                  <button
+                    type="button"
+                    className={`task-table-expand-button${expanded ? ' task-table-expand-button--open' : ''}`}
+                    onClick={(event) => {
+                      onExpand(record, event)
+                    }}
+                    aria-label={expanded ? '收起任务详情' : '展开任务详情'}
+                  >
+                    <RightOutlined />
+                  </button>
+                ),
+                expandedRowRender: (record) => (
+                  <TaskHistoryDetailPanel
+                    detail={taskDetails[record.id]}
+                    loading={loadingDetailId === record.id}
+                    onUpdated={async () => {
+                      await Promise.all([refreshTaskDetail(record.id), loadTasks()])
+                    }}
+                  />
+                ),
+              }
+        }
         scroll={{ x: 1320 }}
         locale={{
           emptyText: tasksLoading
             ? '任务加载中'
             : <Empty description="暂无任务数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
         }}
-        expandable={{
-          expandedRowKeys,
-          showExpandColumn: false,
-          onExpand: (expanded, record) => {
-            setSelectedTaskId(record.id)
-            setExpandedRowKeys(expanded ? [record.id] : [])
-            if (expanded) {
-              void ensureTaskDetail(record.id).catch((error) => {
-                message.error(
-                  error instanceof Error ? error.message : '任务详情加载失败',
-                )
-              })
-            }
-          },
-          expandedRowRender: (record) => {
-            const detail = taskDetails[record.id]
-            const isLoading = loadingDetailId === record.id
-
-            if (isLoading && !detail) {
-              return (
-                <div className="table-expanded-panel">
-                  <Spin />
-                </div>
-              )
-            }
-
-            if (!detail) {
-              return (
-                <div className="table-expanded-panel">
-                  <Empty description="暂无详情数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                </div>
-              )
-            }
-
-            return (
-              <div className="table-expanded-panel">
-                <TaskDetailPanel
-                  detail={detail}
-                  fieldConfigs={enabledFieldConfigs}
-                  role={role}
-                  roleLabelsByCode={roleLabelsByCode}
-                />
-              </div>
-            )
-          },
-        }}
-        onRow={(record) => ({
-          onClick: () => {
-            if (canManageTaskActions) {
-              return
-            }
-
-            const expanded = expandedRowKeys.includes(record.id)
-            setSelectedTaskId(record.id)
-            setExpandedRowKeys(expanded ? [] : [record.id])
-
-            if (!expanded) {
-              void ensureTaskDetail(record.id).catch((error) => {
-                message.error(
-                  error instanceof Error ? error.message : '任务详情加载失败',
-                )
-              })
-            }
-          },
-        })}
-        rowClassName={(record) => (
-          record.id === (activeTask?.id ?? selectedTaskId) ? 'selected-table-row' : ''
-        )}
       />
 
       <Drawer
@@ -1211,25 +1350,24 @@ export function CoursesPage() {
           onFinish={(values) => void handleFinish(values)}
         >
           <Row gutter={12}>
-            {!editingTaskId ? (
-              <Col span={24}>
-                <Form.Item
-                  label="关联工作流"
-                  name="workflowTemplateId"
-                  rules={[{ required: true, message: '请选择工作流模板' }]}
-                >
-                  <Select
-                    placeholder="请选择当前项目下的工作流模板"
-                    loading={workflowLoading}
-                    options={workflowTemplates.map((template) => ({
-                      label: template.isDefault ? `${template.name}（默认）` : template.name,
-                      value: template.id,
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-            ) : null}
-            {shouldShowSecondStageAssigneeField && secondWorkflowRole && secondWorkflowStage ? (
+            <Col span={24}>
+              <Form.Item
+                label="关联工作流"
+                name="workflowTemplateId"
+                rules={[{ required: true, message: '请选择工作流模板' }]}
+              >
+                <Select
+                  placeholder="请选择当前项目下的工作流模板"
+                  loading={workflowLoading}
+                  disabled={Boolean(editingTaskId)}
+                  options={workflowTemplates.map((template) => ({
+                    label: template.isDefault ? `${template.name}（默认）` : template.name,
+                    value: template.id,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            {shouldShowTaskOwnerField ? (
               <Col span={24}>
                 <Form.Item
                   label="任务所有者"
@@ -1238,8 +1376,9 @@ export function CoursesPage() {
                 >
                   <Select
                     placeholder="请选择任务所有者"
-                    loading={secondStageLoading}
-                    options={secondStageMembers.map((member) => ({
+                    loading={taskOwnerLoading}
+                    disabled={Boolean(editingTaskId)}
+                    options={taskOwnerMembers.map((member) => ({
                       label: `${member.userName} · ${member.userEmail}`,
                       value: member.userId,
                     }))}
@@ -1247,18 +1386,19 @@ export function CoursesPage() {
                 </Form.Item>
               </Col>
             ) : null}
-            {shouldShowSecondStageAssigneeField && secondWorkflowRole && secondWorkflowStage ? (
+            {shouldShowSecondStageAssigneeField && firstWorkflowStage ? (
               <Col span={24}>
                 <Form.Item
-                  label={`${secondWorkflowStage.stageName} · ${secondWorkflowRole.name}`}
+                  label={firstWorkflowRoleName || '第一阶段执行人'}
                   name="secondStageAssigneeUserId"
-                  rules={[{ required: true, message: '请选择第二阶段指定人员' }]}
+                  rules={[{ required: true, message: '请选择第一阶段执行人' }]}
                 >
                   <Select
-                    placeholder={`请选择${secondWorkflowRole.name}`}
+                    placeholder={`请选择${firstWorkflowRoleName || '第一阶段执行人'}`}
                     loading={secondStageLoading}
+                    disabled={Boolean(editingTaskId)}
                     options={secondStageMembers.map((member) => ({
-                      label: `${member.userName} · ${member.userEmail}`,
+                      label: `${member.userName}`,
                       value: member.userId,
                     }))}
                   />
@@ -1270,8 +1410,8 @@ export function CoursesPage() {
                 <Form.Item
                   label={field.field_name}
                   name={field.field_key}
-                  rules={
-                    field.required
+                  rules={[
+                    ...(field.required
                       ? [
                           {
                             required: true,
@@ -1279,8 +1419,11 @@ export function CoursesPage() {
                               `${field.field_type === 'select' ? '请选择' : '请输入'}${field.field_name}`,
                           },
                         ]
-                      : undefined
-                  }
+                      : []),
+                    ...(isNotBeforeTodayField(field)
+                      ? [{ validator: validateNotBeforeToday }]
+                      : []),
+                  ]}
                 >
                   {renderFieldControl(field)}
                 </Form.Item>
@@ -1296,6 +1439,14 @@ export function CoursesPage() {
           </Space>
         </Form>
       </Drawer>
+      <TaskProcessModal
+        open={Boolean(processingTaskId)}
+        taskId={processingTaskId}
+        onClose={handleCloseProcessModal}
+        onProcessed={async () => {
+          await loadTasks()
+        }}
+      />
     </Card>
   )
 }

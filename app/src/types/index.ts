@@ -2,6 +2,7 @@ export type ViewKey =
   | 'dashboard'
   | 'allTickets'
   | 'research'
+  | 'myTasks'
   | 'courses'
   | 'dispatch'
   | 'designers'
@@ -90,7 +91,18 @@ export interface TaskListRecord {
   id: string
   title: string
   status: string
+  currentStage?: {
+    assignees: Array<{
+      userId: string
+      userName: string
+    }>
+    id: string
+    stageName: string
+    status: string
+  } | null
   readonly: boolean
+  creatorUserId?: string
+  ownerId?: string
   createdAt: string
   archivedAt?: string | null
   currentVersion: TaskVersionRecord
@@ -122,11 +134,12 @@ export interface TaskWorkflowFileRuleRecord {
 
 export interface TaskWorkflowStageRecord {
   id: string
+  templateStageId?: string
+  roleId?: string
   stageName: string
   sortValue: number
   status: string
   ownerId?: string
-  ownerRoleCode?: string
   operatorRoleCode?: string
   canAssign: boolean
   canSkip: boolean
@@ -144,8 +157,15 @@ export interface TaskWorkflowStageRecord {
 }
 
 export interface TaskDetailRecord {
-  task: Pick<TaskListRecord, 'id' | 'title' | 'status' | 'readonly' | 'createdAt' | 'archivedAt'>
+  task: Pick<
+    TaskListRecord,
+    'id' | 'title' | 'status' | 'readonly' | 'createdAt' | 'archivedAt' | 'ownerId'
+  >
   currentVersion: TaskVersionRecord
+  currentStage?: TaskWorkflowStageRecord | null
+  nextState?: {
+    id: string
+  } | null
   fieldValues: Record<string, unknown>
   workflowStages: TaskWorkflowStageRecord[]
   files: AttachmentFile[]
@@ -154,10 +174,15 @@ export interface TaskDetailRecord {
 
 export interface AttachmentFile {
   uid: string
+  checksum?: string
+  fileExt?: string
   name: string
   size?: number
   type?: string
   uploadedAt?: string
+  url?: string
+  storageKey?: string
+  workflowStageId?: string
 }
 
 export interface StageRecord {
@@ -455,10 +480,12 @@ export interface WorkflowStageConfig {
   stageName: string
   sortValue: number
   defaultDueDays?: number
-  ownerRoleCode?: string
   operatorRoleCode?: string
+  operatorRoleName?:string
   canAssign: boolean
   canSkip: boolean
+  collectTotalPageCount: boolean
+  allowPageAssignment: boolean
   requiresFileUpload: boolean
   requiresValidation: boolean
   triggersPackage: boolean

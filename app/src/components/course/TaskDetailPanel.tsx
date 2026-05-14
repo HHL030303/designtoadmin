@@ -1,14 +1,47 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Card, Descriptions, Empty, Space, Tag, Typography } from 'antd'
-import { AttachmentUploadField } from '../common/AttachmentUploadField'
+import dayjs, { type Dayjs } from 'dayjs'
+import {
+    Button,
+    Card,
+    DatePicker,
+    Descriptions,
+    Empty,
+    Form,
+    Input,
+    Modal,
+    Select,
+    Space,
+    Tag,
+    Typography,
+    message,
+} from 'antd'
+import { EditOutlined } from '@ant-design/icons'
+import { useAppState } from '../../context/AppStateContext'
+import { adminService } from '../../services/adminService'
+import { fileService } from '../../services/fileService'
+import { taskService } from '../../services/taskService'
+import { AttachmentList } from '../common/AttachmentList'
+import { ObjectStorageUploadField } from '../common/ObjectStorageUploadField'
 import type {
     AttachmentFile,
     FieldConfig,
+    ProjectMemberRecord,
     TaskDetailRecord,
     TaskWorkflowFileRuleRecord,
     TaskWorkflowStageRecord,
     UserRole,
 } from '../../types'
+
+type StageCompletionFormValues = {
+    remark?: string
+    nextStageDueDate?: Dayjs
+    nextStageUserId?: string
+}
+
+type CurrentAssigneeFormValues = {
+    dueDate?: Dayjs
+    userId?: string
+}
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
     archived: { color: 'green', label: '已归档' },
@@ -19,16 +52,6 @@ const taskStatusMeta: Record<string, { color: string; label: string }> = {
     pending: { color: 'default', label: '待开始' },
     submitted: { color: 'orange', label: '待处理' },
     unpublished: { color: 'default', label: '未发布' },
-}
-
-const roleCodeMap: Record<UserRole, string[]> = {
-    admin: ['project_admin', 'super_admin'],
-    coordinator: ['design_coordinator'],
-    pageDesigner: ['page_designer'],
-    planner: ['planner'],
-    researcher: ['researcher'],
-    sales: ['presales'],
-    styleDesigner: ['style_designer'],
 }
 
 const roleLabelMap: Record<UserRole, string> = {
@@ -55,12 +78,32 @@ const preferredSummaryFieldKeys = [
     'finalDueDate',
 ]
 
+function isPastDueDate(value?: Dayjs) {
+    return Boolean(value && value.isBefore(dayjs().startOf('day'), 'day'))
+}
+
+function getDisabledDueDate(current: Dayjs) {
+    return current.isBefore(dayjs().startOf('day'), 'day')
+}
+
+function validateDueDate(_: unknown, value?: Dayjs) {
+    if (!value || !isPastDueDate(value)) {
+        return Promise.resolve()
+    }
+
+    return Promise.reject(new Error('截止时间不能早于当前日期'))
+}
+
 function getStatusLabel(status: string) {
     return taskStatusMeta[status]?.label ?? status
 }
 
 function getStatusColor(status: string) {
     return taskStatusMeta[status]?.color ?? 'default'
+}
+
+function isActionableStageStatus(status: string) {
+    return ['assigned', 'in_progress', 'page_in_progress', 'pending', 'submitted'].includes(status)
 }
 
 function formatDisplayValue(value: unknown, field?: FieldConfig): string {
@@ -127,32 +170,6 @@ function getRoleLabelByCode(
     return roleLabelsByCode[roleCode] ?? roleCode
 }
 
-function buildStageActionSummary(stage: TaskWorkflowStageRecord) {
-    const actionLabels: string[] = []
-
-    if (stage.fileRules.length > 0) {
-        actionLabels.push(`上传 ${stage.fileRules.map((rule) => rule.itemName).join('、')}`)
-    }
-
-    if (stage.canAssign) {
-        actionLabels.push('指定下一节点人员')
-    }
-
-    if (stage.allowPageAssignment) {
-        actionLabels.push('拆分页数')
-    }
-
-    if (stage.requiresValidation) {
-        actionLabels.push('校验结果')
-    }
-
-    if (stage.triggersPackage) {
-        actionLabels.push('触发打包')
-    }
-
-    return actionLabels.length > 0 ? actionLabels.join(' / ') : '本节点暂无额外动作'
-}
-
 function buildAssigneeText(stage: TaskWorkflowStageRecord) {
     if (stage.stageAssignees.length === 0) {
         return '未指派'
@@ -163,69 +180,224 @@ function buildAssigneeText(stage: TaskWorkflowStageRecord) {
         .join('、')
 }
 
-function isStageMatchedToRole(stage: TaskWorkflowStageRecord, role: UserRole) {
-    const roleCodes = roleCodeMap[role]
-    return roleCodes.includes(stage.operatorRoleCode ?? '') || roleCodes.includes(stage.ownerRoleCode ?? '')
+function isStageMatchedToRole(stage: TaskWorkflowStageRecord, currentUserId?: string) {
+    if (!currentUserId) {
+        return false
+    }
+
+    return stage.stageAssignees.some((assignee) => assignee.userId === currentUserId)
 }
 
-function findCurrentRoleStage(stages: TaskWorkflowStageRecord[], role: UserRole) {
-    const matchedStages = stages.filter((stage) => isStageMatchedToRole(stage, role))
+function findRoleDisplayStage(
+    stages: TaskWorkflowStageRecord[],
+    files: AttachmentFile[],
+    currentUserId: string | undefined,
+    currentStageId?: string,
+) {
+    const matchedStages = stages.filter((stage) => isStageMatchedToRole(stage, currentUserId))
 
     if (matchedStages.length === 0) {
         return null
     }
 
-    const actionableStage = matchedStages.find((stage) =>
-        ['assigned', 'in_progress', 'page_in_progress', 'pending', 'submitted'].includes(stage.status),
+    if (currentStageId) {
+        const currentMatchedStage = matchedStages.find((stage) => stage.id === currentStageId)
+        if (currentMatchedStage) {
+            return currentMatchedStage
+        }
+    }
+
+    const stageIdsWithFiles = new Set(
+        files
+            .map((file) => file.workflowStageId)
+            .filter((workflowStageId): workflowStageId is string => Boolean(workflowStageId)),
+    )
+    const readonlyFilledStage = [...matchedStages]
+        .reverse()
+        .find((stage) => stageIdsWithFiles.has(stage.id))
+
+    if (readonlyFilledStage) {
+        return readonlyFilledStage
+    }
+
+    const completedStage = matchedStages.find(
+        (stage) => stage.status === 'completed' || stage.status === 'archived',
     )
 
-    return actionableStage ?? matchedStages[0]
+    return completedStage ?? matchedStages[0]
 }
 
-function renderWorkflowStage(
-    stage: TaskWorkflowStageRecord,
+function findCurrentWorkflowStageIndex(stages: TaskWorkflowStageRecord[]) {
+    const currentIndex = stages.findIndex((stage) => isActionableStageStatus(stage.status))
+
+    if (currentIndex >= 0) {
+        return currentIndex
+    }
+
+    const completedCount = stages.filter(
+        (stage) => stage.status === 'completed' || stage.status === 'archived',
+    ).length
+
+    return completedCount > 0 ? completedCount - 1 : 0
+}
+
+function resolveCurrentWorkflowStage(detail: TaskDetailRecord) {
+    const currentStageId = detail.currentStage?.id
+
+    if (!currentStageId) {
+        return detail.currentStage ?? null
+    }
+
+    return detail.workflowStages.find((stage) => stage.id === currentStageId) ?? detail.currentStage
+}
+
+function renderWorkflowSteps(
+    stages: TaskWorkflowStageRecord[],
     roleLabelsByCode: Record<string, string>,
 ) {
+    const currentStageIndex = findCurrentWorkflowStageIndex(stages)
+
     return (
-        <Card
-            key={stage.id}
-            type="inner"
-            className="task-detail-stage-card"
-            title={stage.stageName}
-            extra={<Tag color={getStatusColor(stage.status)}>{getStatusLabel(stage.status)}</Tag>}
-        >
-            <Descriptions column={{ xs: 1, md: 2 }} size="small">
-                <Descriptions.Item label="执行角色">
-                    {getRoleLabelByCode(stage.operatorRoleCode || stage.ownerRoleCode, roleLabelsByCode)}
-                </Descriptions.Item>
-                <Descriptions.Item label="执行人">{buildAssigneeText(stage)}</Descriptions.Item>
-                <Descriptions.Item label="截止时间">
-                    {stage.dueDate || '未配置'}
-                </Descriptions.Item>
-                <Descriptions.Item label="阶段任务">
-                    {buildStageActionSummary(stage)}
-                </Descriptions.Item>
-            </Descriptions>
-        </Card>
+        <div className="task-workflow-strip">
+            {stages.map((stage, index) => {
+                const stateClassName =
+                    stage.status === 'completed' || stage.status === 'archived'
+                        ? 'task-workflow-strip__item--done'
+                        : index === currentStageIndex
+                            ? 'task-workflow-strip__item--active'
+                            : index < currentStageIndex
+                                ? 'task-workflow-strip__item--done'
+                                : 'task-workflow-strip__item--pending'
+
+                return (
+                    <div
+                        key={stage.id}
+                        className={`task-workflow-strip__item ${stateClassName}`}
+                    >
+                        <div className="task-workflow-strip__line" />
+                        <div className="task-workflow-strip__head">
+                            <span className="task-workflow-strip__index">{index + 1}</span>
+                            <Typography.Text strong>{stage.stageName}</Typography.Text>
+                        </div>
+                        <Space direction="vertical" size={4} className="task-workflow-step__meta">
+                            <Tag color={getStatusColor(stage.status)}>{getStatusLabel(stage.status)}</Tag>
+                            <Typography.Text type="secondary">
+                                执行人：{buildAssigneeText(stage)}
+                            </Typography.Text>
+                            <Typography.Text type="secondary">
+                                截止：{stage.dueDate || '未配置'}
+                            </Typography.Text>
+                            <Typography.Text type="secondary">
+                                角色：
+                                {getRoleLabelByCode(
+                                    stage.operatorRoleCode,
+                                    roleLabelsByCode,
+                                )}
+                            </Typography.Text>
+                        </Space>
+                    </div>
+                )
+            })}
+        </div>
     )
+}
+
+function buildEmptyFilesByRuleId(fileRules: TaskWorkflowFileRuleRecord[]) {
+    return fileRules.reduce<Record<string, AttachmentFile[]>>((accumulator, rule) => {
+        accumulator[rule.id] = []
+        return accumulator
+    }, {})
+}
+
+function isAttachmentMatchedToRule(
+    file: AttachmentFile,
+    rule: TaskWorkflowFileRuleRecord,
+) {
+    const fileName = file.name.trim()
+    const fileExt = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : ''
+    const fileType = file.type?.trim().toLowerCase() ?? ''
+    const ruleCategories = rule.fileCategory
+        .split(/[,|，、\s]+/)
+        .map((category) => category.trim().toLowerCase())
+        .filter(Boolean)
+
+    const extensionMatched =
+        ruleCategories.length === 0 ||
+        ruleCategories.some((category) => {
+            const normalizedCategory = category.startsWith('.') ? category.slice(1) : category
+
+            if (normalizedCategory.includes('/')) {
+                return (
+                    fileType === normalizedCategory ||
+                    fileExt === normalizedCategory.split('/').pop()
+                )
+            }
+
+            return fileExt === normalizedCategory
+        })
+
+    if (!extensionMatched) {
+        return false
+    }
+
+    if (!rule.filenamePattern) {
+        return true
+    }
+
+    try {
+        return new RegExp(rule.filenamePattern).test(fileName)
+    } catch {
+        return true
+    }
+}
+
+function buildInitialFilesByRuleId(
+    fileRules: TaskWorkflowFileRuleRecord[],
+    files: AttachmentFile[],
+    workflowStageId: string,
+) {
+    const currentStageFiles = files.filter((file) => file.workflowStageId === workflowStageId)
+    const usedFileUids = new Set<string>()
+
+    const filesByRuleId = fileRules.reduce<Record<string, AttachmentFile[]>>((accumulator, rule) => {
+        const matchedFiles = currentStageFiles
+            .filter((file) => !usedFileUids.has(file.uid) && isAttachmentMatchedToRule(file, rule))
+            .slice(0, rule.requiredCount)
+
+        matchedFiles.forEach((file) => usedFileUids.add(file.uid))
+        accumulator[rule.id] = matchedFiles
+        return accumulator
+    }, {})
+
+    const remainingFiles = currentStageFiles.filter((file) => !usedFileUids.has(file.uid))
+
+    for (const file of remainingFiles) {
+        const fallbackRule = fileRules.find((rule) => {
+            const currentCount = filesByRuleId[rule.id]?.length ?? 0
+            return currentCount < rule.requiredCount
+        })
+
+        if (!fallbackRule) {
+            break
+        }
+
+        filesByRuleId[fallbackRule.id] = [...(filesByRuleId[fallbackRule.id] ?? []), file]
+    }
+
+    return filesByRuleId
 }
 
 function DynamicFileRuleSection({
     fileRules,
+    filesByRuleId,
+    onFilesChange,
+    disabled,
 }: {
     fileRules: TaskWorkflowFileRuleRecord[]
+    filesByRuleId: Record<string, AttachmentFile[]>
+    onFilesChange: (ruleId: string, files: AttachmentFile[]) => void
+    disabled?: boolean
 }) {
-    const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
-
-    useEffect(() => {
-        setFilesByRuleId(
-            fileRules.reduce<Record<string, AttachmentFile[]>>((accumulator, rule) => {
-                accumulator[rule.id] = []
-                return accumulator
-            }, {}),
-        )
-    }, [fileRules])
-
     return (
         <Space direction="vertical" size={12} className="panel-stack-full">
             {fileRules.map((rule) => (
@@ -239,16 +411,15 @@ function DynamicFileRuleSection({
                             <Tag>{rule.fileCategory}</Tag>
                             <Tag>{`数量 ${rule.requiredCount}`}</Tag>
                         </Space>
-                        <AttachmentUploadField
+                        <ObjectStorageUploadField
                             value={filesByRuleId[rule.id] ?? []}
-                            onChange={(files) =>
-                                setFilesByRuleId((current) => ({
-                                    ...current,
-                                    [rule.id]: files,
-                                }))
-                            }
-                            helperText={`命名规则：${rule.filenamePattern}`}
+                            onChange={(files) => onFilesChange(rule.id, files)}
+                            accept={`.${rule.fileCategory}`}
+                            fileNamePattern={rule.filenamePattern}
+                            maxCount={rule.requiredCount}
+                            helperText={`命名规则：${rule.filenamePattern}；最多上传 ${rule.requiredCount} 个文件。`}
                             compact
+                            disabled={disabled}
                         />
                     </Space>
                 </Card>
@@ -261,23 +432,131 @@ function RoleTaskCard({
     detail,
     role,
     roleLabelsByCode,
+    onStageCompleted,
+    taskOwnerId,
 }: {
     detail: TaskDetailRecord
     role: UserRole
     roleLabelsByCode: Record<string, string>
+    onStageCompleted: () => Promise<void>
+    taskOwnerId?: string
 }) {
-    const currentStage = useMemo(
-        () => findCurrentRoleStage(detail.workflowStages, role),
-        [detail.workflowStages, role],
+    const { currentProject, currentUser } = useAppState()
+    const [form] = Form.useForm<StageCompletionFormValues>()
+    const [currentAssigneeForm] = Form.useForm<CurrentAssigneeFormValues>()
+    const [submitting, setSubmitting] = useState(false)
+    const [nextStageLoading, setNextStageLoading] = useState(false)
+    const [nextStageMembers, setNextStageMembers] = useState<ProjectMemberRecord[]>([])
+    const [currentAssigneeLoading, setCurrentAssigneeLoading] = useState(false)
+    const [currentAssigneeSubmitting, setCurrentAssigneeSubmitting] = useState(false)
+    const [currentAssigneeModalOpen, setCurrentAssigneeModalOpen] = useState(false)
+    const [currentAssigneeMembers, setCurrentAssigneeMembers] = useState<ProjectMemberRecord[]>([])
+    const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
+    const currentStage = detail.currentStage ?? null
+    const currentWorkflowStage = useMemo(() => resolveCurrentWorkflowStage(detail), [detail])
+    const displayStage = useMemo(
+        () =>
+            findRoleDisplayStage(
+                detail.workflowStages,
+                detail.files,
+                currentUser?.id,
+                currentStage?.id,
+            ),
+        [currentStage?.id, currentUser?.id, detail.files, detail.workflowStages],
+    )
+    const currentStageBelongsToRole = Boolean(
+        currentStage &&
+        currentUser?.id &&
+        currentStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
+    )
+    const displayStageFiles = useMemo(
+        () => detail.files.filter((file) => file.workflowStageId === displayStage?.id),
+        [detail.files, displayStage?.id],
     )
 
-    const currentStageIndex = currentStage
-        ? detail.workflowStages.findIndex((stage) => stage.id === currentStage.id)
-        : -1
-    const nextStage =
-        currentStageIndex >= 0 ? detail.workflowStages[currentStageIndex + 1] : undefined
+    const nextStage = detail.nextState
+        ? detail.workflowStages.find((stage) => stage.id === detail.nextState?.id)
+        : undefined
+    const canCompleteCurrentStage = Boolean(
+        currentStage &&
+        displayStage &&
+        currentStage.id === displayStage.id &&
+        currentStageBelongsToRole &&
+        nextStage &&
+        isActionableStageStatus(currentStage.status)
+    )
+    const isReadonlyStage = Boolean(displayStage && !canCompleteCurrentStage)
+    const shouldSelectNextStageAssignee = Boolean(
+        canCompleteCurrentStage &&
+        displayStage?.canAssign &&
+        nextStage,
+    )
 
-    if (!currentStage) {
+    useEffect(() => {
+        if (!displayStage) {
+            setFilesByRuleId({})
+            return
+        }
+
+        setFilesByRuleId(
+            displayStage.fileRules.length > 0
+                ? buildInitialFilesByRuleId(
+                    displayStage.fileRules,
+                    detail.files,
+                    displayStage.id,
+                )
+                : buildEmptyFilesByRuleId(displayStage.fileRules),
+        )
+        form.resetFields()
+    }, [detail.files, displayStage, form])
+
+    useEffect(() => {
+        const projectId = currentProject?.id ?? ''
+        const nextStage = detail.nextState
+        ? detail.workflowStages.find((stage) => stage.id === detail.nextState?.id)
+        : undefined
+        const nextRoleCode = nextStage?.operatorRoleCode ?? ''
+
+        if (!shouldSelectNextStageAssignee || !projectId || !nextRoleCode) {
+            setNextStageMembers([])
+            return
+        }
+
+        form.setFieldValue('nextStageUserId', undefined)
+
+        async function loadNextStageMembers() {
+            try {
+                setNextStageLoading(true)
+                const response = await adminService.listProjectRoleUsers({
+                    page: 1,
+                    pageSize: 100,
+                    projectId,
+                    roleCode: nextRoleCode,
+                })
+                setNextStageMembers(response.items)
+            } catch (error) {
+                message.error(error instanceof Error ? error.message : '下一节点成员加载失败')
+                setNextStageMembers([])
+            } finally {
+                setNextStageLoading(false)
+            }
+        }
+
+        void loadNextStageMembers()
+    }, [currentProject?.id, form, nextStage?.operatorRoleCode, shouldSelectNextStageAssignee])
+
+    if (!currentStage && !displayStage) {
+        return (
+            <Card title={`${roleLabelMap[role]}详情`}>
+                <Empty
+                    description="当前任务暂无 current_stage，无法展示当前阶段任务"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+            </Card>
+        )
+    }
+
+    if (!displayStage) {
         return (
             <Card title={`${roleLabelMap[role]}详情`}>
                 <Empty
@@ -288,21 +567,189 @@ function RoleTaskCard({
         )
     }
 
+    const resolvedTaskOwnerId = detail.task.ownerId ?? taskOwnerId
+    const currentRoleCode = currentWorkflowStage?.operatorRoleCode ?? ''
+    const currentPrimaryAssignee = currentWorkflowStage?.stageAssignees.find((assignee) => assignee.isPrimary)
+        ?? currentWorkflowStage?.stageAssignees[0]
+    const canEditCurrentAssignee = Boolean(currentWorkflowStage?.id && currentRoleCode && currentProject?.id)
+    const currentAssigneeOptions = (currentWorkflowStage?.stageAssignees ?? []).map((assignee) => ({
+        label: `${assignee.userName}${assignee.isPrimary ? '（主）' : ''}`,
+        value: assignee.userId,
+    }))
+
+    async function handleOpenCurrentAssigneeModal() {
+        if (!currentWorkflowStage?.id || !currentProject?.id || !currentRoleCode) {
+            message.warning('当前阶段缺少角色配置，暂时无法编辑责任人')
+            return
+        }
+
+        currentAssigneeForm.setFieldsValue({
+            dueDate: currentWorkflowStage.dueDate ? dayjs(currentWorkflowStage.dueDate) : undefined,
+            userId: currentPrimaryAssignee?.userId,
+        })
+        setCurrentAssigneeModalOpen(true)
+
+        try {
+            setCurrentAssigneeLoading(true)
+            const response = await adminService.listProjectRoleUsers({
+                page: 1,
+                pageSize: 100,
+                projectId: currentProject.id,
+                roleCode: currentRoleCode,
+            })
+            setCurrentAssigneeMembers(response.items)
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : '当前责任人候选人加载失败')
+            setCurrentAssigneeMembers([])
+        } finally {
+            setCurrentAssigneeLoading(false)
+        }
+    }
+
+    function handleCloseCurrentAssigneeModal() {
+        setCurrentAssigneeModalOpen(false)
+        currentAssigneeForm.resetFields()
+    }
+
+    async function handleSubmitCurrentAssignee(values: CurrentAssigneeFormValues) {
+        if (!currentWorkflowStage?.id) {
+            return
+        }
+
+        if (!values.userId) {
+            message.warning('请选择当前责任人')
+            return
+        }
+
+        try {
+            setCurrentAssigneeSubmitting(true)
+            await taskService.assignWorkflowStage(currentWorkflowStage.id, {
+                due_date: values.dueDate?.format('YYYY-MM-DD') ?? '',
+                assignees: [
+                    {
+                        user_id: Number(values.userId),
+                        assignee_role: 'operator',
+                        is_primary: true,
+                    },
+                ],
+            })
+            message.success('当前责任人已更新')
+            handleCloseCurrentAssigneeModal()
+            await onStageCompleted()
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : '当前责任人更新失败')
+        } finally {
+            setCurrentAssigneeSubmitting(false)
+        }
+    }
+
+    async function handleSubmit(values: StageCompletionFormValues) {
+        if (!currentStage || !displayStage || !nextStage) {
+            return
+        }
+
+        const invalidRule = displayStage.fileRules.find((rule) => {
+            if (!rule.required) {
+                return false
+            }
+
+            return (filesByRuleId[rule.id] ?? []).length < rule.requiredCount
+        })
+
+        if (invalidRule) {
+            message.warning(`请先按要求上传 ${invalidRule.itemName}`)
+            return
+        }
+
+        const nextStageUserId = displayStage.canAssign
+            ? values.nextStageUserId
+            : resolvedTaskOwnerId
+
+        if (!nextStageUserId) {
+            message.warning(
+                displayStage.canAssign
+                    ? '请选择下一节点人员'
+                    : '当前任务未配置任务所有者，无法自动指定下一节点人员',
+            )
+            return
+        }
+
+        try {
+            setSubmitting(true)
+
+            const uploadedFiles = displayStage.fileRules.flatMap(
+                (rule) => filesByRuleId[rule.id] ?? [],
+            )
+
+            for (const file of uploadedFiles) {
+                if (!file.checksum) {
+                    throw new Error(`文件 ${file.name} 缺少校验和，无法提交`)
+                }
+
+                await fileService.createFileRecord({
+                    checksum: file.checksum,
+                    file_ext: file.fileExt || '',
+                    file_path: file.url || '',
+                    original_name: file.name,
+                    size_bytes: file.size ?? 0,
+                    task_id: Number(detail.task.id),
+                    version_id: Number(detail.currentVersion.id),
+                    workflow_stage_id: Number(currentStage.id),
+                })
+            }
+
+            await taskService.completeWorkflowStage(currentStage.id, {
+                remark: values.remark?.trim() || undefined,
+                next_stage_assignees: [
+                    {
+                        assignee_role: 'operator',
+                        is_primary: true,
+                        user_id: Number(nextStageUserId),
+                    },
+                ],
+                next_stage_due_date: values.nextStageDueDate?.format('YYYY-MM-DD') ?? '',
+            })
+            message.success('当前阶段已提交')
+            await onStageCompleted()
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : '阶段提交失败')
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
     return (
         <Card
             title={`${roleLabelMap[role]}阶段任务`}
-            extra={<Tag color={getStatusColor(currentStage.status)}>{getStatusLabel(currentStage.status)}</Tag>}
+            extra={<Tag color={getStatusColor(displayStage.status)}>{getStatusLabel(displayStage.status)}</Tag>}
         >
             <Descriptions column={{ xs: 1, md: 2 }} size="small" className="panel-descriptions">
-                <Descriptions.Item label="当前节点">{currentStage.stageName}</Descriptions.Item>
-                <Descriptions.Item label="执行人">{buildAssigneeText(currentStage)}</Descriptions.Item>
+                <Descriptions.Item label="当前节点">{displayStage.stageName}</Descriptions.Item>
+                <Descriptions.Item label="当前责任人">
+                    <Space size={8}>
+                        <Select
+                            className="task-detail-owner-select"
+                            disabled
+                            value={currentPrimaryAssignee?.userId}
+                            options={currentAssigneeOptions}
+                            placeholder="未指派当前责任人"
+                        />
+                        <Button
+                            type="text"
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => void handleOpenCurrentAssigneeModal()}
+                            disabled={!canEditCurrentAssignee}
+                        />
+                    </Space>
+                </Descriptions.Item>
                 <Descriptions.Item label="截止时间">
-                    {currentStage.dueDate || '未配置'}
+                    {displayStage.dueDate || '未配置'}
                 </Descriptions.Item>
                 <Descriptions.Item label="下一节点">
                     {nextStage
                         ? getRoleLabelByCode(
-                            nextStage.operatorRoleCode || nextStage.ownerRoleCode,
+                            nextStage.operatorRoleCode,
                             roleLabelsByCode,
                         )
                         : '当前已是最后节点'}
@@ -310,47 +757,168 @@ function RoleTaskCard({
             </Descriptions>
 
             <Space direction="vertical" size={16} className="panel-stack-full">
-                {currentStage.fileRules.length > 0 ? (
+                {!currentStageBelongsToRole && currentStage ? (
+                    <Typography.Text type="secondary">
+                        当前任务正处于“{currentStage.stageName}”节点，你当前查看的是自己节点的只读回填内容。
+                    </Typography.Text>
+                ) : null}
+                {displayStage.fileRules.length > 0 ? (
                     <div className="task-detail-section">
                         <Typography.Text strong>按流程规则上传文件</Typography.Text>
                         <Typography.Text type="secondary">
-                            当前节点的上传项来自流程配置中的 `file_rules`，后续新增规则后这里会自动展示。
+                            {isReadonlyStage
+                                ? '该阶段已提交，当前内容按详情接口返回数据回填，只读展示。'
+                                : '当前节点上传项来自工作流 `file_rules`，提交前会校验必传文件是否齐全。'}
                         </Typography.Text>
-                        <DynamicFileRuleSection fileRules={currentStage.fileRules} />
+                        <DynamicFileRuleSection
+                            fileRules={displayStage.fileRules}
+                            filesByRuleId={filesByRuleId}
+                            onFilesChange={(ruleId, files) =>
+                                setFilesByRuleId((current) => ({
+                                    ...current,
+                                    [ruleId]: files,
+                                }))
+                            }
+                            disabled={isReadonlyStage || submitting}
+                        />
+                    </div>
+                ) : displayStageFiles.length > 0 ? (
+                    <div className="task-detail-section">
+                        <Typography.Text strong>阶段已上传文件</Typography.Text>
+                        <Typography.Text type="secondary">
+                            当前阶段没有可匹配的 `file_rules`，已按接口原始文件列表只读展示。
+                        </Typography.Text>
+                        <AttachmentList files={displayStageFiles} compact emptyText="暂无阶段文件" />
                     </div>
                 ) : null}
 
-                {currentStage.canAssign ? (
-                    <Card type="inner" className="task-detail-action-card">
-                        <Space direction="vertical" size={8} className="panel-stack-full">
-                            <Typography.Text strong>当前节点任务：指定下一节点人员</Typography.Text>
+                <Card type="inner" className="task-detail-action-card">
+                    <Space direction="vertical" size={8} className="panel-stack-full">
+                        <Typography.Text strong>阶段提交流转</Typography.Text>
+                        {isReadonlyStage ? (
                             <Typography.Text type="secondary">
-                                这个节点未配置上传规则，核心动作是给下游节点指派人员。
+                                当前任务在该阶段已提交，或当前账号不是 current_stage 对应处理角色，当前仅展示该节点的历史回填信息。
                             </Typography.Text>
-                            <Descriptions column={1} size="small">
-                                <Descriptions.Item label="下游角色">
-                                    {nextStage
-                                        ? getRoleLabelByCode(
-                                            nextStage.operatorRoleCode || nextStage.ownerRoleCode,
+                        ) : !nextStage ? (
+                            <Typography.Text type="secondary">
+                                当前节点已经是最后一个流程节点，暂无下一阶段可流转。
+                            </Typography.Text>
+                        ) : (
+                            <>
+                                <Typography.Text type="secondary">
+                                    提交后会按当前节点配置，把任务流转到下一阶段并指定执行人。
+                                </Typography.Text>
+                                <Descriptions column={1} size="small">
+                                    <Descriptions.Item label="下一节点角色">
+                                        {getRoleLabelByCode(
+                                            nextStage.operatorRoleCode,
                                             roleLabelsByCode,
-                                        )
-                                        : '未配置'}
+                                        )}
                                 </Descriptions.Item>
-                                <Descriptions.Item label="当前已指派">
-                                    {buildAssigneeText(currentStage)}
-                                </Descriptions.Item>
-                            </Descriptions>
-                        </Space>
-                    </Card>
-                ) : null}
-
-                {currentStage.fileRules.length === 0 && !currentStage.canAssign ? (
-                    <Empty
-                        description="当前节点暂未配置文件规则或指派动作"
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    />
-                ) : null}
+                                    <Descriptions.Item label="指派方式">
+                                        {displayStage.canAssign
+                                            ? '当前节点手动指定下一节点人员'
+                                            : '自动指定为当前任务所有者'}
+                                    </Descriptions.Item>
+                                </Descriptions>
+                                <Form
+                                    form={form}
+                                    layout="vertical"
+                                    onFinish={(values) => void handleSubmit(values)}
+                                >
+                                    {displayStage.canAssign ? (
+                                        <Form.Item
+                                            label="下一阶段任务人员"
+                                            name="nextStageUserId"
+                                            rules={[{ required: true, message: '请选择下一阶段任务人员' }]}
+                                        >
+                                            <Select
+                                                placeholder="请选择下一阶段任务人员"
+                                                loading={nextStageLoading}
+                                                options={nextStageMembers.map((member) => ({
+                                                    label: `${member.userName} · ${member.userEmail}`,
+                                                    value: member.userId,
+                                                }))}
+                                            />
+                                        </Form.Item>
+                                    ) : null}
+                                    <Form.Item
+                                        label="下一阶段截止时间"
+                                        name="nextStageDueDate"
+                                        rules={[
+                                            { required: true, message: '请选择下一阶段截止时间' },
+                                            { validator: validateDueDate },
+                                        ]}
+                                    >
+                                        <DatePicker
+                                            className="full-width-control"
+                                            disabledDate={getDisabledDueDate}
+                                            placeholder="请选择截止时间"
+                                        />
+                                    </Form.Item>
+                                    <Form.Item label="备注" name="remark">
+                                        <Input.TextArea
+                                            placeholder="可选填写阶段备注，如上一阶段已完成"
+                                            rows={3}
+                                        />
+                                    </Form.Item>
+                                    <Button
+                                        type="primary"
+                                        htmlType="submit"
+                                        loading={submitting}
+                                        disabled={!canCompleteCurrentStage}
+                                    >
+                                        提交到下一阶段
+                                    </Button>
+                                </Form>
+                            </>
+                        )}
+                    </Space>
+                </Card>
             </Space>
+            <Modal
+                title="编辑当前责任人"
+                open={currentAssigneeModalOpen}
+                onCancel={handleCloseCurrentAssigneeModal}
+                onOk={() => void currentAssigneeForm.submit()}
+                confirmLoading={currentAssigneeSubmitting}
+                destroyOnClose
+            >
+                <Form
+                    form={currentAssigneeForm}
+                    layout="vertical"
+                    onFinish={(values) => void handleSubmitCurrentAssignee(values)}
+                >
+                    <Form.Item
+                        label="当前责任人"
+                        name="userId"
+                        rules={[{ required: true, message: '请选择当前责任人' }]}
+                    >
+                        <Select
+                            placeholder="请选择当前责任人"
+                            loading={currentAssigneeLoading}
+                            options={currentAssigneeMembers.map((member) => ({
+                                label: `${member.userName} · ${member.userEmail}`,
+                                value: member.userId,
+                            }))}
+                        />
+                    </Form.Item>
+                    <Form.Item
+                        label="截止日期"
+                        name="dueDate"
+                        rules={[
+                            { required: true, message: '请选择截止日期' },
+                            { validator: validateDueDate },
+                        ]}
+                    >
+                        <DatePicker
+                            className="full-width-control"
+                            disabledDate={getDisabledDueDate}
+                            placeholder="请选择截止日期"
+                        />
+                    </Form.Item>
+                </Form>
+            </Modal>
         </Card>
     )
 }
@@ -360,11 +928,15 @@ export function TaskDetailPanel({
     fieldConfigs,
     role,
     roleLabelsByCode,
+    onStageCompleted,
+    taskOwnerId,
 }: {
     detail: TaskDetailRecord
     fieldConfigs: FieldConfig[]
     role: UserRole
     roleLabelsByCode: Record<string, string>
+    onStageCompleted: () => Promise<void>
+    taskOwnerId?: string
 }) {
     const summaryRows = useMemo(
         () => buildSummaryRows(detail, fieldConfigs),
@@ -392,6 +964,8 @@ export function TaskDetailPanel({
                     detail={detail}
                     role={role}
                     roleLabelsByCode={roleLabelsByCode}
+                    onStageCompleted={onStageCompleted}
+                    taskOwnerId={taskOwnerId}
                 />
             ) : null}
 
@@ -399,11 +973,7 @@ export function TaskDetailPanel({
                 {detail.workflowStages.length === 0 ? (
                     <Empty description="暂无流程节点" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 ) : (
-                    <Space direction="vertical" size={12} className="panel-stack-full">
-                        {detail.workflowStages.map((stage) =>
-                            renderWorkflowStage(stage, roleLabelsByCode),
-                        )}
-                    </Space>
+                    renderWorkflowSteps(detail.workflowStages, roleLabelsByCode)
                 )}
             </Card>
         </Space>

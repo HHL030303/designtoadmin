@@ -6,6 +6,7 @@ import { DashboardPage } from '../pages/DashboardPage'
 import { DesignersPage } from '../pages/DesignersPage'
 import { DispatchPage } from '../pages/DispatchPage'
 import { LoginPage } from '../pages/LoginPage'
+import { MyTasksPage } from '../pages/MyTasksPage'
 import { ProjectManagementPage } from '../pages/ProjectManagementPage'
 import { ProjectMembersPage } from '../pages/ProjectMembersPage'
 import { ProjectSelectPage } from '../pages/ProjectSelectPage'
@@ -40,6 +41,10 @@ export const privateRoutes: AppRouteConfig[] = [
   {
     path: '/research',
     element: <ResearchWorkbenchPage />,
+  },
+  {
+    path: '/my-tasks',
+    element: <MyTasksPage />,
   },
   {
     path: '/courses',

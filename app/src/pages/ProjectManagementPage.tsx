@@ -88,8 +88,10 @@ function createWorkflowStage(index: number): WorkflowStageConfig {
   const localId = `workflow-node-${workflowStageSeed}`
 
   return {
+    allowPageAssignment: false,
     canAssign: index > 0,
     canSkip: false,
+    collectTotalPageCount: true,
     configJson: {},
     defaultDueDays: 3,
     isMerged: false,
@@ -97,7 +99,6 @@ function createWorkflowStage(index: number): WorkflowStageConfig {
     nextStageIds: [],
     fileRules: [],
     operatorRoleCode: undefined,
-    ownerRoleCode: undefined,
     requiresFileUpload: true,
     requiresValidation: false,
     sortValue: (index + 1) * 10,
@@ -150,6 +151,7 @@ function renderWorkflowStageCard(
       <div className="workflow-stage-node__flags">
         {stage.canAssign ? <Tag color="blue">可派单</Tag> : null}
         {stage.canSkip ? <Tag color="orange">可跳过</Tag> : null}
+        {stage.allowPageAssignment ? <Tag color="geekblue">分配页数</Tag> : null}
         {stage.requiresFileUpload ? <Tag color="purple">需上传</Tag> : null}
         {stage.requiresValidation ? <Tag color="cyan">需校验</Tag> : null}
         {stage.triggersPackage ? <Tag color="green">需打包</Tag> : null}
@@ -1675,6 +1677,17 @@ export function ProjectManagementPage() {
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             canSkip: checked,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="workflow-stage-switch">
+                      <span>是否分配页数</span>
+                      <Switch
+                        checked={selectedWorkflowStage.allowPageAssignment}
+                        onChange={(checked) =>
+                          handleWorkflowStageChange(selectedWorkflowStage.localId, {
+                            allowPageAssignment: checked,
                           })
                         }
                       />

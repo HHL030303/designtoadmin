@@ -10,25 +10,28 @@ export const roleOptions: RoleOption[] = [
   { key: 'admin', label: '管理员', description: '拥有全部菜单与操作权限' },
 ]
 
+const allViewAccess: ViewKey[] = [
+  'dashboard',
+  'myTasks',
+  'allTickets',
+  'research',
+  'courses',
+  'dispatch',
+  'designers',
+  'service',
+  'projectManagement',
+  'settingsUsers',
+  'settingsProjectMembers',
+]
+
 export const roleViewAccess: Record<UserRole, ViewKey[]> = {
-  planner: ['dashboard', 'courses', 'service'],
-  researcher: ['dashboard', 'courses', 'research'],
-  coordinator: ['dashboard', 'courses', 'dispatch'],
-  styleDesigner: ['dashboard', 'courses', 'designers'],
-  pageDesigner: ['dashboard', 'courses', 'designers'],
-  sales: ['dashboard', 'courses', 'service'],
-  admin: [
-    'dashboard',
-    'allTickets',
-    'research',
-    'courses',
-    'dispatch',
-    'designers',
-    'service',
-    'projectManagement',
-    'settingsUsers',
-    'settingsProjectMembers',
-  ],
+  planner: allViewAccess,
+  researcher: allViewAccess,
+  coordinator: allViewAccess,
+  styleDesigner: allViewAccess,
+  pageDesigner: allViewAccess,
+  sales: allViewAccess,
+  admin: allViewAccess,
 }
 
 export const roleLabelMap: Record<UserRole, string> = Object.fromEntries(

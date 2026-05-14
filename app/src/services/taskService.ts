@@ -15,7 +15,19 @@ type TaskListItemResponse = {
   id: number
   title: string
   status: string
+  current_stage?: {
+    assignees?: Array<{
+      user_id: number | string
+      user_name?: string
+    }> | null
+    id: number
+    stage_name: string
+    status: string
+  } | null
   readonly: boolean
+  creator_user_id?: number | string | null
+  created_by?: number | string | null
+  owner_id?: number | string | null
   created_at: string
   archived_at: string | null
   current_version?: TaskVersionResponse | null
@@ -55,10 +67,18 @@ type TaskDetailResponse = {
     title: string
     status: string
     readonly: boolean
+    owner_id?: number | string | null
     created_at: string
     archived_at: string | null
   }
   current_version: TaskVersionResponse
+  current_stage?: TaskWorkflowStageResponse | null
+  next_stage?: {
+    id: number | string
+  } | null
+  next_state?: {
+    id: number | string
+  } | null
   field_values?: Record<string, unknown> | null
   workflow_stages?: TaskWorkflowStageResponse[] | null
   files?: AttachmentFileResponse[] | null
@@ -70,19 +90,23 @@ type AttachmentFileResponse = {
   id?: number | string
   name?: string
   filename?: string
+  original_name?: string
+  file_path?: string
   size?: number
   type?: string
+  workflow_stage_id?: number | string | null
   uploaded_at?: string
   created_at?: string
 }
 
 type TaskWorkflowStageResponse = {
   id: number
+  template_stage_id?: number | null
+  role_id?: number | null
   stage_name: string
   sort_value: number
   status: string
   owner_id?: number | null
-  owner_role_code?: string | null
   operator_role_code?: string | null
   can_assign?: boolean
   can_skip?: boolean
@@ -96,6 +120,7 @@ type TaskWorkflowStageResponse = {
   validation_status?: string | null
   remark?: string | null
   file_rules?: TaskWorkflowFileRuleResponse[] | null
+  assignees?: TaskWorkflowStageAssigneeResponse[] | null
   stage_assignees?: TaskWorkflowStageAssigneeResponse[] | null
 }
 
@@ -145,6 +170,26 @@ type UpdateTaskPayload = {
   title: string
 }
 
+type CompleteWorkflowStagePayload = {
+  remark?: string
+  next_stage_due_date: string
+  next_stage_assignees: Array<{
+    user_id: number
+    assignee_role: 'operator'
+    is_primary: boolean
+    assigned_page_count?: number
+  }>
+}
+
+type AssignWorkflowStagePayload = {
+  due_date: string
+  assignees: Array<{
+    user_id: number
+    assignee_role: 'operator'
+    is_primary: boolean
+  }>
+}
+
 function normalizeDate(value?: number | string | null): string | undefined {
   if (value === null || value === undefined || value === '') {
     return undefined
@@ -186,12 +231,23 @@ function mapSubTask(subTask: TaskSubTaskResponse): TaskSubTaskRecord {
 }
 
 function mapAttachment(file: AttachmentFileResponse): AttachmentFile {
+  const displayName = file.original_name ?? file.name ?? file.filename ?? '未命名文件'
+
   return {
-    name: file.name ?? file.filename ?? '未命名文件',
+    fileExt: displayName.includes('.')
+      ? displayName.split('.').pop()?.toLowerCase()
+      : undefined,
+    name: displayName,
     size: file.size,
+    storageKey: file.file_path,
     type: file.type,
-    uid: String(file.id ?? file.uid ?? file.name ?? Date.now()),
+    uid: String(file.id ?? file.uid ?? displayName ?? Date.now()),
     uploadedAt: file.uploaded_at ?? file.created_at,
+    url: file.file_path,
+    workflowStageId:
+      file.workflow_stage_id !== undefined && file.workflow_stage_id !== null
+        ? String(file.workflow_stage_id)
+        : undefined,
   }
 }
 
@@ -224,6 +280,8 @@ function mapStageAssignee(
 }
 
 function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRecord {
+  const stageAssignees = stage.assignees ?? stage.stage_assignees ?? []
+
   return {
     allowPageAssignment: stage.allow_page_assignment ?? false,
     canAssign: stage.can_assign ?? false,
@@ -235,14 +293,21 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
     operatorRoleCode: stage.operator_role_code ?? undefined,
     overdueStatus: stage.overdue_status ?? undefined,
     ownerId: stage.owner_id ? String(stage.owner_id) : undefined,
-    ownerRoleCode: stage.owner_role_code ?? undefined,
+    roleId:
+      stage.role_id !== undefined && stage.role_id !== null
+        ? String(stage.role_id)
+        : undefined,
     remark: stage.remark ?? null,
     requiresFileUpload: stage.requires_file_upload ?? false,
     requiresValidation: stage.requires_validation ?? false,
     sortValue: stage.sort_value,
-    stageAssignees: (stage.stage_assignees ?? []).map(mapStageAssignee),
+    stageAssignees: stageAssignees.map(mapStageAssignee),
     stageName: stage.stage_name,
     status: stage.status,
+    templateStageId:
+      stage.template_stage_id !== undefined && stage.template_stage_id !== null
+        ? String(stage.template_stage_id)
+        : undefined,
     triggersPackage: stage.triggers_package ?? false,
     validationStatus: stage.validation_status ?? undefined,
   }
@@ -252,10 +317,33 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
   return {
     activeSubTasks: (item.active_sub_tasks ?? []).map(mapSubTask),
     archivedAt: item.archived_at,
+    creatorUserId:
+      item.creator_user_id !== undefined && item.creator_user_id !== null
+        ? String(item.creator_user_id)
+        : item.created_by !== undefined && item.created_by !== null
+          ? String(item.created_by)
+          : item.owner_id !== undefined && item.owner_id !== null
+            ? String(item.owner_id)
+            : undefined,
     createdAt: item.created_at,
+    currentStage: item.current_stage
+      ? {
+          assignees: (item.current_stage.assignees ?? []).map((assignee) => ({
+            userId: String(assignee.user_id),
+            userName: assignee.user_name ?? `用户 ${assignee.user_id}`,
+          })),
+          id: String(item.current_stage.id),
+          stageName: item.current_stage.stage_name,
+          status: item.current_stage.status,
+        }
+      : null,
     currentVersion: mapVersion(item.current_version),
     fieldValues: item.field_values ?? {},
     id: String(item.id),
+    ownerId:
+      item.owner_id !== undefined && item.owner_id !== null
+        ? String(item.owner_id)
+        : undefined,
     readonly: item.readonly,
     status: item.status,
     title: item.title,
@@ -266,6 +354,7 @@ export const taskService = {
   async listTasks(query: {
     assigneeId?: string
     keyword?: string
+    mineScope?: string
     page?: number
     pageSize?: number
     status?: string
@@ -273,6 +362,7 @@ export const taskService = {
     const data = await apiRequest<TaskListResponse>('/api/tasks', {
       query: {
         keyword: query.keyword?.trim() || undefined,
+        mine_scope: query.mineScope || undefined,
         page: query.page ?? 1,
         page_size: query.pageSize ?? 100,
         assignee_id: query.assigneeId || undefined,
@@ -290,23 +380,63 @@ export const taskService = {
 
   async getTaskDetail(taskId: string): Promise<TaskDetailRecord> {
     const data = await apiRequest<TaskDetailResponse>(`/api/tasks/${taskId}`)
+    const workflowStages = (data.workflow_stages ?? [])
+      .map(mapWorkflowStage)
+      .sort((left, right) => left.sortValue - right.sortValue)
+    const rawCurrentStage = data.current_stage ? mapWorkflowStage(data.current_stage) : null
+    const currentStageTemplate = rawCurrentStage
+      ? workflowStages.find((stage) => stage.id === rawCurrentStage.id)
+      : undefined
+    const currentStage =
+      rawCurrentStage
+        ? {
+            ...rawCurrentStage,
+            allowPageAssignment:
+              currentStageTemplate?.allowPageAssignment ?? rawCurrentStage.allowPageAssignment,
+            canAssign: currentStageTemplate?.canAssign ?? rawCurrentStage.canAssign,
+            canSkip: currentStageTemplate?.canSkip ?? rawCurrentStage.canSkip,
+            collectTotalPageCount:
+              currentStageTemplate?.collectTotalPageCount ??
+              rawCurrentStage.collectTotalPageCount,
+            fileRules: currentStageTemplate?.fileRules ?? rawCurrentStage.fileRules,
+            operatorRoleCode:
+              currentStageTemplate?.operatorRoleCode ?? rawCurrentStage.operatorRoleCode,
+            requiresFileUpload:
+              currentStageTemplate?.requiresFileUpload ?? rawCurrentStage.requiresFileUpload,
+            requiresValidation:
+              currentStageTemplate?.requiresValidation ?? rawCurrentStage.requiresValidation,
+            roleId: currentStageTemplate?.roleId ?? rawCurrentStage.roleId,
+            triggersPackage:
+              currentStageTemplate?.triggersPackage ?? rawCurrentStage.triggersPackage,
+          }
+        : null
 
     return {
+      currentStage,
       currentVersion: mapVersion(data.current_version),
       fieldValues: data.field_values ?? {},
       files: (data.files ?? []).map(mapAttachment),
+      nextState:
+        (data.next_stage && data.next_stage.id !== undefined && data.next_stage.id !== null) ||
+        (data.next_state && data.next_state.id !== undefined && data.next_state.id !== null)
+          ? {
+              id: String(data.next_stage?.id ?? data.next_state?.id),
+            }
+          : null,
       subTasks: (data.sub_tasks ?? []).map(mapSubTask),
       task: {
         archivedAt: data.task.archived_at,
         createdAt: data.task.created_at,
         id: String(data.task.id),
+        ownerId:
+          data.task.owner_id !== undefined && data.task.owner_id !== null
+            ? String(data.task.owner_id)
+            : undefined,
         readonly: data.task.readonly,
         status: data.task.status,
         title: data.task.title,
       },
-      workflowStages: (data.workflow_stages ?? [])
-        .map(mapWorkflowStage)
-        .sort((left, right) => left.sortValue - right.sortValue),
+      workflowStages,
     }
   },
 
@@ -330,6 +460,27 @@ export const taskService = {
 
   async updateTask(taskId: string, payload: UpdateTaskPayload) {
     await apiRequest<unknown>(`/api/tasks/${taskId}/update`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async deleteTask(taskId: string) {
+    await apiRequest<null>(`/api/tasks/${taskId}/delete`, {
+      body: {},
+      method: 'POST',
+    })
+  },
+
+  async completeWorkflowStage(stageId: string, payload: CompleteWorkflowStagePayload) {
+    await apiRequest<null>(`/api/workflow_stages/${stageId}/complete`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async assignWorkflowStage(stageId: string, payload: AssignWorkflowStagePayload) {
+    await apiRequest<null>(`/api/workflow_stages/${stageId}/assign`, {
       body: payload,
       method: 'POST',
     })

@@ -5,8 +5,10 @@ export function createAttachment(name: string, overrides?: Partial<AttachmentFil
     uid: overrides?.uid ?? `${name}-${Math.random().toString(36).slice(2, 8)}`,
     name,
     size: overrides?.size,
+    storageKey: overrides?.storageKey,
     type: overrides?.type,
     uploadedAt: overrides?.uploadedAt ?? '2026-04-20 10:30',
+    url: overrides?.url,
   }
 }
 
@@ -30,6 +32,11 @@ export function mergeAttachments(...groups: AttachmentFile[][]): AttachmentFile[
 }
 
 export function makeDemoDownload(file: AttachmentFile) {
+  if (file.url && /^https?:\/\//i.test(file.url)) {
+    window.open(file.url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
   const blob = new Blob(
     [
       `演示附件：${file.name}\n`,

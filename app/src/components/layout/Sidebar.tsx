@@ -18,6 +18,7 @@ const iconMap = {
   dashboard: <AppstoreOutlined />,
   allTickets: <BarsOutlined />,
   research: <BookOutlined />,
+  myTasks: <BarsOutlined />,
   courses: <BarsOutlined />,
   dispatch: <DeploymentUnitOutlined />,
   designers: <TeamOutlined />,

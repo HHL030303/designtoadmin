@@ -48,7 +48,8 @@ function renderFieldControl(field: FieldConfig) {
   const commonPlaceholder = field.placeholder || `请输入${field.field_name}`
 
   if (field.field_type === 'textarea') {
-    return <Input.TextArea placeholder={commonPlaceholder} rows={4} />
+    // return <Input.TextArea placeholder={commonPlaceholder} rows={4} />
+    return <Input placeholder={commonPlaceholder}  />
   }
 
   if (field.field_type === 'select') {

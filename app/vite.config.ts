@@ -24,6 +24,14 @@ export default defineConfig({
         rewrite: (path) => `/byy/workflow_server${path}`,
         target: 'http://192.168.30.20:4001',
       },
+      '/cos': {
+        changeOrigin: true,
+        cookieDomainRewrite: {
+          '*': '',
+        },
+        rewrite: (path) => `/byy/workflow_server${path}`,
+        target: 'http://192.168.30.20:4001',
+      },
       // '/': {
       //   changeOrigin: true,
       //   // rewrite: (path) => `/byy/workflow_server${path}`,

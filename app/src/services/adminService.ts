@@ -29,6 +29,13 @@ type ListProjectMembersOptions = {
   roleId?: string
 }
 
+type ListProjectRoleUsersOptions = {
+  page?: number
+  pageSize?: number
+  projectId: string
+  roleCode: string
+}
+
 type UserListItem = {
   id: number
   name: string
@@ -92,10 +99,11 @@ type WorkflowStageItem = {
   stage_name: string
   sort_value: number
   default_due_days?: number | null
-  owner_role_code?: string | null
   operator_role_code?: string | null
   can_assign?: boolean
   can_skip?: boolean
+  collect_total_page_count?: boolean
+  allow_page_assignment?: boolean
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
@@ -164,8 +172,10 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
       : `workflow-stage-${stage.id}`
 
   return {
+    allowPageAssignment: stage.allow_page_assignment ?? false,
     canAssign: stage.can_assign ?? false,
     canSkip: stage.can_skip ?? false,
+    collectTotalPageCount: stage.collect_total_page_count ?? true,
     configJson,
     defaultDueDays: stage.default_due_days ?? undefined,
     id: String(stage.id),
@@ -173,7 +183,6 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
     localId,
     nextStageIds,
     operatorRoleCode: stage.operator_role_code ?? undefined,
-    ownerRoleCode: stage.owner_role_code ?? undefined,
     fileRules: (stage.file_rules ?? []).map((rule) => ({
       fileCategory: rule.file_category,
       filenamePattern: rule.filename_pattern,
@@ -194,8 +203,10 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
 function buildWorkflowStagePayload(stage: WorkflowStageConfig) {
   return {
     id: stage.id,
+    allow_page_assignment: stage.allowPageAssignment,
     can_assign: stage.canAssign,
     can_skip: stage.canSkip,
+    collect_total_page_count: stage.collectTotalPageCount,
     config_json: {
       ...(stage.configJson ?? {}),
       isMerged: stage.isMerged,
@@ -446,6 +457,37 @@ export const adminService = {
       })),
       page: data.page ?? options.page ?? 1,
       pageSize: data.page_size ?? options.pageSize ?? 10,
+      total: data.total ?? data.items.length,
+    }
+  },
+
+  async listProjectRoleUsers(options: ListProjectRoleUsersOptions) {
+    const data = await apiRequest<PaginatedResponse<UserListItem>>('/api/project_role_users', {
+      projectHeaderId: options.projectId,
+      query: {
+        page: options.page ?? 1,
+        page_size: options.pageSize ?? 100,
+        role_code: options.roleCode,
+      },
+    })
+
+    return {
+      items: data.items.map<ProjectMemberRecord>((user) => ({
+        id: String(user.id),
+        memberIdByRoleId: {},
+        memberIds: [],
+        projectId: options.projectId,
+        projectName: '',
+        roleCodes: [options.roleCode],
+        roleIds: [],
+        roleNames: [],
+        userEmail: user.email,
+        userId: String(user.id),
+        userName: user.name,
+        userStatus: mapAccountStatus(user.status),
+      })),
+      page: data.page ?? options.page ?? 1,
+      pageSize: data.page_size ?? options.pageSize ?? 100,
       total: data.total ?? data.items.length,
     }
   },

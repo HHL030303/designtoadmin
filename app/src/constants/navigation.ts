@@ -4,6 +4,7 @@ export const navItems: NavItem[] = [
   { key: 'dashboard', viewKey: 'dashboard', label: '总览看板', hint: '指标与风险', path: '/dashboard' },
   { key: 'allTickets', viewKey: 'allTickets', label: '全部工单', hint: '管理员全量查看', path: '/tickets' },
   { key: 'research', viewKey: 'research', label: '教研任务台', hint: '我的教研任务', path: '/research' },
+  { key: 'myTasks', viewKey: 'myTasks', label: '我的任务', hint: '当前账号任务', path: '/my-tasks' },
   { key: 'courses', viewKey: 'courses', label: '任务工单', hint: '主流程推进', path: '/courses' },
   { key: 'dispatch', viewKey: 'dispatch', label: '派单中心', hint: '设计统筹视角', path: '/dispatch' },
   { key: 'designers', viewKey: 'designers', label: '设计师任务台', hint: '上传与交付', path: '/designers' },
