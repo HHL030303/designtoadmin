@@ -785,7 +785,7 @@ function RoleTaskCard({
                             filesByRuleId={filesByRuleId}
                             onFileUploaded={handleFileUploaded}
                             onFileDeleted={handleFileDeleted}
-                            taskId={detail.task.id}
+                            taskId={detail.currentVersion.id ? String(detail.currentVersion.id) : undefined}
                             onFilesChange={(ruleId, files) =>
                                 setFilesByRuleId((current) => ({
                                     ...current,

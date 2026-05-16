@@ -9,7 +9,6 @@ import {
   InputNumber,
   Modal,
   Select,
-  Space,
   Spin,
   Tag,
   Typography,
@@ -19,6 +18,7 @@ import { DownloadOutlined, EditOutlined, FileTextOutlined } from '@ant-design/ic
 import { useAppState } from '../../context/AppStateContext'
 import { adminService } from '../../services/adminService'
 import { taskService } from '../../services/taskService'
+import { TaskProcessModal } from './TaskProcessModal'
 import type { ProjectMemberRecord, TaskDetailRecord } from '../../types'
 import { makeDemoDownload } from '../../utils/attachments'
 import './TaskHistoryDetailPanel.css'
@@ -88,9 +88,11 @@ export function TaskHistoryDetailPanel({
   loading?: boolean
   onUpdated?: () => Promise<void>
 }) {
-  const { currentProject } = useAppState()
+  const { currentProject, currentUser, role } = useAppState()
   const [currentAssigneeForm] = Form.useForm<CurrentAssigneeFormValues>()
   const [modalOpen, setModalOpen] = useState(false)
+  const [stageEditOpen, setStageEditOpen] = useState(false)
+  const [editingStageId, setEditingStageId] = useState<string | null>(null)
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [candidateMembers, setCandidateMembers] = useState<ProjectMemberRecord[]>([])
@@ -115,10 +117,35 @@ export function TaskHistoryDetailPanel({
     (stage) => stage.status === 'completed' || stage.status === 'archived',
   ).length
   const currentWorkflowStage = resolveCurrentWorkflowStage(detail)
+  const currentWorkflowStageIndex = detail.workflowStages.findIndex(
+    (stage) => stage.id === currentWorkflowStage?.id,
+  )
   const currentRoleCode = currentWorkflowStage?.operatorRoleCode ?? ''
   const currentPrimaryAssignee = currentWorkflowStage?.stageAssignees.find((assignee) => assignee.isPrimary)
     ?? currentWorkflowStage?.stageAssignees[0]
-  const canEditCurrentAssignee = Boolean(currentProject?.id && currentWorkflowStage?.id && currentRoleCode)
+  // 只有当前 current_stage 的执行人就是当前登录账号时，才允许显示编辑入口。
+  const currentStageBelongsToUser = Boolean(
+    currentWorkflowStage &&
+      currentUser?.id &&
+      currentWorkflowStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
+  )
+  const canEditCurrentAssignee = Boolean(
+    currentProject?.id &&
+      currentWorkflowStage?.id &&
+      currentRoleCode &&
+      currentStageBelongsToUser,
+  )
+  const canEditCompletedStage = role === 'admin' || role === 'planner'
+
+  function handleOpenStageEdit(stageId: string) {
+    setEditingStageId(stageId)
+    setStageEditOpen(true)
+  }
+
+  function handleCloseStageEdit() {
+    setStageEditOpen(false)
+    setEditingStageId(null)
+  }
 
   async function handleOpenModal() {
     if (!currentProject?.id || !currentWorkflowStage?.id || !currentRoleCode) {
@@ -184,11 +211,9 @@ export function TaskHistoryDetailPanel({
   return (
     <div className="table-expanded-panel">
       <Card className="task-history-panel">
-        <div className="task-history-panel__head">
-          <Tag bordered={false} color="processing">
-            {detail.files.length} 个文件
-          </Tag>
-        </div>
+        <Tag bordered={false} color="processing" className="task-history-panel__count-tag">
+          {detail.files.length} 个文件
+        </Tag>
         <Descriptions column={4} size="small" className="panel-descriptions">
           <Descriptions.Item label="任务标题">{detail.task.title}</Descriptions.Item>
           <Descriptions.Item label="当前版本">{detail.currentVersion.versionNo}</Descriptions.Item>
@@ -196,18 +221,19 @@ export function TaskHistoryDetailPanel({
             {detail.currentStage?.stageName ?? '暂无'}
           </Descriptions.Item>
           <Descriptions.Item label="当前责任人">
-            <Space size={6}>
-              <Typography.Text className="task-history-panel__owner-text">
+            <span className="task-history-panel__owner">
+              <span className="task-history-panel__owner-text">
                 {currentPrimaryAssignee?.userName ?? '未指派'}
-              </Typography.Text>
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => void handleOpenModal()}
-                disabled={!canEditCurrentAssignee}
-              />
-            </Space>
+              </span>
+              {canEditCurrentAssignee ? (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => void handleOpenModal()}
+                />
+              ) : null}
+            </span>
           </Descriptions.Item>
           <Descriptions.Item label="历史文件数">{detail.files.length}</Descriptions.Item>
           <Descriptions.Item label="当前截止日期">
@@ -215,90 +241,127 @@ export function TaskHistoryDetailPanel({
           </Descriptions.Item>
           <Descriptions.Item label="已完成节点数">{completedStageCount}</Descriptions.Item>
           <Descriptions.Item label="流程节点总数">{detail.workflowStages.length}</Descriptions.Item>
+          <Descriptions.Item label="打包文件">
+            {detail.packageInfo?.outputFile?.name ? (
+              <Button
+                type="link"
+                size="small"
+                className="task-history-panel__package-link"
+                onClick={() => makeDemoDownload(detail.packageInfo!.outputFile!)}
+              >
+                {detail.packageInfo.outputFile.name}
+              </Button>
+            ) : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="打包完成时间">
+            {detail.packageInfo?.completedAt ?? '-'}
+          </Descriptions.Item>
+          {detail.packageInfo?.errorMessage ? (
+            <Descriptions.Item label="打包失败原因" span={2}>
+              <span className="task-history-panel__package-error">
+                {detail.packageInfo.errorMessage}
+              </span>
+            </Descriptions.Item>
+          ) : null}
         </Descriptions>
-        <div className="task-history-panel__workflow">
-          <div
-            className="task-history-panel__workflow-grid"
-            style={{
-              gridTemplateColumns: `repeat(${Math.max(detail.workflowStages.length, 1)}, minmax(0, 1fr))`,
-            }}
-          >
-            {detail.workflowStages.map((stage, index) => {
-              const isActive = stage.id === currentWorkflowStage?.id
-              const overdue = isStageOverdue(stage.dueDate)
+        <div
+          className="task-history-panel__workflow-grid"
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(detail.workflowStages.length, 1)}, minmax(0, 1fr))`,
+          }}
+        >
+          {detail.workflowStages.map((stage, index) => {
+            const isActive = stage.id === currentWorkflowStage?.id
+            const overdue = isStageOverdue(stage.dueDate)
+            const canEditThisStage = Boolean(
+              canEditCompletedStage &&
+                detail.task.status !== 'completed' &&
+                currentWorkflowStageIndex > 0 &&
+                index < currentWorkflowStageIndex &&
+                (stage.status === 'completed' || stage.status === 'archived'),
+            )
 
-              return (
-                <div
-                  key={stage.id}
-                  className={[
-                    'task-history-panel__workflow-item',
-                    isActive ? 'task-history-panel__workflow-item--active' : '',
-                  ].join(' ').trim()}
-                >
-                  {overdue ? (
-                    <Tag bordered={false} className="task-history-panel__workflow-overdue-tag">
-                      逾期
-                    </Tag>
+            return (
+              <div
+                key={stage.id}
+                className={[
+                  'task-history-panel__workflow-item',
+                  isActive ? 'task-history-panel__workflow-item--active' : '',
+                ].join(' ').trim()}
+              >
+                {overdue ? (
+                  <Tag bordered={false} className="task-history-panel__workflow-overdue-tag">
+                    逾期
+                  </Tag>
+                ) : null}
+                <div className="task-history-panel__workflow-topbar" />
+                <div className="task-history-panel__workflow-headline">
+                  <span className="task-history-panel__workflow-index">{index + 1}</span>
+                  <span className="task-history-panel__workflow-title">{stage.stageName}</span>
+                  {canEditThisStage ? (
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<EditOutlined />}
+                      className="task-history-panel__workflow-edit-button"
+                      onClick={() => handleOpenStageEdit(stage.id)}
+                    />
                   ) : null}
-                  <div className="task-history-panel__workflow-topbar" />
-                  <div className="task-history-panel__workflow-headline">
-                    <span className="task-history-panel__workflow-index">{index + 1}</span>
-                    <Typography.Text strong>{stage.stageName}</Typography.Text>
-                  </div>
-                  <Space
-                    direction="vertical"
-                    size={6}
-                    className="task-history-panel__workflow-meta"
-                  >
-                    <Typography.Text type="secondary">
-                      负责人：{buildAssigneeText(stage)}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      截止时间：{stage.dueDate || '未配置'}
-                    </Typography.Text>
-                    <Tag color={getStatusColor(stage.status)} bordered={false}>
-                      {isActive ? '当前进行中' : getStatusLabel(stage.status)}
-                    </Tag>
-                  </Space>
                 </div>
-              )
-            })}
+                <div className="task-history-panel__workflow-meta">
+                  <Typography.Text type="secondary">
+                    负责人：{buildAssigneeText(stage)}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    截止时间：{stage.dueDate || '未配置'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    当前阶段预期天数：{stage.dueDays || '未配置'}
+                  </Typography.Text>
+                  <Tag color={getStatusColor(stage.status)} bordered={false}>
+                    {isActive ? '当前进行中' : getStatusLabel(stage.status)}
+                  </Tag>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {detail.files.length === 0 ? (
+          <Empty
+            className="task-history-panel__empty"
+            description="暂无历史文件"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : (
+          <div className="task-history-panel__file-list">
+            {detail.files.map((file) => (
+              <div key={file.uid} className="task-history-panel__file-item">
+                <div className="task-history-panel__file-main">
+                  <span className="task-history-panel__file-icon">
+                    <FileTextOutlined />
+                  </span>
+                  <div className="task-history-panel__file-copy">
+                    <Typography.Text strong ellipsis={{ tooltip: file.name }}>
+                      {file.name}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      {file.uploadedAt || '历史上传时间未记录'}
+                    </Typography.Text>
+                  </div>
+                </div>
+                <Button
+                  type="default"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  className="task-history-panel__download"
+                  onClick={() => makeDemoDownload(file)}
+                >
+                  下载
+                </Button>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="task-history-panel__files">
-          {detail.files.length === 0 ? (
-            <Empty description="暂无历史文件" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          ) : (
-            <Space direction="vertical" size={12} className="task-history-panel__file-list">
-              {detail.files.map((file) => (
-                <div key={file.uid} className="task-history-panel__file-item">
-                  <div className="task-history-panel__file-main">
-                    <span className="task-history-panel__file-icon">
-                      <FileTextOutlined />
-                    </span>
-                    <div className="task-history-panel__file-copy">
-                      <Typography.Text strong ellipsis={{ tooltip: file.name }}>
-                        {file.name}
-                      </Typography.Text>
-                      <Typography.Text type="secondary">
-                        {file.uploadedAt || '历史上传时间未记录'}
-                      </Typography.Text>
-                    </div>
-                  </div>
-                  <Button
-                    type="default"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    className="task-history-panel__download"
-                    onClick={() => makeDemoDownload(file)}
-                  >
-                    下载
-                  </Button>
-                </div>
-              ))}
-            </Space>
-          )}
-        </div>
+        )}
       </Card>
       <Modal
         title="编辑当前责任人"
@@ -341,6 +404,13 @@ export function TaskHistoryDetailPanel({
           </Form.Item>
         </Form>
       </Modal>
+      <TaskProcessModal
+        open={stageEditOpen}
+        onClose={handleCloseStageEdit}
+        onProcessed={onUpdated}
+        taskId={detail.task.id}
+        targetStageId={editingStageId}
+      />
     </div>
   )
 }

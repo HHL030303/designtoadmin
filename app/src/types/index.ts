@@ -87,6 +87,12 @@ export interface TaskSubTaskRecord {
   targetVersion?: string | null
 }
 
+export interface TaskPackageInfoRecord {
+  errorMessage?: string | null
+  completedAt?:string
+  outputFile?: AttachmentFile | null
+}
+
 export interface TaskListRecord {
   id: string
   title: string
@@ -108,6 +114,7 @@ export interface TaskListRecord {
   currentVersion: TaskVersionRecord
   activeSubTasks: TaskSubTaskRecord[]
   fieldValues: Record<string, unknown>
+  packageInfo?: TaskPackageInfoRecord | null
 }
 
 export interface TaskWorkflowStageAssigneeRecord {
@@ -130,6 +137,7 @@ export interface TaskWorkflowFileRuleRecord {
   requiredCount: number
   required: boolean
   enabled: boolean
+  
 }
 
 export interface TaskWorkflowStageRecord {
@@ -170,6 +178,7 @@ export interface TaskDetailRecord {
   fieldValues: Record<string, unknown>
   workflowStages: TaskWorkflowStageRecord[]
   files: AttachmentFile[]
+  packageInfo?: TaskPackageInfoRecord | null
   subTasks: TaskSubTaskRecord[]
 }
 
@@ -225,6 +234,11 @@ export interface CreateServiceTicketPayload {
   responsibility: ServiceResponsibility
   description: string
   skipStages?: SkipStageOption[]
+  linkedTaskId?: string
+  workflowTemplateId?: string
+  assigneeUserIds?: string[]
+  ownerUserId?: string
+  firstStageAssigneeUserId?: string
 }
 
 export interface CreateTicketResult {
@@ -483,7 +497,7 @@ export interface WorkflowStageConfig {
   sortValue: number
   defaultDueDays?: number
   operatorRoleCode?: string
-  operatorRoleName?:string
+  operatorRoleName?: string
   canAssign: boolean
   canSkip: boolean
   collectTotalPageCount: boolean

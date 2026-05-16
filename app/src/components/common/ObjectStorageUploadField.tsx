@@ -242,11 +242,10 @@ export function ObjectStorageUploadField({
                 <p className="ant-upload-hint">文件将直接上传到对象存储桶。</p>
             </Upload.Dragger>
             <Upload {...uploadProps}>
-                <Button icon={<UploadOutlined />} disabled={disabled}>
+                {/* <Button icon={<UploadOutlined />} disabled={disabled}>
                     继续选择文件
-                </Button>
+                </Button> */}
             </Upload>
-            {helperText ? <Typography.Text className="card-helper-text">{helperText}</Typography.Text> : null}
             {visibleFileList.length > 0 ? (
                 <Space direction="vertical" size={8} className="object-storage-upload-list">
                     {visibleFileList.map((file) => {

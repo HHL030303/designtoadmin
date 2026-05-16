@@ -8,6 +8,9 @@
 - Do not hardcode unnecessary magic numbers
 - Run build after changes
 - No Allow inline-style
+- Keep page files slim: page-specific `type` / `interface` definitions must live in dedicated type files under `src/types` or nearby domain type modules, not inline in page components
+- Every code change must include concise comments for non-obvious logic, data normalization, side effects, and business-rule branching
+- 所有新增注释必须使用中文，禁止新增英文注释
 
 # 业务上下文
 

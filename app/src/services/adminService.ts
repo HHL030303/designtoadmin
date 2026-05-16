@@ -100,6 +100,7 @@ type WorkflowStageItem = {
   sort_value: number
   default_due_days?: number | null
   operator_role_code?: string | null
+  operator_role_name?: string | null
   can_assign?: boolean
   can_skip?: boolean
   collect_total_page_count?: boolean
@@ -183,6 +184,7 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
     localId,
     nextStageIds,
     operatorRoleCode: stage.operator_role_code ?? undefined,
+    operatorRoleName: stage.operator_role_name ?? undefined,
     fileRules: (stage.file_rules ?? []).map((rule) => ({
       fileCategory: rule.file_category,
       filenamePattern: rule.filename_pattern,

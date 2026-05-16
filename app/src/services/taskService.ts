@@ -33,6 +33,21 @@ type TaskListItemResponse = {
   current_version?: TaskVersionResponse | null
   active_sub_tasks?: TaskSubTaskResponse[] | null
   field_values?: Record<string, unknown> | null
+  package_info?: {
+    error_message?: string | null
+    output_file?: {
+      id?: number | string
+      name?: string | null
+      filename?: string | null
+      original_name?: string | null
+      file_path?: string | null
+      size?: number | null
+      type?: string | null
+      uploaded_at?: string | null
+      created_at?: string | null
+      file_url?: string | null
+    } | null
+  } | null
 }
 
 type TaskVersionResponse = {
@@ -82,6 +97,22 @@ type TaskDetailResponse = {
   field_values?: Record<string, unknown> | null
   workflow_stages?: TaskWorkflowStageResponse[] | null
   files?: AttachmentFileResponse[] | null
+  package_info?: {
+    error_message?: string | null
+    completed_at?:string
+    output_file?: {
+      id?: number | string
+      name?: string | null
+      filename?: string | null
+      original_name?: string | null
+      file_path?: string | null
+      size?: number | null
+      type?: string | null
+      uploaded_at?: string | null
+      created_at?: string | null
+      file_url?: string | null
+    } | null
+  } | null
   sub_tasks?: TaskSubTaskResponse[] | null
 }
 
@@ -97,6 +128,7 @@ type AttachmentFileResponse = {
   workflow_stage_id?: number | string | null
   uploaded_at?: string
   created_at?: string
+  file_url?:string
 }
 
 type TaskWorkflowStageResponse = {
@@ -174,6 +206,7 @@ type UpdateTaskPayload = {
 type CompleteWorkflowStagePayload = {
   remark?: string
   due_days?: number
+  total_page_count?:number
   next_stage_assignees: Array<{
     user_id: number
     assignee_role: 'operator'
@@ -190,6 +223,42 @@ type AssignWorkflowStagePayload = {
     is_primary: boolean
   }>
 }
+
+type CreateServiceTaskPayload = {
+  description: string
+  owner_id?: number
+  stage_assignments?: Array<{
+    template_stage_id: number
+    due_days?: number
+    assignees: Array<{
+      user_id: number
+      assignee_role: 'operator'
+      is_primary: boolean
+      assigned_page_count: number
+    }>
+  }>
+  workflow_template_id: number
+}
+
+type CreateAfterSalesTaskPayload = CreateServiceTaskPayload & {
+  responsible_user_ids?: number[]
+}
+
+type TaskParticipantResponse =
+  | Array<{
+      id?: number | string
+      user_id?: number | string
+      name?: string
+      user_name?: string
+    }>
+  | {
+      items?: Array<{
+        id?: number | string
+        user_id?: number | string
+        name?: string
+        user_name?: string
+      }>
+    }
 
 function normalizeDate(value?: number | string | null): string | undefined {
   if (value === null || value === undefined || value === '') {
@@ -248,7 +317,7 @@ function mapAttachment(file: AttachmentFileResponse): AttachmentFile {
     type: file.type,
     uid: String(file.id ?? file.uid ?? displayName ?? Date.now()),
     uploadedAt: file.uploaded_at ?? file.created_at,
-    url: file.file_path,
+    url:file.file_url|| file.file_path,
     workflowStageId:
       file.workflow_stage_id !== undefined && file.workflow_stage_id !== null
         ? String(file.workflow_stage_id)
@@ -346,6 +415,25 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
     currentVersion: mapVersion(item.current_version),
     fieldValues: item.field_values ?? {},
     id: String(item.id),
+    packageInfo: item.package_info
+      ? {
+          errorMessage: item.package_info.error_message ?? null,
+          outputFile: item.package_info.output_file
+            ? mapAttachment({
+                id: item.package_info.output_file.id,
+                name: item.package_info.output_file.name ?? undefined,
+                filename: item.package_info.output_file.filename ?? undefined,
+                original_name: item.package_info.output_file.original_name ?? undefined,
+                file_path: item.package_info.output_file.file_path ?? undefined,
+                size: item.package_info.output_file.size ?? undefined,
+                type: item.package_info.output_file.type ?? undefined,
+                uploaded_at: item.package_info.output_file.uploaded_at ?? undefined,
+                created_at: item.package_info.output_file.created_at ?? undefined,
+                file_url: item.package_info.output_file.file_url ?? undefined,
+              })
+            : null,
+        }
+      : null,
     ownerId:
       item.owner_id !== undefined && item.owner_id !== null
         ? String(item.owner_id)
@@ -422,6 +510,26 @@ export const taskService = {
       currentVersion: mapVersion(data.current_version),
       fieldValues: data.field_values ?? {},
       files: (data.files ?? []).map(mapAttachment),
+      packageInfo: data.package_info
+        ? {
+            errorMessage: data.package_info.error_message ?? null,
+            completedAt:data.package_info.completed_at,
+            outputFile: data.package_info.output_file
+              ? mapAttachment({
+                  id: data.package_info.output_file.id,
+                  name: data.package_info.output_file.name ?? undefined,
+                  filename: data.package_info.output_file.filename ?? undefined,
+                  original_name: data.package_info.output_file.original_name ?? undefined,
+                  file_path: data.package_info.output_file.file_path ?? undefined,
+                  size: data.package_info.output_file.size ?? undefined,
+                  type: data.package_info.output_file.type ?? undefined,
+                  uploaded_at: data.package_info.output_file.uploaded_at ?? undefined,
+                  created_at: data.package_info.output_file.created_at ?? undefined,
+                  file_url: data.package_info.output_file.file_url ?? undefined,
+                })
+              : null,
+          }
+        : null,
       nextState:
         (data.next_stage && data.next_stage.id !== undefined && data.next_stage.id !== null) ||
         (data.next_state && data.next_state.id !== undefined && data.next_state.id !== null)
@@ -490,5 +598,34 @@ export const taskService = {
       body: payload,
       method: 'POST',
     })
+  },
+
+  async createAfterSalesTask(taskId: string, payload: CreateAfterSalesTaskPayload) {
+    await apiRequest<null>(`/api/tasks/${taskId}/after_sales`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async createIterationTask(taskId: string, payload: CreateServiceTaskPayload) {
+    await apiRequest<null>(`/api/tasks/${taskId}/iterations`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async listTaskParticipants(taskId: string) {
+    const data = await apiRequest<TaskParticipantResponse>(`/api/tasks/${taskId}/participants`)
+    const items = Array.isArray(data) ? data : (data.items ?? [])
+
+    return items.map((item) => ({
+      id:
+        item.user_id !== undefined && item.user_id !== null
+          ? String(item.user_id)
+          : item.id !== undefined && item.id !== null
+            ? String(item.id)
+            : '',
+      name: item.user_name ?? item.name ?? '',
+    })).filter((item) => item.id && item.name)
   },
 }

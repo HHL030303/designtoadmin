@@ -1,19 +1,19 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
-  Card,
+  Checkbox,
   Col,
   DatePicker,
+  Dropdown,
   Drawer,
   Empty,
   Form,
   Input,
   InputNumber,
-  Popconfirm,
+  Modal,
   Radio,
   Row,
   Select,
-  Space,
   Table,
   Tabs,
   Tag,
@@ -24,25 +24,30 @@ import type { ColumnsType } from 'antd/es/table'
 import type { TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
-import { RightOutlined } from '@ant-design/icons'
+import paginationZhCN from '@rc-component/pagination/es/locale/zh_CN'
 import {
-  courseFormOptions,
-  createCourseFormInitialValues,
-} from '../constants/courseForm'
+  CalendarOutlined,
+  FilterOutlined,
+  RightOutlined,
+  SearchOutlined,
+} from '@ant-design/icons'
 import { useAppState } from '../context/AppStateContext'
 import { adminService } from '../services/adminService'
 import { taskService } from '../services/taskService'
+import { makeDemoDownload } from '../utils/attachments'
 import {
-  downloadCourseImportTemplate,
   parseCourseImportFile,
 } from '../utils/courseImport'
 import { TaskProcessModal } from '../components/course/TaskProcessModal'
 import { TaskHistoryDetailPanel } from '../components/course/TaskHistoryDetailPanel'
+import { ServiceTicketDrawer } from '../components/course/ServiceTicketDrawer'
 import './CoursesPage.css'
 import type {
   CreateCoursePayload,
   FieldConfig,
   FieldOptionConfig,
+  FormFieldType,
+  ServiceType,
   ProjectMemberRecord,
   TaskDetailRecord,
   TaskListRecord,
@@ -55,6 +60,7 @@ type TaskFormValues = Record<string, TaskFormValue>
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
   archived: { color: 'green', label: '已归档' },
+  completed: { color: 'green', label: '已完成' },
   in_progress: { color: 'processing', label: '进行中' },
   page_in_progress: { color: 'cyan', label: '内页制作中' },
   pending: { color: 'default', label: '待开始' },
@@ -62,226 +68,21 @@ const taskStatusMeta: Record<string, { color: string; label: string }> = {
 
 const DEFAULT_TASK_STATUS_META = { color: 'default', label: '未知状态' }
 const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
+const mandatoryTaskColumnKeys = ['task']
+
+type TaskColumnDefinition = {
+  column: ColumnsType<TaskListRecord>[number]
+  defaultVisible?: boolean
+  key: string
+  required?: boolean
+  title: string
+}
 
 function getTaskStatusMeta(status: string) {
   return taskStatusMeta[status] ?? {
     ...DEFAULT_TASK_STATUS_META,
     label: status || DEFAULT_TASK_STATUS_META.label,
   }
-}
-
-function buildSelectOptions(values: readonly string[]): FieldOptionConfig[] {
-  return values.map((value, index) => ({
-    label: value,
-    sort_value: (index + 1) * 10,
-    status: 'enabled',
-    value,
-  }))
-}
-
-function buildFallbackFieldConfigs(): FieldConfig[] {
-  return [
-    {
-      default_value: createCourseFormInitialValues.series,
-      field_key: 'series',
-      field_name: '品牌',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.series),
-      required: true,
-      searchable: true,
-      sort_value: 10,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.subject,
-      field_key: 'subject',
-      field_name: '学科',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.subject),
-      required: true,
-      searchable: true,
-      sort_value: 20,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.educationStage,
-      field_key: 'educationStage',
-      field_name: '学段',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.educationStage),
-      required: true,
-      searchable: true,
-      sort_value: 30,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.grade,
-      field_key: 'grade',
-      field_name: '年级',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.grade),
-      required: true,
-      searchable: true,
-      sort_value: 40,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.volume,
-      field_key: 'volume',
-      field_name: '分册',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.volume),
-      required: true,
-      searchable: true,
-      sort_value: 50,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.textbook,
-      field_key: 'textbook',
-      field_name: '教材版本',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.textbook),
-      required: true,
-      searchable: true,
-      sort_value: 60,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.researchOwner,
-      field_key: 'researchOwner',
-      field_name: '制作老师',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.researchOwner),
-      required: true,
-      searchable: true,
-      sort_value: 70,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      field_key: 'chapterName',
-      field_name: '单元/章节',
-      field_type: 'text',
-      placeholder: '请输入单元或章节',
-      required: false,
-      searchable: true,
-      sort_value: 80,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      field_key: 'title',
-      field_name: '课件名称',
-      field_type: 'text',
-      placeholder: '请输入课件名称',
-      required: true,
-      searchable: true,
-      sort_value: 90,
-      span: 24,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.orderType,
-      field_key: 'orderType',
-      field_name: '订单类型',
-      field_type: 'select',
-      option_config: buildSelectOptions(courseFormOptions.orderType),
-      required: true,
-      searchable: true,
-      sort_value: 100,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.isBEnd,
-      field_key: 'isBEnd',
-      field_name: '是否B端',
-      field_type: 'boolean',
-      option_config: buildSelectOptions(courseFormOptions.isBEnd),
-      required: true,
-      searchable: true,
-      sort_value: 110,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.hasLessonPlan,
-      field_key: 'hasLessonPlan',
-      field_name: '教案',
-      field_type: 'boolean',
-      option_config: buildSelectOptions(courseFormOptions.hasLessonPlan),
-      required: true,
-      searchable: true,
-      sort_value: 120,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.hasScript,
-      field_key: 'hasScript',
-      field_name: '逐字稿',
-      field_type: 'boolean',
-      option_config: buildSelectOptions(courseFormOptions.hasScript),
-      required: false,
-      searchable: true,
-      sort_value: 130,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.artCopyright,
-      field_key: 'artCopyright',
-      field_name: '版权登记（美术）',
-      field_type: 'boolean',
-      option_config: buildSelectOptions(courseFormOptions.artCopyright),
-      required: true,
-      searchable: true,
-      sort_value: 140,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.textCopyright,
-      field_key: 'textCopyright',
-      field_name: '版权登记（文字）',
-      field_type: 'boolean',
-      option_config: buildSelectOptions(courseFormOptions.textCopyright),
-      required: true,
-      searchable: true,
-      sort_value: 150,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.researchDueDate.format('YYYY-MM-DD'),
-      field_key: 'researchDueDate',
-      field_name: '老师预期交稿时间',
-      field_type: 'date',
-      required: true,
-      searchable: true,
-      sort_value: 160,
-      span: 12,
-      status: 'enabled',
-    },
-    {
-      default_value: createCourseFormInitialValues.finalDueDate.format('YYYY-MM-DD'),
-      field_key: 'finalDueDate',
-      field_name: '课件预期交付日期',
-      field_type: 'date',
-      required: true,
-      searchable: true,
-      sort_value: 170,
-      span: 12,
-      status: 'enabled',
-    },
-  ]
 }
 
 function normalizeBooleanLike(value: unknown): boolean | undefined {
@@ -313,6 +114,71 @@ function normalizeBooleanLike(value: unknown): boolean | undefined {
   }
 
   return undefined
+}
+
+function formatTaskFieldValue(
+  fieldType: FormFieldType,
+  value: unknown,
+  optionConfig?: FieldOptionConfig[],
+): string {
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
+
+  if (fieldType === 'boolean') {
+    const booleanValue = normalizeBooleanLike(value)
+    return booleanValue === undefined ? String(value) : booleanValue ? '是' : '否'
+  }
+
+  if (fieldType === 'select') {
+    const option = optionConfig?.find((item) => item.value === String(value))
+    return option?.label ?? String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map((item) => String(item)).join(' / ') : '-'
+  }
+
+  return String(value)
+}
+
+function buildTaskColumnStorageKey(projectId: string, mode: 'default' | 'myTasks'): string {
+  return `courses-page-visible-columns:v2:${projectId}:${mode}`
+}
+
+function readVisibleTaskColumns(storageKey: string): string[] | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(storageKey)
+
+    if (!rawValue) {
+      return null
+    }
+
+    const parsed = JSON.parse(rawValue)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : null
+  } catch {
+    return null
+  }
+}
+
+function writeVisibleTaskColumns(storageKey: string, columnKeys: string[]) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify(columnKeys))
+}
+
+function areTaskColumnKeysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((key, index) => key === right[index])
 }
 
 function buildFormInitialValues(
@@ -534,18 +400,6 @@ function buildImportTaskPayload(payload: CreateCoursePayload) {
   }
 }
 
-function isTaskDone(task: TaskListRecord) {
-  return task.status === 'archived' || Boolean(task.archivedAt)
-}
-
-function isTaskOverdue(task: TaskListRecord) {
-  if (isTaskDone(task) || !task.currentVersion.expectCompleteAt) {
-    return false
-  }
-
-  return dayjs(task.currentVersion.expectCompleteAt).endOf('day').isBefore(dayjs())
-}
-
 function canDeleteTaskRecord(
   task: TaskListRecord,
   currentUserId: string | undefined,
@@ -562,14 +416,35 @@ function canDeleteTaskRecord(
   return !task.readonly
 }
 
-function resolveTaskStatusQuery(
-  tabKey: 'todo' | 'done' | 'overdue',
-  statusFilter: string,
-) {
-  if (tabKey === 'done') {
-    return 'archived'
+function isCompletedTask(task: TaskListRecord) {
+  return task.status === 'completed'
+}
+
+function getActiveSubTaskTypeMeta(subTaskType: string) {
+  if (subTaskType === 'aftersales') {
+    return {
+      color: 'gold',
+      label: '售后',
+    }
   }
 
+  if (subTaskType === 'iteration') {
+    return {
+      color: 'purple',
+      label: '迭代',
+    }
+  }
+
+  return {
+    color: 'default',
+    label: subTaskType,
+  }
+}
+
+function resolveTaskStatusQuery(
+  _tabKey: 'todo' | 'joined' | 'completed',
+  statusFilter: string,
+) {
   if (statusFilter !== 'all') {
     return statusFilter
   }
@@ -663,29 +538,43 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [mutating, setMutating] = useState(false)
-  const [search] = useState('')
+  const [search, setSearch] = useState('')
   const [statusFilter] = useState('all')
-  const [tabKey, setTabKey] = useState<'todo' | 'done' | 'overdue'>('todo')
+  const [tabKey, setTabKey] = useState<'todo' | 'joined' | 'completed'>('todo')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
+  const [serviceDrawerOpen, setServiceDrawerOpen] = useState(false)
+  const [serviceDrawerTaskId, setServiceDrawerTaskId] = useState<string>('')
+  const [serviceDrawerType, setServiceDrawerType] = useState<ServiceType>('售后')
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null)
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetailRecord>>({})
-  const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>(buildFallbackFieldConfigs())
+  const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false)
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(mandatoryTaskColumnKeys)
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateRecord[]>([])
   const [workflowLoading, setWorkflowLoading] = useState(false)
   const [taskOwnerMembers, setTaskOwnerMembers] = useState<ProjectMemberRecord[]>([])
   const [taskOwnerLoading, setTaskOwnerLoading] = useState(false)
   const [secondStageMembers, setSecondStageMembers] = useState<ProjectMemberRecord[]>([])
   const [secondStageLoading, setSecondStageLoading] = useState(false)
+  const [serviceOwnerOptions, setServiceOwnerOptions] = useState<FieldOptionConfig[]>([])
+  const [serviceParticipantOptions, setServiceParticipantOptions] = useState<FieldOptionConfig[]>([])
+  const [serviceFirstStageAssigneeLabel, setServiceFirstStageAssigneeLabel] = useState('')
+  const [serviceFirstStageAssigneeOptions, setServiceFirstStageAssigneeOptions] = useState<FieldOptionConfig[]>([])
+  const [serviceFirstStageAssignmentMeta, setServiceFirstStageAssignmentMeta] = useState<{
+    dueDays?: number
+    templateStageId?: string
+  }>({})
   const deferredSearch = useDeferredValue(search)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
   const [form] = Form.useForm<TaskFormValues>()
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
+  const shouldShowTaskTabs = !canManageTaskActions
+  const activeTaskCount = tasks.filter((task) => task.status !== 'completed').length
 
   const loadTasks = useCallback(
     async (
@@ -694,7 +583,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         keyword: string
         pageSize: number
         statusFilter: string
-        tabKey: 'todo' | 'done' | 'overdue'
+        tabKey: 'todo' | 'joined' | 'completed'
       }>,
     ) => {
       const nextPage = overrides?.currentPage ?? currentPage
@@ -708,10 +597,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       try {
         setTasksLoading(true)
         const response = await taskService.listTasks({
-          assigneeId: isMyTasksPage ? currentUser?.id : canManageTaskActions ? undefined : currentUser?.id,
           keyword: nextKeyword.trim() || undefined,
+          // 管理员和计划员直接查看全部任务，其他角色按 mine_scope 切换接口视图。
           mineScope:
-            nextTabKey === 'todo' && (isMyTasksPage || !canManageTaskActions) ? 'todo' : undefined,
+            shouldShowTaskTabs
+              ? nextTabKey === 'todo'
+                ? 'todo'
+                : nextTabKey === 'joined'
+                  ? 'joined'
+                  : 'completed'
+              : undefined,
           page: nextPage,
           pageSize: nextPageSize,
           status: resolveTaskStatusQuery(nextTabKey, nextStatusFilter),
@@ -733,7 +628,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
       }
     },
-    [canManageTaskActions, currentPage, currentUser?.id, deferredSearch, pageSize, statusFilter, tabKey],
+    [currentPage, deferredSearch, pageSize, shouldShowTaskTabs, statusFilter, tabKey],
   )
 
   useEffect(() => {
@@ -743,8 +638,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
 
-    if (!projectId || !canManageTaskActions) {
-      setTaskFieldConfigs(buildFallbackFieldConfigs())
+    if (!projectId) {
+      setTaskFieldConfigs([])
       return
     }
 
@@ -752,22 +647,22 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       try {
         setFieldConfigLoading(true)
         const fields = await adminService.listTaskFields(projectId)
-        setTaskFieldConfigs(fields.length > 0 ? fields : buildFallbackFieldConfigs())
+        setTaskFieldConfigs(fields)
       } catch (error) {
         message.error(error instanceof Error ? error.message : '任务字段配置加载失败')
-        setTaskFieldConfigs(buildFallbackFieldConfigs())
+        setTaskFieldConfigs([])
       } finally {
         setFieldConfigLoading(false)
       }
     }
 
     void loadTaskFields()
-  }, [canManageTaskActions, currentProject?.id])
+  }, [currentProject?.id])
 
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
 
-    if (!projectId || !canManageTaskActions) {
+    if (!projectId) {
       setWorkflowTemplates([])
       return
     }
@@ -788,7 +683,38 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
 
     void loadWorkflows()
-  }, [canManageTaskActions, currentProject?.id])
+  }, [currentProject?.id])
+
+  useEffect(() => {
+    const projectId = currentProject?.id ?? ''
+
+    if (!projectId) {
+      setServiceOwnerOptions([])
+      return
+    }
+
+    // 售后和迭代弹窗的任务负责人来自当前项目全部成员。
+    async function loadServiceOwnerOptions() {
+      try {
+        const response = await adminService.listProjectMembers({
+          page: 1,
+          pageSize: 100,
+          projectId,
+        })
+        setServiceOwnerOptions(
+          response.items.map((member) => ({
+            label: `${member.userName} · ${member.userEmail}`,
+            value: member.userId,
+          })),
+        )
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '任务负责人列表加载失败')
+        setServiceOwnerOptions([])
+      }
+    }
+
+    void loadServiceOwnerOptions()
+  }, [currentProject?.id])
   const selectedWorkflowTemplate = workflowTemplates.find(
     (template) => template.id === selectedWorkflowTemplateId,
   )
@@ -882,18 +808,11 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     selectedWorkflowTemplate,
   ])
 
-  const enabledFieldConfigs = getEnabledFieldConfigs(taskFieldConfigs)
-  const filteredTasks = (() => {
-    if (tabKey === 'done') {
-      return tasks.filter(isTaskDone)
-    }
-
-    if (tabKey === 'overdue') {
-      return tasks.filter(isTaskOverdue)
-    }
-
-    return tasks.filter((task) => !isTaskDone(task))
-  })()
+  const enabledFieldConfigs = useMemo(
+    () => getEnabledFieldConfigs(taskFieldConfigs),
+    [taskFieldConfigs],
+  )
+  const taskColumnStorageKey = buildTaskColumnStorageKey(currentProject?.id ?? 'global', mode)
 
   // const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
   //   label: getTaskStatusMeta(status).label,
@@ -901,6 +820,11 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   // }))
 
   function openCreateDrawer() {
+    if (enabledFieldConfigs.length === 0) {
+      message.warning('当前项目尚未配置任务字段，请先在后台完成配置')
+      return
+    }
+
     setEditingTaskId(null)
     setTaskOwnerMembers([])
     setSecondStageMembers([])
@@ -976,10 +900,166 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setProcessingTaskId(null)
   }
 
+  function handleCloseServiceDrawer() {
+    setServiceDrawerOpen(false)
+    setServiceDrawerTaskId('')
+    setServiceParticipantOptions([])
+    setServiceFirstStageAssigneeLabel('')
+    setServiceFirstStageAssigneeOptions([])
+    setServiceFirstStageAssignmentMeta({})
+  }
+
   async function refreshTaskDetail(taskId: string) {
     const detail = await taskService.getTaskDetail(taskId)
     setTaskDetails((current) => ({ ...current, [taskId]: detail }))
     return detail
+  }
+
+  async function loadServiceParticipantOptions(taskId: string) {
+    try {
+      const participants = await taskService.listTaskParticipants(taskId)
+      setServiceParticipantOptions(
+        participants.map((participant) => ({
+          label: participant.name,
+          value: participant.id,
+        })),
+      )
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '责任人加载失败')
+      setServiceParticipantOptions([])
+    }
+  }
+
+  async function loadServiceFirstStageAssigneeOptions(templateId: string | undefined) {
+    if (!currentProject?.id || !templateId) {
+      setServiceFirstStageAssigneeLabel('')
+      setServiceFirstStageAssigneeOptions([])
+      setServiceFirstStageAssignmentMeta({})
+      return
+    }
+
+    const selectedTemplate = workflowTemplates.find((template) => template.id === templateId)
+    const firstStage = selectedTemplate?.stages
+      .slice()
+      .sort((left, right) => left.sortValue - right.sortValue)[0]
+
+    if (!firstStage?.id || !firstStage.operatorRoleCode) {
+      setServiceFirstStageAssigneeLabel('')
+      setServiceFirstStageAssigneeOptions([])
+      setServiceFirstStageAssignmentMeta({})
+      return
+    }
+
+    // 选择流程后，按首节点角色加载候选人，保持和售后页的发起逻辑一致。
+    setServiceFirstStageAssigneeLabel(firstStage.operatorRoleName ?? firstStage.stageName)
+    setServiceFirstStageAssignmentMeta({
+      dueDays: firstStage.defaultDueDays,
+      templateStageId: firstStage.id,
+    })
+
+    try {
+      const response = await adminService.listProjectRoleUsers({
+        page: 1,
+        pageSize: 100,
+        projectId: currentProject.id,
+        roleCode: firstStage.operatorRoleCode,
+      })
+      setServiceFirstStageAssigneeOptions(
+        response.items.map((member) => ({
+          label: `${member.userName} · ${member.userEmail}`,
+          value: member.userId,
+        })),
+      )
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '首节点人员加载失败')
+      setServiceFirstStageAssigneeOptions([])
+    }
+  }
+
+  async function openServiceDrawer(type: ServiceType, taskId: string) {
+    setServiceDrawerType(type)
+    setServiceDrawerTaskId(taskId)
+    setServiceParticipantOptions([])
+    setServiceDrawerOpen(true)
+
+    if (type === '售后') {
+      await loadServiceParticipantOptions(taskId)
+    }
+  }
+
+  async function handleCreateServiceTask(payload: {
+    assigneeUserIds?: string[]
+    description: string
+    firstStageAssigneeUserId?: string
+    ownerUserId?: string
+    type: ServiceType
+    workflowTemplateId?: string
+  }) {
+    if (!serviceDrawerTaskId) {
+      message.warning('缺少关联主任务，暂时无法发起')
+      return
+    }
+
+    if (!payload.workflowTemplateId) {
+      message.warning('请选择关联流程')
+      return
+    }
+
+    if (!payload.ownerUserId) {
+      message.warning('请选择任务负责人')
+      return
+    }
+
+    if (!payload.firstStageAssigneeUserId || !serviceFirstStageAssignmentMeta.templateStageId) {
+      message.warning(`请选择${serviceFirstStageAssigneeLabel || '首节点执行人'}`)
+      return
+    }
+
+    try {
+      setMutating(true)
+      const stageAssignments = [
+        {
+          assignees: [
+            {
+              assigned_page_count: 0,
+              assignee_role: 'operator' as const,
+              is_primary: true,
+              user_id: Number(payload.firstStageAssigneeUserId),
+            },
+          ],
+          due_days: serviceFirstStageAssignmentMeta.dueDays,
+          template_stage_id: Number(serviceFirstStageAssignmentMeta.templateStageId),
+        },
+      ]
+
+      if (payload.type === '售后') {
+        await taskService.createAfterSalesTask(serviceDrawerTaskId, {
+          description: payload.description,
+          owner_id: Number(payload.ownerUserId),
+          responsible_user_ids: (payload.assigneeUserIds ?? [])
+            .map((userId) => Number(userId))
+            .filter((userId) => Number.isFinite(userId)),
+          stage_assignments: stageAssignments,
+          workflow_template_id: Number(payload.workflowTemplateId),
+        })
+        message.success('售后任务已发起')
+      } else {
+        await taskService.createIterationTask(serviceDrawerTaskId, {
+          description: payload.description,
+          owner_id: Number(payload.ownerUserId),
+          stage_assignments: stageAssignments,
+          workflow_template_id: Number(payload.workflowTemplateId),
+        })
+        message.success('迭代任务已发起')
+      }
+
+      await Promise.all([loadTasks(), refreshTaskDetail(serviceDrawerTaskId)])
+      handleCloseServiceDrawer()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发起失败')
+    } finally {
+      setMutating(false)
+    }
   }
 
   async function handleFinish(values: TaskFormValues) {
@@ -1049,106 +1129,215 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
   }
 
-  const baseColumns: ColumnsType<TaskListRecord> = [
-    {
+  const taskColumnDefinitions = useMemo<TaskColumnDefinition[]>(() => {
+    const baseDefinitions: TaskColumnDefinition[] = [
+      {
+        column: {
       title: '任务',
+      width:200,
       dataIndex: 'title',
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{record.title}</Typography.Text>
-          <Typography.Text type="secondary">
-            {record.id} · {String(record.fieldValues.series ?? '未配置品牌')}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
+      render: (_, record) => {
+        // 子任务类型按名称去重，只展示售后/迭代这类业务标识，不重复堆叠相同标签。
+        const activeSubTaskTypes = Array.from(
+          new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
+        )
+
+        return (
+          <div className="task-table__title-cell">
+            <div className="task-table__title-row">
+              <span className="task-table__title">{record.title}</span>
+              {activeSubTaskTypes.map((subTaskType) => {
+                const meta = getActiveSubTaskTypeMeta(subTaskType)
+
+                return (
+                  <Tag
+                    key={subTaskType}
+                    color={meta.color}
+                    className="task-table__subtask-tag"
+                  >
+                    {meta.label}
+                  </Tag>
+                )
+              })}
+              {/* 已完成任务在列表中单独标识，方便管理员查看全量任务时快速识别。 */}
+              {/* {isCompletedTask(record) ? (
+                <Tag color="success" className="task-table__completed-tag">
+                  已完成
+                </Tag>
+              ) : null} */}
+            </div>
+            {/* <span className="task-table__meta">
+              #{record.id} · {String(record.fieldValues.series ?? '未配置品牌')}
+            </span> */}
+          </div>
+        )
+      },
+        },
+        key: 'task',
+        required: true,
+        title: '任务',
+      },
+      {
+        column: {
       title: '状态',
       dataIndex: 'status',
       render: (status: string, record) => {
         const displayLabel = record.currentStage?.stageName || getTaskStatusMeta(status).label
         const meta = getTaskStatusMeta(record.currentStage?.status || status)
-        return <Tag color={meta.color}>{displayLabel}</Tag>
+        return (
+          <Tag color={meta.color} className="task-table__status-tag">
+            {displayLabel}
+          </Tag>
+        )
       },
       width: 140,
-    },
-    {
+        },
+        defaultVisible: true,
+        key: 'status',
+        title: '状态',
+      },
+      {
+        column: {
       title: '当前责任人',
       render: (_, record) => {
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
-        return assigneeNames.length > 0 ? assigneeNames.join('/') : '-'
+        return (
+          <span className="task-table__assignee">
+            {assigneeNames.length > 0 ? assigneeNames.join(' / ') : '-'}
+          </span>
+        )
       },
       width: 160,
-    },
-    // {
-    //   title: '关联子任务',
-    //   render: (_, record) => {
-    //     if (record.activeSubTasks.length === 0) {
-    //       return <Typography.Text type="secondary">-</Typography.Text>
-    //     }
+        },
+        defaultVisible: true,
+        key: 'currentAssignees',
+        title: '当前责任人',
+      },
+      ...enabledFieldConfigs.map<TaskColumnDefinition>((field) => ({
+        column: {
+          render: (_, record) => formatTaskFieldValue(
+            field.field_type,
+            record.fieldValues[field.field_key],
+            field.option_config,
+          ),
+          title: field.field_name,
+          width: field.field_type === 'textarea' ? 220 : 140,
+        },
+        defaultVisible: enabledFieldConfigs.findIndex(
+          (config) => config.field_key === field.field_key,
+        ) < 2,
+        key: `field:${field.field_key}`,
+        title: field.field_name,
+      })),
+      {
+        column: {
+          title: '当前版本',
+          render: (_, record) => record.currentVersion.versionNo,
+          width: 100,
+        },
+        defaultVisible: true,
+        key: 'currentVersion',
+        title: '当前版本',
+      },
+      {
+        column: {
+          title: '打包信息',
+          render: (_, record) => {
+            const outputFile = record.packageInfo?.outputFile
+            const errorMessage = record.packageInfo?.errorMessage?.trim()
 
-    //     return (
-    //       <Space direction="vertical" size={0}>
-    //         {record.activeSubTasks.map((subTask) => (
-    //           <Typography.Text key={subTask.id}>
-    //             {subTask.subTaskType} · {subTask.description}
-    //           </Typography.Text>
-    //         ))}
-    //       </Space>
-    //     )
-    //   },
-    // },
-    {
-      title: '学科',
-      render: (_, record) => String(record.fieldValues.subject ?? '-'),
-      width: 100,
-    },
-    {
-      title: '年级',
-      render: (_, record) => String(record.fieldValues.grade ?? '-'),
-      width: 100,
-    },
-    {
-      title: '当前版本',
-      render: (_, record) => record.currentVersion.versionNo,
-      width: 100,
-    },
-    {
-      title: '预计交付',
-      render: (_, record) => (
-        <Typography.Text type={isTaskOverdue(record) ? 'danger' : undefined}>
-          {isTaskOverdue(record)
-            ? `${record.currentVersion.expectCompleteAt || '-'}（已逾期）`
-            : record.currentVersion.expectCompleteAt || '-'}
-        </Typography.Text>
+            if (outputFile?.name) {
+              return (
+                <Button
+                  type="link"
+                  size="small"
+                  className="task-table__package-link"
+                  onClick={() => makeDemoDownload(outputFile)}
+                >
+                  {outputFile.name}
+                </Button>
+              )
+            }
+
+            if (errorMessage) {
+              return <span className="task-table__package-error">{errorMessage}</span>
+            }
+
+            return ''
+          },
+          width: 160,
+        },
+        defaultVisible: true,
+        key: 'packageInfo',
+        title: '打包信息',
+      },
+      // {
+      //   column: {
+      //     title: '预计交付',
+      //     render: (_, record) => record.currentVersion.expectCompleteAt || '-',
+      //     width: 160,
+      //   },
+      //   defaultVisible: true,
+      //   key: 'expectCompleteAt',
+      //   title: '预计交付',
+      // },
+      {
+        column: {
+      title: (
+        <div className="task-table__actions-header">
+          <span>操作</span>
+          <Dropdown
+            trigger={['click']}
+            placement="bottomLeft"
+            overlayClassName="task-table-column-popover"
+            menu={{ items: [] }}
+            popupRender={renderColumnPicker}
+          >
+            <Button
+              type="text"
+              size="small"
+              className="task-table__header-filter-button"
+              icon={<FilterOutlined />}
+              aria-label="筛选显示列"
+              title="筛选显示列"
+            />
+          </Dropdown>
+        </div>
       ),
       width: 160,
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      width: 160,
-    },
-  ]
-
-  const columns: ColumnsType<TaskListRecord> = [
-    ...baseColumns,
-    {
-      title: '操作',
-      width: 180,
       render: (_, record) => {
         const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
+        const completedTask = isCompletedTask(record)
         const canProcessTask = Boolean(
           currentUser?.id &&
             record.currentStage?.assignees.some((assignee) => assignee.userId === currentUser.id),
         )
 
         return (
-          <Space size="small">
-            {canProcessTask ? (
+          <div className="task-table__actions">
+            {completedTask ? (
+              <>
+                <Button
+                  type='primary'
+                  size="small"
+                  className="task-table__action-button"
+                  onClick={() => void openServiceDrawer('售后', record.id)}
+                >
+                  售后
+                </Button>
+                <Button
+                  size="small"
+                  className="task-table__action-button"
+                  onClick={() => void openServiceDrawer('迭代', record.id)}
+                >
+                  迭代
+                </Button>
+              </>
+            ) : canProcessTask ? (
               <Button
                 danger
                 size="small"
+                className="task-table__action-button"
                 onClick={() => {
                   setProcessingTaskId(record.id)
                 }}
@@ -1156,36 +1345,208 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 处理
               </Button>
             ) : null}
-            {canManageTaskActions && !record.readonly ? (
+            {canManageTaskActions && !record.readonly && !completedTask ? (
               <Button
                 type="primary"
                 size="small"
+                className="task-table__action-button"
                 onClick={() => void openEditDrawer(record)}
               >
                 编辑
               </Button>
             ) : null}
             {canManageTaskActions && canDeleteTask ? (
-              <Popconfirm
-                title="确认删除该任务吗？"
-                description="删除后不可恢复，请谨慎操作。"
-                okButtonProps={{ danger: true, loading: mutating }}
-                onConfirm={() => void handleDeleteTask(record.id)}
+              <Button
+                danger
+                size="small"
+                className="task-table__action-button"
+                loading={mutating}
+                onClick={() => {
+                  Modal.confirm({
+                    title: '确认删除该任务吗？',
+                    content: '删除后不可恢复，请谨慎操作。',
+                    okButtonProps: { danger: true, loading: mutating },
+                    okText: '删除',
+                    cancelText: '取消',
+                    onOk: async () => {
+                      await handleDeleteTask(record.id)
+                    },
+                  })
+                }}
               >
-                <Button
-                  danger
-                  size="small"
-                  loading={mutating}
-                >
-                  删除
-                </Button>
-              </Popconfirm>
+                删除
+              </Button>
             ) : null}
-          </Space>
+          </div>
         )
       },
-    },
-  ]
+        },
+        defaultVisible: true,
+        key: 'actions',
+        title: '操作',
+      },
+    ]
+
+    return baseDefinitions
+  }, [
+    canManageTaskActions,
+    currentUser?.id,
+    enabledFieldConfigs,
+    mutating,
+    role,
+  ])
+
+  useEffect(() => {
+    const availableColumnKeySet = new Set(taskColumnDefinitions.map((definition) => definition.key))
+    const requiredKeys = taskColumnDefinitions
+      .filter((definition) => definition.required)
+      .map((definition) => definition.key)
+    const storedKeys = readVisibleTaskColumns(taskColumnStorageKey)
+    const fallbackKeys = taskColumnDefinitions
+      .filter((definition) => definition.required || definition.defaultVisible !== false)
+      .map((definition) => definition.key)
+    const baseKeys = storedKeys ?? fallbackKeys
+    const nextVisibleKeys = Array.from(
+      new Set([
+        ...requiredKeys,
+        ...baseKeys.filter((key) => availableColumnKeySet.has(key)),
+      ]),
+    )
+
+    setVisibleColumnKeys((current) => (
+      areTaskColumnKeysEqual(current, nextVisibleKeys) ? current : nextVisibleKeys
+    ))
+  }, [taskColumnDefinitions, taskColumnStorageKey])
+
+  const defaultVisibleColumnKeys = useMemo(
+    () => taskColumnDefinitions
+      .filter((definition) => definition.required || definition.defaultVisible !== false)
+      .map((definition) => definition.key),
+    [taskColumnDefinitions],
+  )
+
+  const fixedColumnDefinitions = taskColumnDefinitions.filter(
+    (definition) => !definition.key.startsWith('field:'),
+  )
+
+  const fieldColumnDefinitions = taskColumnDefinitions.filter(
+    (definition) => definition.key.startsWith('field:'),
+  )
+
+  const columns: ColumnsType<TaskListRecord> = taskColumnDefinitions
+    .filter((definition) => visibleColumnKeys.includes(definition.key))
+    .map((definition) => definition.column)
+
+  const tableScrollX = taskColumnDefinitions
+    .filter((definition) => visibleColumnKeys.includes(definition.key))
+    .reduce((totalWidth, definition) => {
+      const width = 'width' in definition.column ? definition.column.width : undefined
+      return totalWidth + (typeof width === 'number' ? width : 180)
+    }, 0)
+
+  function handleVisibleColumnsChange(nextKeys: Array<string | number>) {
+    const requiredKeys = taskColumnDefinitions
+      .filter((definition) => definition.required)
+      .map((definition) => definition.key)
+    const nextVisibleKeys = Array.from(
+      new Set([
+        ...requiredKeys,
+        ...nextKeys.filter((key): key is string => typeof key === 'string'),
+      ]),
+    )
+
+    setVisibleColumnKeys((current) => (
+      areTaskColumnKeysEqual(current, nextVisibleKeys) ? current : nextVisibleKeys
+    ))
+    writeVisibleTaskColumns(taskColumnStorageKey, nextVisibleKeys)
+  }
+
+  function handleVisibleColumnToggle(columnKey: string, checked: boolean) {
+    const nextVisibleKeys = checked
+      ? Array.from(new Set([...visibleColumnKeys, columnKey]))
+      : visibleColumnKeys.filter((key) => key !== columnKey)
+
+    handleVisibleColumnsChange(nextVisibleKeys)
+  }
+
+  function handleResetVisibleColumns() {
+    handleVisibleColumnsChange(defaultVisibleColumnKeys)
+  }
+
+  function renderColumnPicker() {
+    return (
+      <div className="task-table-column-picker">
+        <div className="task-table-column-picker__header">
+          <div>
+            <Typography.Text strong className="task-table-column-picker__title">
+              选择显示列
+            </Typography.Text>
+            <Typography.Text className="task-table-column-picker__subtitle">
+              已显示 {visibleColumnKeys.length} 列
+            </Typography.Text>
+          </div>
+          <Button
+            type="text"
+            size="small"
+            className="task-table-column-picker__reset"
+            onClick={handleResetVisibleColumns}
+          >
+            恢复默认
+          </Button>
+        </div>
+
+        <div className="task-table-column-picker__section">
+          <Typography.Text className="task-table-column-picker__section-title">
+            固定列
+          </Typography.Text>
+          <div className="task-table-column-picker__list">
+            {fixedColumnDefinitions.map((definition) => (
+              <label
+                key={definition.key}
+                className="task-table-column-picker__option"
+              >
+                <Checkbox
+                  checked={visibleColumnKeys.includes(definition.key)}
+                  disabled={definition.required}
+                  onChange={(event) => {
+                    handleVisibleColumnToggle(definition.key, event.target.checked)
+                  }}
+                >
+                  {definition.title}
+                </Checkbox>
+                {definition.required ? (
+                  <span className="task-table-column-picker__badge">必显</span>
+                ) : null}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="task-table-column-picker__section">
+          <Typography.Text className="task-table-column-picker__section-title">
+            配置字段
+          </Typography.Text>
+          <div className="task-table-column-picker__list">
+            {fieldColumnDefinitions.map((definition) => (
+              <label
+                key={definition.key}
+                className="task-table-column-picker__option"
+              >
+                <Checkbox
+                  checked={visibleColumnKeys.includes(definition.key)}
+                  onChange={(event) => {
+                    handleVisibleColumnToggle(definition.key, event.target.checked)
+                  }}
+                >
+                  {definition.title}
+                </Checkbox>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   function handleTableChange(pagination: TablePaginationConfig) {
     const nextPage = pagination.current ?? 1
@@ -1196,34 +1557,43 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   }
 
   return (
-    <Card className="panel-card">
+    <div className="courses-page-card">
       <div className="workspace-header">
-        <div className="workspace-header-main">
-          <Typography.Title level={4} className="workspace-header-title">
-            {isMyTasksPage ? '我的任务' : '任务工单'}
-          </Typography.Title>
+        <div className="workspace-header-info">
+          <div className="workspace-header-title-row">
+            <span className="workspace-header-icon">
+              <CalendarOutlined />
+            </span>
+            <Typography.Title level={3} className="workspace-header-title">
+              {isMyTasksPage ? '我的任务' : '任务管理'}
+            </Typography.Title>
+          </div>
+          <Typography.Text className="workspace-header-subtitle">
+            共 {total} 项任务，
+            <span className="workspace-header-subtitle-accent"> {activeTaskCount} 项进行中</span>
+          </Typography.Text>
         </div>
         <div className="workspace-header-side">
-          <div className="workspace-kpi">
-            <span className="workspace-kpi-value">{total}</span>
-            <span className="workspace-kpi-label">主单结果</span>
-          </div>
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setCurrentPage(1)
+            }}
+            placeholder="搜索任务名称、负责人"
+            prefix={<SearchOutlined />}
+            className="workspace-search-input"
+            allowClear
+          />
           {canCreateCourse && canManageTaskActions ? (
-            <Space>
-              <Button onClick={() => void downloadCourseImportTemplate()}>
-                下载模版
-              </Button>
-              <Button onClick={() => importInputRef.current?.click()} loading={mutating}>
-                批量导入
-              </Button>
-              <Button
-                type="primary"
-                onClick={openCreateDrawer}
-                loading={fieldConfigLoading || workflowLoading}
-              >
-                新建任务
-              </Button>
-            </Space>
+            <Button
+              type="primary"
+              className="workspace-header-create-button"
+              onClick={openCreateDrawer}
+              loading={fieldConfigLoading || workflowLoading}
+            >
+              新建任务
+            </Button>
           ) : null}
         </div>
       </div>
@@ -1236,49 +1606,30 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         onChange={(event) => void handleImportChange(event)}
       />
 
-      {/* <div className="workspace-filter-bar">
-        <Input
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value)
+      {shouldShowTaskTabs ? (
+        <Tabs
+          activeKey={tabKey}
+          onChange={(key) => {
+            setTabKey(key as 'todo' | 'joined' | 'completed')
             setCurrentPage(1)
           }}
-          placeholder="搜索任务名称 / 编号 / 学科 / 品牌"
-          className="workspace-filter-input"
+          items={[
+            {
+              key: 'todo',
+              label: '我的待办',
+            },
+            {
+              key: 'joined',
+              label: '我相关',
+            },
+            {
+              key: 'completed',
+              label: '已完成',
+            },
+          ]}
+          className="workspace-tabs"
         />
-        <Select
-          value={statusFilter}
-          className="workspace-filter-select"
-          onChange={(value) => {
-            setStatusFilter(value)
-            setCurrentPage(1)
-          }}
-          options={[{ label: '全部状态', value: 'all' }, ...statusOptions]}
-        />
-      </div> */}
-
-      <Tabs
-        activeKey={tabKey}
-        onChange={(key) => {
-          setTabKey(key as 'todo' | 'done' | 'overdue')
-          setCurrentPage(1)
-        }}
-        items={[
-          {
-            key: 'todo',
-            label: '我的待办',
-          },
-          {
-            key: 'done',
-            label: '已完成',
-          },
-          {
-            key: 'overdue',
-            label: '已逾期',
-          },
-        ]}
-        className="workspace-tabs"
-      />
+      ) : null}
 
       <Table
         rowKey="id"
@@ -1286,13 +1637,13 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         className="task-table"
         loading={tasksLoading}
         columns={columns}
-        dataSource={filteredTasks}
+        dataSource={tasks}
         pagination={{
           current: currentPage,
+          locale: paginationZhCN,
           pageSize,
           pageSizeOptions: [10, 20, 50],
           showSizeChanger: true,
-          showTotal: (value) => `共 ${value} 条`,
           total,
         }}
         onChange={handleTableChange}
@@ -1306,8 +1657,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   void handleExpandTask(expanded, record.id)
                 },
                 expandIcon: ({ expanded, onExpand, record }) => (
-                  <button
-                    type="button"
+                  <span
                     className={`task-table-expand-button${expanded ? ' task-table-expand-button--open' : ''}`}
                     onClick={(event) => {
                       onExpand(record, event)
@@ -1315,7 +1665,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                     aria-label={expanded ? '收起任务详情' : '展开任务详情'}
                   >
                     <RightOutlined />
-                  </button>
+                  </span>
                 ),
                 expandedRowRender: (record) => (
                   <TaskHistoryDetailPanel
@@ -1328,7 +1678,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 ),
               }
         }
-        scroll={{ x: 1320 }}
+        scroll={{ x: Math.max(tableScrollX, 1320) }}
         locale={{
           emptyText: tasksLoading
             ? '任务加载中'
@@ -1405,6 +1755,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 </Form.Item>
               </Col>
             ) : null}
+            {/* {JSON.stringify(enabledFieldConfigs)} */}
             {enabledFieldConfigs.map((field) => (
               <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>
                 <Form.Item
@@ -1431,12 +1782,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             ))}
           </Row>
 
-          <Space className="form-footer-actions">
+          <div className="form-footer-actions">
             <Button onClick={handleCloseDrawer}>取消</Button>
             <Button type="primary" htmlType="submit" loading={mutating}>
               {editingTaskId ? '保存' : '创建任务'}
             </Button>
-          </Space>
+          </div>
         </Form>
       </Drawer>
       <TaskProcessModal
@@ -1444,9 +1795,33 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         taskId={processingTaskId}
         onClose={handleCloseProcessModal}
         onProcessed={async () => {
-          await loadTasks()
+          if (!processingTaskId) {
+            await loadTasks()
+            return
+          }
+
+          // 提交下一阶段后同时刷新列表和当前展开详情，避免展开区继续展示旧缓存。
+          await Promise.all([loadTasks(), refreshTaskDetail(processingTaskId)])
         }}
       />
-    </Card>
+      <ServiceTicketDrawer
+        open={serviceDrawerOpen}
+        defaultType={serviceDrawerType}
+        courseId={serviceDrawerTaskId}
+        assigneeOptions={serviceDrawerType === '售后' ? serviceParticipantOptions : []}
+        firstStageAssigneeLabel={serviceFirstStageAssigneeLabel}
+        firstStageAssigneeOptions={serviceFirstStageAssigneeOptions}
+        loading={mutating}
+        onClose={handleCloseServiceDrawer}
+        onWorkflowTemplateChange={loadServiceFirstStageAssigneeOptions}
+        ownerOptions={serviceOwnerOptions}
+        onSubmit={handleCreateServiceTask}
+        showAssigneeField={serviceDrawerType === '售后'}
+        workflowTemplateOptions={workflowTemplates.map((template) => ({
+          label: template.name,
+          value: template.id,
+        }))}
+      />
+    </div>
   )
 }

@@ -39,12 +39,10 @@ function buildDateSegment() {
 function buildObjectKey(file: File, prefix?: string, taskId?: string) {
     const extension = getFileExtension(file)
     const normalizedPrefix = (prefix || 'task-attachments').replace(/^\/+|\/+$/g, '')
-
-    if (taskId) {
-        return `${normalizedPrefix}/${taskId}/${taskId}${extension}`
-    }
-
     const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`
+    if (taskId) {
+        return `${normalizedPrefix}/${taskId}/${uniqueName}`
+    }
     return `${normalizedPrefix}/${buildDateSegment()}/${uniqueName}`
 }
 

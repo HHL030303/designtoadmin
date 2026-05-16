@@ -35,6 +35,7 @@ import { ObjectStorageUploadField } from '../common/ObjectStorageUploadField'
 import './TaskProcessModal.css'
 
 type StageCompletionFormValues = {
+  total_page_count?: number
   due_days?: number
   remark?: string
   nextStageUserId?: string
@@ -99,6 +100,21 @@ function resolveCurrentWorkflowStage(detail: TaskDetailRecord | null) {
   }
 
   return detail.workflowStages.find((stage) => stage.id === currentStageId) ?? detail.currentStage ?? null
+}
+
+function resolveWorkflowStageById(
+  detail: TaskDetailRecord | null,
+  targetStageId?: string | null,
+) {
+  if (!detail) {
+    return null
+  }
+
+  if (!targetStageId) {
+    return resolveCurrentWorkflowStage(detail)
+  }
+
+  return detail.workflowStages.find((stage) => stage.id === targetStageId) ?? null
 }
 
 function isStageOverdue(stage: TaskWorkflowStageRecord | null) {
@@ -227,8 +243,10 @@ function DynamicFileRuleSection({
               <Tag color={rule.required ? 'red' : 'default'}>
                 {rule.required ? '必传' : '选传'}
               </Tag>
-              <Tag>{rule.fileCategory}</Tag>
+              {/* <Tag>以{rule.itemName}结尾</Tag>
+              <Tag>{rule.fileCategory}</Tag> */}
               <Tag>{`数量 ${rule.requiredCount}`}</Tag>
+              <Tag>{`示例：xxxxx_${rule.itemName}.${rule.fileCategory}`}</Tag>
             </Space>
             <ObjectStorageUploadField
               value={filesByRuleId[rule.id] ?? []}
@@ -255,13 +273,15 @@ export function TaskProcessModal({
   onClose,
   open,
   taskId,
+  targetStageId,
 }: {
   onProcessed?: () => Promise<void> | void
   onClose: () => void
   open: boolean
   taskId?: string | null
+  targetStageId?: string | null
 }) {
-  const { currentProject, currentUser } = useAppState()
+  const { currentProject, currentUser, role } = useAppState()
   const [form] = Form.useForm<StageCompletionFormValues>()
   const [detail, setDetail] = useState<TaskDetailRecord | null>(null)
   const [loading, setLoading] = useState(false)
@@ -296,13 +316,25 @@ export function TaskProcessModal({
     void loadDetail()
   }, [form, open, taskId])
 
-  const currentStage = useMemo(() => resolveCurrentWorkflowStage(detail), [detail])
+  const currentStage = useMemo(
+    () => resolveWorkflowStageById(detail, targetStageId),
+    [detail, targetStageId],
+  )
+  const isHistoricalStageEdit = Boolean(
+    targetStageId &&
+      currentStage &&
+      currentStage.id !== detail?.currentStage?.id,
+  )
   const nextStage = useMemo(
-    () =>
-      detail?.nextState
-        ? detail.workflowStages.find((stage) => stage.id === detail.nextState?.id)
-        : undefined,
-    [detail],
+    () => {
+      if (!detail || !currentStage) {
+        return undefined
+      }
+
+      const currentStageIndex = detail.workflowStages.findIndex((stage) => stage.id === currentStage.id)
+      return currentStageIndex >= 0 ? detail.workflowStages[currentStageIndex + 1] : undefined
+    },
+    [currentStage, detail],
   )
   const currentStageOverdue = isStageOverdue(currentStage)
   const currentStageFiles = useMemo(
@@ -314,21 +346,24 @@ export function TaskProcessModal({
       currentUser?.id &&
       currentStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
   )
+  const canEditHistoricalStage = role === 'admin' || role === 'planner'
   const isLastStage = Boolean(currentStage && !nextStage)
   const canProcessCurrentStage = Boolean(
     currentStage &&
-      currentStageBelongsToUser
-      //  &&
-      // isActionableStageStatus(currentStage.status),
+      (isHistoricalStageEdit ? canEditHistoricalStage : currentStageBelongsToUser),
   )
   const shouldSelectNextStageAssignee = Boolean(
     canProcessCurrentStage &&
+      !isHistoricalStageEdit &&
       currentStage?.canAssign &&
       nextStage,
   )
   const allowPageAssignment = Boolean(
     shouldSelectNextStageAssignee &&
       currentStage?.allowPageAssignment,
+  )
+  const shouldCollectTotalPageCount = Boolean(
+    !isHistoricalStageEdit && currentStage?.collectTotalPageCount,
   )
 
   useEffect(() => {
@@ -344,6 +379,7 @@ export function TaskProcessModal({
     )
     form.resetFields()
     form.setFieldsValue({
+      total_page_count: undefined,
       due_days: currentStage.dueDays,
       nextStageAssignees: buildDefaultNextStageAssignees(),
     })
@@ -382,7 +418,14 @@ export function TaskProcessModal({
     }
 
     void loadNextStageMembers()
-  }, [allowPageAssignment, currentProject?.id, form, nextStage?.operatorRoleCode, shouldSelectNextStageAssignee])
+  }, [
+    allowPageAssignment,
+    currentProject?.id,
+    form,
+    nextStage?.operatorRoleCode,
+    shouldCollectTotalPageCount,
+    shouldSelectNextStageAssignee,
+  ])
 
   async function handleFileUploaded(file: AttachmentFile) {
     if (!detail || !currentStage || !file.checksum) {
@@ -434,7 +477,14 @@ export function TaskProcessModal({
 
     const nextStageAssignments = nextStage
       ? currentStage.canAssign
-        ? allowPageAssignment
+        ? isHistoricalStageEdit
+          ? nextStage.stageAssignees.map((assignee) => ({
+              assigned_page_count: assignee.assignedPageCount,
+              assignee_role: 'operator' as const,
+              is_primary: assignee.isPrimary,
+              user_id: Number(assignee.userId),
+            }))
+          : allowPageAssignment
           ? (values.nextStageAssignees ?? [])
               .filter((item) => item?.userId)
               .map((item, index) => ({
@@ -463,7 +513,7 @@ export function TaskProcessModal({
           : []
       : []
 
-    if (nextStage && nextStageAssignments.length === 0) {
+    if (!isHistoricalStageEdit && nextStage && nextStageAssignments.length === 0) {
       message.warning(
         currentStage.canAssign
           ? '请选择下一节点人员'
@@ -474,13 +524,21 @@ export function TaskProcessModal({
 
     if (allowPageAssignment) {
       const invalidPageAssignment = (values.nextStageAssignees ?? []).find(
-        (item) => !item?.userId || item.assignedPageCount === undefined || item.assignedPageCount === null,
+        (item) =>
+          !item?.userId ||
+          item.assignedPageCount === undefined ||
+          item.assignedPageCount === null,
       )
 
       if (invalidPageAssignment) {
         message.warning('请完整填写下一阶段任务人员和分配页数')
         return
       }
+    }
+
+    if (shouldCollectTotalPageCount && typeof values.total_page_count !== 'number') {
+      message.warning('请填写总页数')
+      return
     }
 
     try {
@@ -497,12 +555,19 @@ export function TaskProcessModal({
         remark: values.remark?.trim() || undefined,
         next_stage_assignees: nextStageAssignments,
         due_days:
-          nextStage && typeof values.due_days === 'number'
+          !isHistoricalStageEdit && nextStage && typeof values.due_days === 'number'
             ? values.due_days
             : undefined,
+        total_page_count: !isHistoricalStageEdit ? values.total_page_count : undefined,
       })
 
-      message.success(isLastStage ? '文件校验通过，当前阶段已完成' : '当前阶段已提交')
+      message.success(
+        isHistoricalStageEdit
+          ? '历史阶段修改已保存'
+          : isLastStage
+            ? '文件校验通过，当前阶段已完成'
+            : '当前阶段已提交',
+      )
       await onProcessed?.()
       onClose()
     } catch (error) {
@@ -514,7 +579,7 @@ export function TaskProcessModal({
 
   return (
     <Modal
-      title="处理任务"
+      title={isHistoricalStageEdit ? '编辑已完成阶段' : '处理任务'}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -528,8 +593,15 @@ export function TaskProcessModal({
         </div>
       ) : !detail || !currentStage ? (
         <Empty description="暂无可处理的任务详情" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      ) : !currentStageBelongsToUser ? (
-        <Empty description="当前账号不是该节点执行人，无法处理此任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      ) : !canProcessCurrentStage ? (
+        <Empty
+          description={
+            isHistoricalStageEdit
+              ? '当前账号无权编辑该已完成阶段'
+              : '当前账号不是该节点执行人，无法处理此任务'
+          }
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+        />
       ) : (
         <Space direction="vertical" size={12} className="panel-stack-full task-process-modal__body">
           <Card
@@ -552,7 +624,9 @@ export function TaskProcessModal({
             }
           >
             <Typography.Paragraph type="secondary" className="task-process-modal__hero-copy">
-              {isLastStage
+              {isHistoricalStageEdit
+                ? '你正在编辑一个已完成阶段，可重新维护该阶段文件和备注，不会改变当前任务所处阶段。'
+                : isLastStage
                 ? '这是流程最后一个处理节点，提交时会先检查文件完整性，再完成当前任务阶段。'
                 : '请根据当前节点的流程配置完成文件上传、下一节点指派和提交流转。'}
             </Typography.Paragraph>
@@ -584,7 +658,7 @@ export function TaskProcessModal({
                 filesByRuleId={filesByRuleId}
                 onFileUploaded={handleFileUploaded}
                 onFileDeleted={handleFileDeleted}
-                taskId={detail.task.id}
+                taskId={detail.currentVersion.id ? String(detail.currentVersion.id) : undefined}
                 onFilesChange={(ruleId, files) =>
                   setFilesByRuleId((current) => ({
                     ...current,
@@ -631,25 +705,12 @@ export function TaskProcessModal({
                   layout="vertical"
                   onFinish={(values) => void handleSubmit(values)}
                 >
-                  {currentStage.canAssign && nextStage ? (
+                  {!isHistoricalStageEdit && currentStage.canAssign && nextStage ? (
                     allowPageAssignment ? (
                       <Form.List name="nextStageAssignees">
                         {(fields, { add, remove }) => (
                           <div className="task-process-modal__assignee-panel">
-                            {/* <div className="task-process-modal__assignee-header">
-                              <div className="task-process-modal__assignee-header-cell task-process-modal__assignee-header-cell--role">
-                                
-                              </div>
-                              <div className="task-process-modal__assignee-header-cell">
-                                下一阶段任务人员
-                              </div>
-                              <div className="task-process-modal__assignee-header-cell">
-                                分配页数
-                              </div>
-                              <div className="task-process-modal__assignee-header-cell task-process-modal__assignee-header-cell--action">
-                                操作
-                              </div>
-                            </div> */}
+                           
                              <Row gutter={12} align="middle">
                              <Col span={1}></Col>
                              <Col span={8}>下一阶段任务人员</Col>
@@ -737,24 +798,24 @@ export function TaskProcessModal({
                         )}
                       </Form.List>
                     ) : (
-                      <Form.Item
-                        label="下一阶段任务人员"
-                        name="nextStageUserId"
-                        rules={[{ required: true, message: '请选择下一阶段任务人员' }]}
-                      >
-                        <Select
-                          placeholder="请选择下一阶段任务人员"
-                          loading={nextStageLoading}
-                          options={nextStageMembers.map((member) => ({
-                            label: `${member.userName} · ${member.userEmail}`,
-                            value: member.userId,
-                          }))}
-                        />
-                      </Form.Item>
+                          <Form.Item
+                            label="下一阶段任务人员"
+                            name="nextStageUserId"
+                            rules={[{ required: true, message: '请选择下一阶段任务人员' }]}
+                          >
+                            <Select
+                              placeholder="请选择下一阶段任务人员"
+                              loading={nextStageLoading}
+                              options={nextStageMembers.map((member) => ({
+                                label: `${member.userName} · ${member.userEmail}`,
+                                value: member.userId,
+                              }))}
+                            />
+                          </Form.Item>
                     )
                   ) : null}
                   <div className="task-process-modal__dual-field-row">
-                    {nextStage ? (
+                    {!isHistoricalStageEdit && nextStage ? (
                       <Form.Item
                         className="task-process-modal__dual-field-item"
                         label={`预期完成天数`}
@@ -778,21 +839,46 @@ export function TaskProcessModal({
                     >
                       <Input.TextArea
                         className="task-process-modal__field-control task-process-modal__remark-input"
-                        placeholder="可选填写阶段备注，如上一阶段已完成"
+                        placeholder={isHistoricalStageEdit ? '可选填写本次阶段修改说明' : '可选填写阶段备注，如上一阶段已完成'}
                         rows={3}
                       />
                     </Form.Item>
                   </div>
-                  <div className="task-process-modal__footer">
-                    <Button
-                      type="primary"
-                      htmlType="submit"
-                      loading={submitting}
-                      disabled={!canProcessCurrentStage}
-                    >
-                      {isLastStage ? '完成当前阶段' : '提交到下一阶段'}
-                    </Button>
-                  </div>
+                  {shouldCollectTotalPageCount ? (
+                          <Col span={12}>
+                            {/* 当前节点要求采集总页数时，将总页数写入 next_stage_assignees 的 assigned_page_count。 */}
+                            <Form.Item
+                              label="总页数"
+                              name="total_page_count"
+                              rules={[{ required: true, message: '请输入总页数' }]}
+                            >
+                              <InputNumber
+                                min={0}
+                                precision={0}
+                                className="full-width-control"
+                                placeholder="请输入总页数"
+                              />
+                            </Form.Item>
+                          </Col>
+                        ) : null}
+                    {
+                      !isHistoricalStageEdit && 
+                      <div className="task-process-modal__footer">
+                      <Button
+                        type="primary"
+                        htmlType="submit"
+                        loading={submitting}
+                        disabled={!canProcessCurrentStage}
+                      >
+                        {isHistoricalStageEdit
+                          ? '保存阶段修改'
+                          : isLastStage
+                            ? '完成当前阶段'
+                            : '提交到下一阶段'}
+                      </Button>
+                    </div>
+                    }
+            
                 </Form>
               </Space>
             </Card>

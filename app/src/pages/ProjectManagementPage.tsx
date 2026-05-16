@@ -91,7 +91,7 @@ function createWorkflowStage(index: number): WorkflowStageConfig {
     allowPageAssignment: false,
     canAssign: index > 0,
     canSkip: false,
-    collectTotalPageCount: true,
+    collectTotalPageCount: false,
     configJson: {},
     defaultDueDays: 3,
     isMerged: false,
@@ -1688,6 +1688,17 @@ export function ProjectManagementPage() {
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             allowPageAssignment: checked,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="workflow-stage-switch">
+                      <span>是否需要填写总页数</span>
+                      <Switch
+                        checked={selectedWorkflowStage.collectTotalPageCount}
+                        onChange={(checked) =>
+                          handleWorkflowStageChange(selectedWorkflowStage.localId, {
+                            collectTotalPageCount: checked,
                           })
                         }
                       />
