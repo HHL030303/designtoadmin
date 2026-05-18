@@ -82,10 +82,12 @@ function isStageOverdue(dueDate?: string) {
 export function TaskHistoryDetailPanel({
   detail,
   loading,
+  onCollapse,
   onUpdated,
 }: {
   detail?: TaskDetailRecord
   loading?: boolean
+  onCollapse?: () => void
   onUpdated?: () => Promise<void>
 }) {
   const { currentProject, currentUser, role } = useAppState()
@@ -124,10 +126,15 @@ export function TaskHistoryDetailPanel({
   const currentPrimaryAssignee = currentWorkflowStage?.stageAssignees.find((assignee) => assignee.isPrimary)
     ?? currentWorkflowStage?.stageAssignees[0]
   // 只有当前 current_stage 的执行人就是当前登录账号时，才允许显示编辑入口。
+  // const currentStageBelongsToUser = Boolean(
+  //   currentWorkflowStage &&
+  //     currentUser?.id &&
+  //     currentWorkflowStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
+  // )
   const currentStageBelongsToUser = Boolean(
     currentWorkflowStage &&
       currentUser?.id &&
-      currentWorkflowStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
+      currentWorkflowStage?.assignedBy == currentUser.id,
   )
   const canEditCurrentAssignee = Boolean(
     currentProject?.id &&
@@ -211,9 +218,16 @@ export function TaskHistoryDetailPanel({
   return (
     <div className="table-expanded-panel">
       <Card className="task-history-panel">
-        <Tag bordered={false} color="processing" className="task-history-panel__count-tag">
-          {detail.files.length} 个文件
-        </Tag>
+        <div className="task-history-panel__header">
+          <Tag bordered={false} color="processing" className="task-history-panel__count-tag">
+            {detail.files.length} 个文件
+          </Tag>
+          {onCollapse ? (
+            <Button size="small" className="task-history-panel__collapse-button" onClick={onCollapse}>
+              收起
+            </Button>
+          ) : null}
+        </div>
         <Descriptions column={4} size="small" className="panel-descriptions">
           <Descriptions.Item label="任务标题">{detail.task.title}</Descriptions.Item>
           <Descriptions.Item label="当前版本">{detail.currentVersion.versionNo}</Descriptions.Item>

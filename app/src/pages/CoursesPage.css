@@ -7,11 +7,11 @@
   gap: 24px;
 }
 
-.courses-page-card .workspace-header-info {
+/* .courses-page-card .workspace-header-info {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
+} */
 
 .courses-page-card .workspace-header-title-row {
   display: flex;
@@ -447,6 +447,77 @@
   color: #94a3b8;
 }
 
+.courses-page-card .task-table__version-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  overflow: visible;
+}
+
+.courses-page-card .task-table__version-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.courses-page-card .task-table__version-trigger:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.task-table__version-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 4px 0;
+  z-index: 20;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.task-table__version-menu--portal {
+  position: fixed;
+}
+
+.task-table__version-menu-item {
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.task-table__version-menu-item:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.task-table__version-menu-item--active {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.task-table__version-menu-empty {
+  padding: 7px 12px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
 .courses-page-card .task-table__completed-tag.ant-tag,
 .courses-page-card .task-table__subtask-tag.ant-tag,
 .courses-page-card .task-table__status-tag.ant-tag {
@@ -529,9 +600,7 @@
 }
 
 
-.courses-page-card .task-table .ant-pagination .ant-select {
-  min-width: 132px;
-}
+
 
 .courses-page-card .task-table .ant-pagination .ant-select-selector {
   height: 40px !important;

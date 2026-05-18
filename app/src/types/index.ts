@@ -1,6 +1,7 @@
 export type ViewKey =
   | 'dashboard'
   | 'allTickets'
+  | 'taskStatistics'
   | 'research'
   | 'myTasks'
   | 'courses'
@@ -90,6 +91,7 @@ export interface TaskSubTaskRecord {
 export interface TaskPackageInfoRecord {
   errorMessage?: string | null
   completedAt?:string
+  status?:string
   outputFile?: AttachmentFile | null
 }
 
@@ -142,6 +144,7 @@ export interface TaskWorkflowFileRuleRecord {
 
 export interface TaskWorkflowStageRecord {
   id: string
+  assignedBy:any
   templateStageId?: string
   roleId?: string
   stageName: string
@@ -180,6 +183,7 @@ export interface TaskDetailRecord {
   files: AttachmentFile[]
   packageInfo?: TaskPackageInfoRecord | null
   subTasks: TaskSubTaskRecord[]
+  assignedBy?:string
 }
 
 export interface AttachmentFile {

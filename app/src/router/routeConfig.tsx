@@ -12,6 +12,7 @@ import { ProjectMembersPage } from '../pages/ProjectMembersPage'
 import { ProjectSelectPage } from '../pages/ProjectSelectPage'
 import { ResearchWorkbenchPage } from '../pages/ResearchWorkbenchPage'
 import { ServicePage } from '../pages/ServicePage'
+import { TaskStatisticsPage } from '../pages/TaskStatisticsPage'
 
 export type AppRouteConfig = {
   path: string
@@ -37,6 +38,10 @@ export const privateRoutes: AppRouteConfig[] = [
   {
     path: '/tickets',
     element: <AllTicketsPage />,
+  },
+  {
+    path: '/task-statistics',
+    element: <TaskStatisticsPage />,
   },
   {
     path: '/research',

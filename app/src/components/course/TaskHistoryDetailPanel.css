@@ -12,8 +12,31 @@
 .task-history-panel__count-tag.ant-tag {
   display: flex;
   width: fit-content;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   margin-inline-end: 0;
+}
+
+.task-history-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.task-history-panel__collapse-button.ant-btn {
+  border-radius: 999px;
+  border-color: #dbe5f0;
+  color: #475569;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.task-history-panel__collapse-button.ant-btn:hover,
+.task-history-panel__collapse-button.ant-btn:focus {
+  border-color: #bfdbfe !important;
+  color: #2563eb !important;
+  background: #eff6ff !important;
 }
 
 .task-history-panel__owner-text {

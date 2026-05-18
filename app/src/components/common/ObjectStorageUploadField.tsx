@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Button, Progress, Space, Typography, Upload, message } from 'antd'
-import { DeleteOutlined, InboxOutlined, LoadingOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, InboxOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { RcFile, UploadFile, UploadProps } from 'antd/es/upload/interface'
 import type { AttachmentFile } from '../../types'
 import { objectStorageService } from '../../services/objectStorageService'
@@ -52,7 +52,6 @@ export function ObjectStorageUploadField({
     onDelete,
     disabled,
     accept,
-    helperText,
     compact = false,
     fileNamePattern,
     maxCount,

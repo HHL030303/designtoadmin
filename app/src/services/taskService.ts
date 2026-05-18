@@ -35,6 +35,7 @@ type TaskListItemResponse = {
   field_values?: Record<string, unknown> | null
   package_info?: {
     error_message?: string | null
+    status?:string
     output_file?: {
       id?: number | string
       name?: string | null
@@ -75,6 +76,13 @@ type TaskListResponse = {
   page_size: number
   total: number
 }
+
+type TaskVersionsResponse =
+  | TaskVersionResponse[]
+  | {
+      items?: TaskVersionResponse[] | null
+      versions?: TaskVersionResponse[] | null
+    }
 
 type TaskDetailResponse = {
   task: {
@@ -142,6 +150,7 @@ type TaskWorkflowStageResponse = {
   operator_role_code?: string | null
   can_assign?: boolean
   can_skip?: boolean
+  assigned_by?:string
   collect_total_page_count?: boolean
   allow_page_assignment?: boolean
   requires_file_upload?: boolean
@@ -363,6 +372,7 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
     collectTotalPageCount: stage.collect_total_page_count ?? false,
     dueDays: stage.due_days ?? undefined,
     dueDate: normalizeDate(stage.due_date),
+    assignedBy:stage.assigned_by,
     fileRules: (stage.file_rules ?? []).map(mapFileRule),
     id: String(stage.id),
     operatorRoleCode: stage.operator_role_code ?? undefined,
@@ -418,6 +428,7 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
     packageInfo: item.package_info
       ? {
           errorMessage: item.package_info.error_message ?? null,
+          status:item.package_info.status,
           outputFile: item.package_info.output_file
             ? mapAttachment({
                 id: item.package_info.output_file.id,
@@ -472,8 +483,12 @@ export const taskService = {
     }
   },
 
-  async getTaskDetail(taskId: string): Promise<TaskDetailRecord> {
-    const data = await apiRequest<TaskDetailResponse>(`/api/tasks/${taskId}`)
+  async getTaskDetail(taskId: string, options?: { versionId?: string }): Promise<TaskDetailRecord> {
+    const data = await apiRequest<TaskDetailResponse>(`/api/tasks/${taskId}`, {
+      query: {
+        version_id: options?.versionId,
+      },
+    })
     const workflowStages = (data.workflow_stages ?? [])
       .map(mapWorkflowStage)
       .sort((left, right) => left.sortValue - right.sortValue)
@@ -554,6 +569,19 @@ export const taskService = {
     }
   },
 
+  async listTaskVersions(taskId: string): Promise<TaskVersionRecord[]> {
+    const data = await apiRequest<TaskVersionsResponse>(`/api/tasks/${taskId}/versions`)
+    const versions = Array.isArray(data)
+      ? data
+      : Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.versions)
+          ? data.versions
+          : []
+
+    return versions.map((version) => mapVersion(version))
+  },
+
   async createTask(payload: CreateTaskPayload) {
     return apiRequest<{
       current_version: TaskVersionResponse
@@ -610,6 +638,13 @@ export const taskService = {
   async createIterationTask(taskId: string, payload: CreateServiceTaskPayload) {
     await apiRequest<null>(`/api/tasks/${taskId}/iterations`, {
       body: payload,
+      method: 'POST',
+    })
+  },
+
+  async cancelSubTask(subTaskId: string) {
+    await apiRequest<null>(`/api/sub_tasks/${subTaskId}/cancel`, {
+      body: {},
       method: 'POST',
     })
   },

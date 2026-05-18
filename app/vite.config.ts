@@ -14,7 +14,7 @@ export default defineConfig({
           '*': '',
         },
         rewrite: (path) => `/byy/workflow_server${path}`,
-        target: 'http://192.168.30.20:4001',
+        target: 'http://8.148.15.122:4001',
       },
       '/admin_api': {
         changeOrigin: true,
@@ -22,7 +22,7 @@ export default defineConfig({
           '*': '',
         },
         rewrite: (path) => `/byy/workflow_server${path}`,
-        target: 'http://192.168.30.20:4001',
+        target: 'http://8.148.15.122:4001',
       },
       '/cos': {
         changeOrigin: true,
@@ -30,7 +30,7 @@ export default defineConfig({
           '*': '',
         },
         rewrite: (path) => `/byy/workflow_server${path}`,
-        target: 'http://192.168.30.20:4001',
+        target: 'http://8.148.15.122:4001',
       },
       // '/': {
       //   changeOrigin: true,

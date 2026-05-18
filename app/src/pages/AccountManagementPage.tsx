@@ -40,6 +40,14 @@ export function AccountManagementPage() {
     }
   }
 
+  const handleReset = () =>{
+    setKeyword('')
+  }
+
+  const handleQuery =()=>{
+    setKeyword(keyword)
+  }
+
   useEffect(() => {
     void loadAccounts()
   }, [])
@@ -141,29 +149,40 @@ export function AccountManagementPage() {
   return (
     <Card className="panel-card">
       <div className="workspace-header">
-        <div className="workspace-header-main">
+        {/* <div className="workspace-header-main">
           <Typography.Title level={4} className="workspace-header-title">
             账号管理
           </Typography.Title>
-        </div>
-        <div className="workspace-header-side">
+        </div> */}
+        {/* <div className="workspace-header-side">
           <div className="workspace-kpi">
             <span className="workspace-kpi-value">{accounts.length}</span>
             <span className="workspace-kpi-label">账号总数</span>
           </div>
-          <Button type="primary" onClick={openCreateDrawer}>
-            新增账号
-          </Button>
-        </div>
+    
+        </div> */}
       </div>
 
       <div className="workspace-filter-bar">
+        <div className='workspace-search'> 
         <Input
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索姓名 / 邮箱 / 状态"
           className="workspace-filter-input"
         />
+          <Button type="primary"  onClick={handleQuery}>
+              查询
+            </Button>
+            <Button onClick={handleReset}>重置</Button>
+        </div>
+        <div className='workspace-reset'>
+          <Button type="primary" onClick={openCreateDrawer}>
+            新增账号
+          </Button>
+        </div>
+      
+        
       </div>
 
       <Table

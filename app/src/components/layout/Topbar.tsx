@@ -22,7 +22,9 @@ export function Topbar({
   availableRoles,
   currentUser,
   currentProject,
+  projects,
   onSwitchRole,
+  onSwitchProject,
   onLogout,
 }: {
   view: ViewKey
@@ -30,7 +32,9 @@ export function Topbar({
   availableRoles: AvailableProjectRole[]
   currentUser: AuthUser | null
   currentProject: ProjectOption | null
+  projects: ProjectOption[]
   onSwitchRole: (role: UserRole) => void
+  onSwitchProject: (projectKey: string) => void
   onLogout: () => void
 }) {
   const { current, parent } = getNavItemByView(view)
@@ -61,9 +65,19 @@ export function Topbar({
             <Typography.Text className="topbar-role-label">
               账号：{currentUser?.email ?? '-'}
             </Typography.Text>
-            <Typography.Text className="topbar-role-label">
-              项目：{currentProject?.name ?? '-'}
-            </Typography.Text>
+            <div className='currentProject'>
+              <span>项目：</span>
+            <Select
+              value={currentProject?.key}
+              size="small"
+              suffixIcon={<DownOutlined />}
+              className="topbar-project-select"
+              options={projects.map((project) => ({
+                label: project.name,
+                value: project.key,
+              }))}
+              onChange={onSwitchProject}
+            />
             {availableRoles.length > 1 ? (
               <Select
                 value={role}
@@ -76,6 +90,9 @@ export function Topbar({
                 onChange={onSwitchRole}
               />
             ) : null}
+            </div>
+         
+           
           </div>
         </Space>
       </div>

@@ -1,0 +1,265 @@
+.all-tickets-page-card.ant-card {
+  border-radius: 30px;
+  border: 1px solid #e6edf7;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 24%),
+    linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
+}
+
+.all-tickets-page-card > .ant-card-body {
+  padding: 26px 28px 28px;
+}
+
+.all-tickets-page__hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.all-tickets-page__hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+
+.all-tickets-page__stat-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 100%;
+  min-height: 124px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  border: 1px solid #dbe5f4;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.all-tickets-page__stat-card--blue {
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.all-tickets-page__stat-card--green {
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.all-tickets-page__stat-card--cyan {
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.all-tickets-page__stat-card--orange {
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.96) 0%, rgba(255, 255, 255, 0.96) 100%);
+}
+
+.all-tickets-page__stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  font-size: 30px;
+  flex: 0 0 60px;
+}
+
+.all-tickets-page__stat-icon--blue,
+.all-tickets-page__stat-icon--cyan {
+  color: #2563eb;
+  background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 100%);
+}
+
+.all-tickets-page__stat-icon--green {
+  color: #16a34a;
+  background: linear-gradient(180deg, #dcfce7 0%, #f0fdf4 100%);
+}
+
+.all-tickets-page__stat-icon--orange {
+  color: #f97316;
+  background: linear-gradient(180deg, #ffedd5 0%, #fff7ed 100%);
+}
+
+.all-tickets-page__stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.all-tickets-page__stat-label {
+  color: #1e293b;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.all-tickets-page__stat-value {
+  color: #0f172a;
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.all-tickets-page__stat-caption {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.all-tickets-page__stat-caption--blue,
+.all-tickets-page__stat-caption--cyan {
+  color: #2563eb;
+}
+
+.all-tickets-page__stat-caption--green {
+  color: #16a34a;
+}
+
+.all-tickets-page__stat-caption--orange {
+  color: #f97316;
+}
+
+.all-tickets-page__filters-card {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  border: 1px solid #e7eef7;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+  margin-top: 10px;
+}
+
+.all-tickets-page__filters {
+  margin-bottom: 0;
+  gap: 12px !important;
+}
+
+.all-tickets-page__filters .workspace-filter-input {
+  min-width: 320px;
+  border-radius: 12px;
+  border-color: #d8e1ef;
+  box-shadow: none;
+}
+
+.all-tickets-page__filters .workspace-filter-input:hover,
+.all-tickets-page__filters .workspace-filter-input:focus,
+.all-tickets-page__filters .workspace-filter-input:focus-within {
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08);
+}
+
+.all-tickets-page__filters .workspace-filter-select {
+  min-width: 166px;
+}
+
+.all-tickets-page__filters .workspace-filter-select .ant-select-selector {
+  height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 12px !important;
+  border-color: #d8e1ef !important;
+  box-shadow: none !important;
+}
+
+.all-tickets-page__filters .workspace-filter-select .ant-select-selection-item,
+.all-tickets-page__filters .workspace-filter-select .ant-select-selection-placeholder {
+  line-height: 38px !important;
+  font-size: 14px;
+}
+
+.all-tickets-page__reset-button.ant-btn {
+  padding: 0 18px;
+  border-radius: 12px;
+  border-color: #d8e1ef;
+  color: #fff;
+  font-weight: 700;
+  background: #2563eb;
+}
+
+.all-tickets-page__reset-button.ant-btn:hover,
+.all-tickets-page__reset-button.ant-btn:focus {
+  border-color: #bfdbfe !important;
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
+.all-tickets-page__table-shell {
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid #e6edf7;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+}
+
+.all-tickets-page__table .ant-table {
+  background: transparent;
+}
+
+.all-tickets-page__table .ant-table-container {
+  border-inline-start: none !important;
+  border-top: none !important;
+}
+
+.all-tickets-page__table .ant-table-thead > tr > th {
+  padding: 18px 18px;
+  border-bottom: 1px solid #edf2f8;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.all-tickets-page__table .ant-table-tbody > tr > td {
+  padding: 16px 18px;
+  border-bottom: 1px solid #eef3f8;
+  color: #334155;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.all-tickets-page__table .ant-table-tbody > tr:hover > td {
+  background: #f8fbff !important;
+}
+
+.all-tickets-page__table .ant-table-pagination.ant-pagination {
+  margin: 16px 18px;
+}
+
+.all-tickets-page__tag.ant-tag {
+  margin-inline-end: 0;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.all-tickets-page__tag--success.ant-tag {
+  color: #16a34a;
+  background: #ecfdf3;
+}
+
+.all-tickets-page__tag--info.ant-tag,
+.all-tickets-page__tag--brand.ant-tag {
+  color: #2563eb;
+  background: #eaf2ff;
+}
+
+.all-tickets-page__tag--warning.ant-tag {
+  color: #ea580c;
+  background: #fff1e8;
+}
+
+.all-tickets-page__tag--danger.ant-tag {
+  color: #db2777;
+  background: #fdf2f8;
+}
+
+.all-tickets-page__tag--muted.ant-tag {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.all-tickets-page__empty {
+  padding: 42px 0;
+}

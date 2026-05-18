@@ -39,7 +39,6 @@ export function LoginPage() {
 
   return (
     <div className="login-shell">
-      <div className="login-badge">AI辅助设计</div>
       <div className="login-panel">
         <Row gutter={[24, 24]} align="middle">
           <Col xs={24} xl={13}>
@@ -69,7 +68,7 @@ export function LoginPage() {
                 </div>
               </div>
 
-              <div className="login-hero-copy">
+              {/* <div className="login-hero-copy">
                 <Typography.Text className="section-label">Design Delivery Admin</Typography.Text>
                 <Typography.Title level={1} className="login-title">
                   设计交付管理系统
@@ -77,7 +76,7 @@ export function LoginPage() {
                 <Typography.Paragraph className="login-copy">
                   登录认证已经切换到真实后台接口，完成登录后会先进入项目选择页，再按所选项目加载后续管理数据。
                 </Typography.Paragraph>
-              </div>
+              </div> */}
             </Space>
           </Col>
 
@@ -137,7 +136,7 @@ export function LoginPage() {
                   </Button>
                 </Form>
 
-                <div className="login-demo-panel">
+                {/* <div className="login-demo-panel">
                   <div className="login-demo-head">
                     <Typography.Text strong>登录说明</Typography.Text>
                     <Typography.Text className="login-demo-helper">
@@ -157,7 +156,7 @@ export function LoginPage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </Space>
             </div>
           </Col>

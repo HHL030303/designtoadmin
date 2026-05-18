@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Button,
   Checkbox,
@@ -26,9 +27,8 @@ import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import paginationZhCN from '@rc-component/pagination/es/locale/zh_CN'
 import {
-  CalendarOutlined,
+  DownOutlined,
   FilterOutlined,
-  RightOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
 import { useAppState } from '../context/AppStateContext'
@@ -51,6 +51,7 @@ import type {
   ProjectMemberRecord,
   TaskDetailRecord,
   TaskListRecord,
+  TaskVersionRecord,
   UserRole,
   WorkflowTemplateRecord,
 } from '../types'
@@ -441,6 +442,15 @@ function getActiveSubTaskTypeMeta(subTaskType: string) {
   }
 }
 
+function resolveCancelableSubTask(task: TaskListRecord) {
+  return task.activeSubTasks.find((subTask) => (
+    (subTask.subTaskType === 'aftersales' || subTask.subTaskType === 'iteration')
+      && subTask.status !== 'completed'
+  ))
+}
+
+
+
 function resolveTaskStatusQuery(
   _tabKey: 'todo' | 'joined' | 'completed',
   statusFilter: string,
@@ -529,6 +539,172 @@ function resolveFirstStageAssigneeUserId(detail: TaskDetailRecord): string | und
     ?? firstStage.stageAssignees[0]?.userId
 }
 
+function getTaskDetailCacheKey(taskId: string, versionId?: string): string {
+  return versionId ? `${taskId}:${versionId}` : taskId
+}
+
+function buildTaskListVersionPreview(
+  task: TaskListRecord,
+  detail: TaskDetailRecord,
+): TaskListRecord {
+  return {
+    ...task,
+    archivedAt: detail.task.archivedAt,
+    currentStage: detail.currentStage
+      ? {
+          assignees: detail.currentStage.stageAssignees.map((assignee) => ({
+            userId: assignee.userId,
+            userName: assignee.userName,
+          })),
+          id: detail.currentStage.id,
+          stageName: detail.currentStage.stageName,
+          status: detail.currentStage.status,
+        }
+      : null,
+    currentVersion: detail.currentVersion,
+    ownerId: detail.task.ownerId,
+    packageInfo: detail.packageInfo,
+    readonly: detail.task.readonly,
+    status: detail.task.status,
+    title: detail.task.title,
+  }
+}
+
+type HistoryVersionDropdownProps = {
+  hasHistory: boolean
+  selectedVersionId?: string
+  taskId: string
+  versionNo: string
+  onSelect: (versionId: string) => void
+}
+
+function HistoryVersionDropdown({
+  hasHistory,
+  selectedVersionId,
+  taskId,
+  versionNo,
+  onSelect,
+}: HistoryVersionDropdownProps) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [versions, setVersions] = useState<TaskVersionRecord[]>([])
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      const targetNode = event.target as Node
+      const clickedTrigger = triggerRef.current?.contains(targetNode)
+      const clickedMenu = menuRef.current?.contains(targetNode)
+
+      if (!clickedTrigger && !clickedMenu) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [open])
+
+  async function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (loading) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const versionList = await taskService.listTaskVersions(taskId)
+      const triggerRect = triggerRef.current?.getBoundingClientRect()
+
+      setVersions(versionList)
+      setMenuPosition(
+        triggerRect
+          ? {
+              left: triggerRect.right - 108,
+              top: triggerRect.bottom + 6,
+            }
+          : null,
+      )
+      setOpen(true)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '任务版本列表加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!hasHistory) {
+    return <span>{versionNo}</span>
+  }
+
+  return (
+    <div ref={containerRef} className="task-table__version-cell">
+      <span>{versionNo}</span>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="task-table__version-trigger"
+        aria-label="查看任务历史版本"
+        onClick={(event) => {
+          void handleClick(event)
+        }}
+      >
+        <DownOutlined spin={loading} />
+      </button>
+      {open && menuPosition
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="task-table__version-menu task-table__version-menu--portal"
+              style={{
+                left: `${menuPosition.left}px`,
+                top: `${menuPosition.top}px`,
+              }}
+            >
+              {versions.length > 0 ? (
+                versions.map((version) => {
+                  const isSelected = selectedVersionId === version.id
+
+                  return (
+                    <button
+                      key={version.id}
+                      type="button"
+                      className={`task-table__version-menu-item${
+                        isSelected ? ' task-table__version-menu-item--active' : ''
+                      }`}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setOpen(false)
+                        onSelect(version.id)
+                      }}
+                    >
+                      {version.versionNo}
+                    </button>
+                  )
+                })
+              ) : (
+                <div className="task-table__version-menu-empty">暂无历史版本</div>
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  )
+}
+
 export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks' }) {
   const { currentProject, canCreateCourse, currentUser, role } = useAppState()
   const isMyTasksPage = mode === 'myTasks'
@@ -550,6 +726,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null)
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetailRecord>>({})
+  const [taskRowOverrides, setTaskRowOverrides] = useState<Record<string, TaskListRecord>>({})
+  const [selectedVersionIds, setSelectedVersionIds] = useState<Record<string, string | undefined>>({})
   const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false)
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(mandatoryTaskColumnKeys)
@@ -574,7 +752,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
   const shouldShowTaskTabs = !canManageTaskActions
-  const activeTaskCount = tasks.filter((task) => task.status !== 'completed').length
+  // const activeTaskCount = tasks.filter((task) => task.status !== 'completed').length
 
   const loadTasks = useCallback(
     async (
@@ -737,10 +915,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       return
     }
 
-    if (!editingTaskId) {
-      form.setFieldValue('taskOwnerUserId', undefined)
-    }
-
     async function loadTaskOwnerMembers() {
       try {
         setTaskOwnerLoading(true)
@@ -774,10 +948,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     if (!projectId || !canManageTaskActions || !selectedWorkflowTemplate || !roleCode) {
       setSecondStageMembers([])
       return
-    }
-
-    if (!editingTaskId) {
-      form.setFieldValue('secondStageAssigneeUserId', undefined)
     }
 
     async function loadSecondStageMembers() {
@@ -836,24 +1006,27 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setDrawerOpen(true)
   }
 
-  async function ensureTaskDetail(taskId: string) {
-    if (taskDetails[taskId]) {
-      return taskDetails[taskId]
+  async function ensureTaskDetail(taskId: string, versionId?: string) {
+    const cacheKey = getTaskDetailCacheKey(taskId, versionId)
+
+    if (taskDetails[cacheKey]) {
+      return taskDetails[cacheKey]
     }
 
-    const detail = await taskService.getTaskDetail(taskId)
-    setTaskDetails((current) => ({ ...current, [taskId]: detail }))
+    const detail = await taskService.getTaskDetail(taskId, { versionId })
+    setTaskDetails((current) => ({ ...current, [cacheKey]: detail }))
     return detail
   }
 
-  async function handleExpandTask(expanded: boolean, taskId: string) {
+  async function handleExpandTask(expanded: boolean, taskId: string, versionId?: string) {
     if (expanded) {
       setExpandedRowKeys((current) => [...new Set([...current, taskId])])
+      const cacheKey = getTaskDetailCacheKey(taskId, versionId)
 
-      if (!taskDetails[taskId]) {
+      if (!taskDetails[cacheKey]) {
         try {
           setLoadingDetailId(taskId)
-          await ensureTaskDetail(taskId)
+          await ensureTaskDetail(taskId, versionId)
         } catch (error) {
           message.error(error instanceof Error ? error.message : '任务详情加载失败')
           setExpandedRowKeys((current) => current.filter((key) => key !== taskId))
@@ -868,10 +1041,37 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setExpandedRowKeys((current) => current.filter((key) => key !== taskId))
   }
 
+  async function handleSelectTaskVersion(taskId: string, versionId: string): Promise<void> {
+    try {
+      const currentTask = tasks.find((task) => task.id === taskId)
+      setSelectedVersionIds((current) => ({ ...current, [taskId]: versionId }))
+      const detail = await ensureTaskDetail(taskId, versionId)
+
+      if (currentTask) {
+        setTaskRowOverrides((current) => ({
+          ...current,
+          [taskId]: buildTaskListVersionPreview(currentTask, detail),
+        }))
+      }
+
+      setExpandedRowKeys((current) => [...new Set([...current, taskId])])
+    } catch {
+      setSelectedVersionIds((current) => ({ ...current, [taskId]: undefined }))
+    }
+  }
+
   async function openEditDrawer(task: TaskListRecord) {
     try {
       const detail = await ensureTaskDetail(task.id)
-      const workflowTemplateId = resolveWorkflowTemplateId(detail, workflowTemplates)
+      let availableWorkflowTemplates = workflowTemplates
+
+      if (availableWorkflowTemplates.length === 0 && currentProject?.id) {
+        const templates = await adminService.listWorkflowTemplates(currentProject.id)
+        availableWorkflowTemplates = templates.filter((template) => template.status === 'enabled')
+        setWorkflowTemplates(availableWorkflowTemplates)
+      }
+
+      const workflowTemplateId = resolveWorkflowTemplateId(detail, availableWorkflowTemplates)
       const firstStageAssigneeUserId = resolveFirstStageAssigneeUserId(detail)
 
       setEditingTaskId(task.id)
@@ -909,9 +1109,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setServiceFirstStageAssignmentMeta({})
   }
 
-  async function refreshTaskDetail(taskId: string) {
-    const detail = await taskService.getTaskDetail(taskId)
-    setTaskDetails((current) => ({ ...current, [taskId]: detail }))
+  async function refreshTaskDetail(taskId: string, versionId?: string) {
+    const cacheKey = getTaskDetailCacheKey(taskId, versionId)
+    const detail = await taskService.getTaskDetail(taskId, { versionId })
+    setTaskDetails((current) => ({ ...current, [cacheKey]: detail }))
     return detail
   }
 
@@ -985,6 +1186,34 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     if (type === '售后') {
       await loadServiceParticipantOptions(taskId)
     }
+  }
+  async function cancelOpeTask(task: TaskListRecord) {
+    const targetSubTask = resolveCancelableSubTask(task)
+
+    if (!targetSubTask) {
+      message.warning('当前没有可取消的售后/迭代子任务')
+      return
+    }
+
+    Modal.confirm({
+      title: '确认取消当前子任务吗？',
+      content: '取消后该售后/迭代子任务会停止流转，请谨慎操作。',
+      okButtonProps: { danger: true },
+      okText: '确认取消',
+      cancelText: '返回',
+      onOk: async () => {
+        try {
+          setMutating(true)
+          await taskService.cancelSubTask(targetSubTask.id)
+          message.success('子任务已取消')
+          await loadTasks()
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '取消子任务失败')
+        } finally {
+          setMutating(false)
+        }
+      },
+    })
   }
 
   async function handleCreateServiceTask(payload: {
@@ -1232,8 +1461,20 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       {
         column: {
           title: '当前版本',
-          render: (_, record) => record.currentVersion.versionNo,
-          width: 100,
+          render: (_, record) => {
+            return (
+              <HistoryVersionDropdown
+                hasHistory={record.activeSubTasks.length > 0}
+                selectedVersionId={selectedVersionIds[record.id]}
+                taskId={record.id}
+                versionNo={record.currentVersion.versionNo}
+                onSelect={(versionId) => {
+                  void handleSelectTaskVersion(record.id, versionId)
+                }}
+              />
+            )
+          },
+          width: 140,
         },
         defaultVisible: true,
         key: 'currentVersion',
@@ -1245,6 +1486,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           render: (_, record) => {
             const outputFile = record.packageInfo?.outputFile
             const errorMessage = record.packageInfo?.errorMessage?.trim()
+            console.error(record.packageInfo,'record.packageInfo?.status')
+            if(record.packageInfo?.status=='pending'){
+              return  '打包中'
+            }
 
             if (outputFile?.name) {
               return (
@@ -1304,10 +1549,11 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </Dropdown>
         </div>
       ),
-      width: 160,
+      width: 220,
       render: (_, record) => {
         const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
         const completedTask = isCompletedTask(record)
+        const cancelableSubTask = resolveCancelableSubTask(record)
         const canProcessTask = Boolean(
           currentUser?.id &&
             record.currentStage?.assignees.some((assignee) => assignee.userId === currentUser.id),
@@ -1315,6 +1561,17 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
         return (
           <div className="task-table__actions">
+            {!isMyTasksPage ? (
+              <Button
+                size="small"
+                className="task-table__action-button"
+                onClick={() => {
+                  void handleExpandTask(true, record.id, selectedVersionIds[record.id])
+                }}
+              >
+                详情
+              </Button>
+            ) : null}
             {completedTask ? (
               <>
                 <Button
@@ -1377,6 +1634,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 删除
               </Button>
             ) : null}
+            {!completedTask && cancelableSubTask ? (
+              <Button
+                danger
+                size="small"
+                className="task-table__action-button"
+                onClick={() => void cancelOpeTask(record)}
+              >
+                取消
+              </Button>
+            ) : null}
           </div>
         )
       },
@@ -1436,6 +1703,11 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const columns: ColumnsType<TaskListRecord> = taskColumnDefinitions
     .filter((definition) => visibleColumnKeys.includes(definition.key))
     .map((definition) => definition.column)
+
+  const displayTasks = useMemo(
+    () => tasks.map((task) => taskRowOverrides[task.id] ?? task),
+    [taskRowOverrides, tasks],
+  )
 
   const tableScrollX = taskColumnDefinitions
     .filter((definition) => visibleColumnKeys.includes(definition.key))
@@ -1556,10 +1828,21 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setPageSize(nextPageSize)
   }
 
+  const handleReset = () =>{
+    setSearch('')
+    setCurrentPage(1)
+  }
+
+  const handleQuery =()=>{
+    setSearch(search)
+    setCurrentPage(1)
+  }
+
   return (
     <div className="courses-page-card">
-      <div className="workspace-header">
-        <div className="workspace-header-info">
+      {/* <div className="workspace-header"> */}
+      <div className="workspace-filter-bar">
+        {/* <div className="workspace-header-info">
           <div className="workspace-header-title-row">
             <span className="workspace-header-icon">
               <CalendarOutlined />
@@ -1572,8 +1855,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             共 {total} 项任务，
             <span className="workspace-header-subtitle-accent"> {activeTaskCount} 项进行中</span>
           </Typography.Text>
-        </div>
-        <div className="workspace-header-side">
+        </div> */}
+        {/* <div className="workspace-header-side"> */}
+        <div className='workspace-search'> 
           <Input
             value={search}
             onChange={(event) => {
@@ -1585,17 +1869,25 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             className="workspace-search-input"
             allowClear
           />
+            <Button type="primary"  onClick={handleQuery}>
+              查询
+            </Button>
+            <Button onClick={handleReset}>重置</Button>
+          </div>
+          <div className='workspace-reset'>
           {canCreateCourse && canManageTaskActions ? (
             <Button
               type="primary"
-              className="workspace-header-create-button"
+              danger
               onClick={openCreateDrawer}
               loading={fieldConfigLoading || workflowLoading}
             >
               新建任务
             </Button>
           ) : null}
-        </div>
+          </div>
+     
+        {/* </div> */}
       </div>
 
       <input
@@ -1637,7 +1929,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         className="task-table"
         loading={tasksLoading}
         columns={columns}
-        dataSource={tasks}
+        dataSource={displayTasks}
         pagination={{
           current: currentPage,
           locale: paginationZhCN,
@@ -1653,26 +1945,26 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             : {
                 expandedRowKeys,
                 expandRowByClick: false,
+                showExpandColumn: false,
                 onExpand: (expanded, record) => {
-                  void handleExpandTask(expanded, record.id)
+                  void handleExpandTask(expanded, record.id, selectedVersionIds[record.id])
                 },
-                expandIcon: ({ expanded, onExpand, record }) => (
-                  <span
-                    className={`task-table-expand-button${expanded ? ' task-table-expand-button--open' : ''}`}
-                    onClick={(event) => {
-                      onExpand(record, event)
-                    }}
-                    aria-label={expanded ? '收起任务详情' : '展开任务详情'}
-                  >
-                    <RightOutlined />
-                  </span>
-                ),
                 expandedRowRender: (record) => (
                   <TaskHistoryDetailPanel
-                    detail={taskDetails[record.id]}
+                    detail={
+                      taskDetails[
+                        getTaskDetailCacheKey(record.id, selectedVersionIds[record.id])
+                      ]
+                    }
                     loading={loadingDetailId === record.id}
                     onUpdated={async () => {
-                      await Promise.all([refreshTaskDetail(record.id), loadTasks()])
+                      await Promise.all([
+                        refreshTaskDetail(record.id, selectedVersionIds[record.id]),
+                        loadTasks(),
+                      ])
+                    }}
+                    onCollapse={() => {
+                      void handleExpandTask(false, record.id, selectedVersionIds[record.id])
                     }}
                   />
                 ),
@@ -1755,6 +2047,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 </Form.Item>
               </Col>
             ) : null}
+            <Col span='12'>
+              <Form.Item
+                  label="任务名称"
+                  name="title"
+                  rules={[{ required: true, message: '请填写任务名称' }]}
+                >
+                  <Input type="text"  />
+                </Form.Item>
+            </Col>
             {/* {JSON.stringify(enabledFieldConfigs)} */}
             {enabledFieldConfigs.map((field) => (
               <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>

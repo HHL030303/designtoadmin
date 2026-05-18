@@ -15,9 +15,11 @@ export function AppLayout() {
     availableRoles,
     currentUser,
     currentProject,
+    projects,
     loading,
     error,
     logout,
+    selectProject,
     switchRole,
   } = useAppState()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -41,13 +43,15 @@ export function AppLayout() {
               availableRoles={availableRoles}
               currentUser={currentUser}
               currentProject={currentProject}
+              projects={projects}
               onSwitchRole={switchRole}
+              onSwitchProject={selectProject}
               onLogout={() => void logout()}
             />
           </div>
           <div className="app-content">
             <AppFeedback loading={loading} error={error} />
-            <Outlet />
+            <Outlet key={currentProject?.id ?? 'no-project'} />
           </div>
         </Layout.Content>
       </Layout>

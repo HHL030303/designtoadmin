@@ -1120,16 +1120,12 @@ export function ProjectManagementPage() {
   return (
     <Card className="panel-card">
       <div className="workspace-header">
-        <div className="workspace-header-main">
+        {/* <div className="workspace-header-main">
           <Typography.Title level={4} className="workspace-header-title">
             项目列表
           </Typography.Title>
-        </div>
+        </div> */}
         <div className="workspace-header-side">
-          <div className="workspace-kpi">
-            <span className="workspace-kpi-value">{projects.length}</span>
-            <span className="workspace-kpi-label">项目总数</span>
-          </div>
           <Button type="primary" onClick={openCreateDrawer}>
             新增项目
           </Button>
@@ -1137,12 +1133,22 @@ export function ProjectManagementPage() {
       </div>
 
       <div className="workspace-filter-bar">
+      <div className='workspace-search'> 
         <Input
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索项目名称 / 编码 / 状态"
           className="workspace-filter-input"
         />
+         <Button type="primary" onClick={()=>{setKeyword(keyword)}}>
+            查询
+          </Button>
+          </div>
+          <div className="workspace-reset">
+          <Button type="primary" onClick={openCreateDrawer}>
+            新增项目
+          </Button>
+        </div>
       </div>
 
       <Table

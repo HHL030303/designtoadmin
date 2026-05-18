@@ -368,6 +368,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   function selectProject(projectKey: string) {
+    if (currentProject?.key === projectKey) {
+      return
+    }
+
     const matched = projects.find((item) => item.key === projectKey)
     if (!matched) {
       return
@@ -381,6 +385,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setActiveRole(nextRole)
     setStoredProjectRole(matched.id, nextRole)
     window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
+
+    if (location.pathname === '/project-select') {
+      const nextView = getAvailableViews(nextRole)[0]
+      if (nextView) {
+        navigate(getPathForView(nextView), { replace: true })
+      }
+      return
+    }
+
+    if (matchedView && canAccessView(nextRole, matchedView)) {
+      return
+    }
+
     const nextView = getAvailableViews(nextRole)[0]
     if (nextView) {
       navigate(getPathForView(nextView), { replace: true })
