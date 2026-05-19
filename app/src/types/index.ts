@@ -166,6 +166,7 @@ export interface TaskWorkflowStageRecord {
   remark?: string | null
   fileRules: TaskWorkflowFileRuleRecord[]
   stageAssignees: TaskWorkflowStageAssigneeRecord[]
+  totalPageCount?:number|undefined|null
 }
 
 export interface TaskDetailRecord {

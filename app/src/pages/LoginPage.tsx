@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import {useState } from 'react'
 import {
   Alert,
   Button,
@@ -7,7 +7,6 @@ import {
   Input,
   Row,
   Space,
-  Tag,
   Typography,
 } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
@@ -22,11 +21,6 @@ export function LoginPage() {
   const { login, authenticating } = useAppState()
   const [error, setError] = useState<string | null>(null)
   const [form] = Form.useForm<LoginFormValues>()
-  const helperText = useMemo(
-    () => '使用 Apifox 文档对应的真实账号登录，成功后会进入项目选择页。',
-    [],
-  )
-
   async function handleFinish(values: LoginFormValues) {
     setError(null)
 

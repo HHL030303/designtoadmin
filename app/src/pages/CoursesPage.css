@@ -193,7 +193,7 @@
 }
 
 .task-table-column-popover {
-  min-width: 288px;
+  /* min-width: 288px; */
 }
 
 .task-table-column-popover .ant-dropdown-menu {
@@ -284,7 +284,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
+  min-height: 22px;
   width: 100%;
   padding: 0 12px;
   border: 1px solid transparent;
@@ -359,7 +359,7 @@
 
 .courses-page-card .task-table .ant-table {
   background: #ffffff;
-  padding: 10px 20px;
+  /* padding: 10px 0px; */
 }
 
 .courses-page-card .task-table .ant-table-content {

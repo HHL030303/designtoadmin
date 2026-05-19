@@ -6,6 +6,8 @@ import { useAppState } from '../context/AppStateContext'
 import { AppLayout } from './AppLayout'
 import { privateRoutes, publicRoutes } from './routeConfig'
 
+const DEFAULT_AUTHORIZED_PATH = '/courses'
+
 export function AppRouter() {
   const { role, isAuthenticated, hasSelectedProject } = useAppState()
   const location = useLocation()
@@ -13,7 +15,10 @@ export function AppRouter() {
     location.pathname === '/'
       ? '/'
       : location.pathname.replace(/\/+$/, '') || '/'
-  const fallbackPath = getPathForView(getAvailableViews(role)[0])
+  const fallbackPath =
+    getAvailableViews(role).includes('courses')
+      ? DEFAULT_AUTHORIZED_PATH
+      : getPathForView(getAvailableViews(role)[0])
   const matchedView = getViewForPath(normalizedPathname)
   const preservedPrivatePath =
     matchedView && canAccessView(role, matchedView) ? normalizedPathname : fallbackPath

@@ -8,14 +8,18 @@
 .task-statistics-page__filter.ant-card,
 .task-statistics-page__table.ant-card {
   border: 1px solid rgba(15, 23, 42, 0.08);
-  /* border-radius: 24px; */
+  border-radius: 2px;
   /* box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06); */
 }
 
 .task-statistics-page__hero .ant-card-body,
 .task-statistics-page__filter .ant-card-body,
 .task-statistics-page__table .ant-card-body {
-  padding: 24px 28px;
+  padding: 24px 0px;
+}
+
+.task-statistics-page__table .ant-table-container{
+  border-radius: 0 !important;
 }
 
 .task-statistics-page__title.ant-typography {
@@ -89,9 +93,7 @@
   overflow: hidden;
 }
 
-.task-statistics-page__table .ant-table {
-  border-radius: 18px;
-}
+
 
 .task-statistics-page__table .ant-table-thead > tr > th {
   background: #f8fafc;
@@ -118,7 +120,7 @@
   justify-content: center;
 }
 
-@media (max-width: 1200px) {
+/* @media (max-width: 1200px) {
   .task-statistics-page__stats {
     grid-template-columns: 1fr;
   }
@@ -145,4 +147,4 @@
   .task-statistics-page__range-picker.ant-picker {
     width: 100%;
   }
-}
+} */

@@ -385,6 +385,7 @@ export function AllTicketsPage() {
     {
       title: '工单信息',
       dataIndex: 'title',
+      fixed: 'left',
       width: 280,
       render: (_, record) => (
         <Space direction="vertical" size={2}>
@@ -397,6 +398,7 @@ export function AllTicketsPage() {
     },
     {
       title: '工作流程阶段',
+      fixed: 'left',
       width: 150,
       render: (_, record) => (
         <Tag className={`all-tickets-page__tag all-tickets-page__tag--${getStageTagTone(record)}`}>
@@ -406,6 +408,7 @@ export function AllTicketsPage() {
     },
     {
       title: '当前负责人',
+      fixed: 'left',
       width: 180,
       render: (_, record) => {
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
@@ -468,6 +471,8 @@ export function AllTicketsPage() {
     {
       title: '创建时间',
       dataIndex: 'createdAt',
+      // 全部工单页保持和任务列表一致，最右一列固定，横向滚动时便于对照时间信息。
+      fixed: 'right',
       width: 140,
     },
   ]

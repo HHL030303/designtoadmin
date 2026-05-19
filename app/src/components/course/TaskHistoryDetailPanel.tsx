@@ -254,6 +254,10 @@ export function TaskHistoryDetailPanel({
             {currentWorkflowStage?.dueDate ?? '未配置'}
           </Descriptions.Item>
           <Descriptions.Item label="已完成节点数">{completedStageCount}</Descriptions.Item>
+          {
+            detail?.currentVersion?.totalPageCount &&   <Descriptions.Item label="总页数">{detail?.currentVersion?.totalPageCount}</Descriptions.Item>
+          }
+        
           <Descriptions.Item label="流程节点总数">{detail.workflowStages.length}</Descriptions.Item>
           <Descriptions.Item label="打包文件">
             {detail.packageInfo?.outputFile?.name ? (

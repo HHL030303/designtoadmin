@@ -5,13 +5,13 @@ import {
   Checkbox,
   Col,
   DatePicker,
-  Dropdown,
   Drawer,
   Empty,
   Form,
   Input,
   InputNumber,
   Modal,
+  Popover,
   Radio,
   Row,
   Select,
@@ -1358,10 +1358,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
   }
 
-  const taskColumnDefinitions = useMemo<TaskColumnDefinition[]>(() => {
-    const baseDefinitions: TaskColumnDefinition[] = [
+  // 列头里的 Popover、版本选择等都会读取当前页面状态；这里保持按渲染实时生成，
+  // 避免 useMemo 持有旧闭包后出现“表格列已切换，但勾选面板还是旧状态”的错位。
+  const taskColumnDefinitions: TaskColumnDefinition[] = [
       {
         column: {
+      key: 'task',
       title: '任务',
       width:200,
       dataIndex: 'title',
@@ -1408,6 +1410,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       },
       {
         column: {
+      key: 'status',
       title: '状态',
       dataIndex: 'status',
       render: (status: string, record) => {
@@ -1427,6 +1430,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       },
       {
         column: {
+      key: 'currentAssignees',
       title: '当前责任人',
       render: (_, record) => {
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
@@ -1444,6 +1448,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       },
       ...enabledFieldConfigs.map<TaskColumnDefinition>((field) => ({
         column: {
+          key: `field:${field.field_key}`,
+          dataIndex: field.field_key,
           render: (_, record) => formatTaskFieldValue(
             field.field_type,
             record.fieldValues[field.field_key],
@@ -1460,6 +1466,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       })),
       {
         column: {
+          key: 'currentVersion',
           title: '当前版本',
           render: (_, record) => {
             return (
@@ -1482,12 +1489,13 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       },
       {
         column: {
+          key: 'packageInfo',
           title: '打包信息',
           render: (_, record) => {
             const outputFile = record.packageInfo?.outputFile
             const errorMessage = record.packageInfo?.errorMessage?.trim()
             console.error(record.packageInfo,'record.packageInfo?.status')
-            if(record.packageInfo?.status=='pending'){
+            if(record.packageInfo?.status=='pending'||record.packageInfo?.status=='processing'){
               return  '打包中'
             }
 
@@ -1528,15 +1536,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       // },
       {
         column: {
+      key: 'actions',
       title: (
         <div className="task-table__actions-header">
           <span>操作</span>
-          <Dropdown
-            trigger={['click']}
+          <Popover
+            trigger="click"
             placement="bottomLeft"
             overlayClassName="task-table-column-popover"
-            menu={{ items: [] }}
-            popupRender={renderColumnPicker}
+            content={renderColumnPicker}
           >
             <Button
               type="text"
@@ -1546,7 +1554,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               aria-label="筛选显示列"
               title="筛选显示列"
             />
-          </Dropdown>
+          </Popover>
         </div>
       ),
       width: 220,
@@ -1554,6 +1562,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
         const completedTask = isCompletedTask(record)
         const cancelableSubTask = resolveCancelableSubTask(record)
+        const canCancelServiceTask = Boolean(
+          !completedTask &&
+            cancelableSubTask &&
+            currentUser?.id &&
+            (
+              record.ownerId === currentUser.id ||
+              role === 'admin' ||
+              role === 'planner'
+            ),
+        )
         const canProcessTask = Boolean(
           currentUser?.id &&
             record.currentStage?.assignees.some((assignee) => assignee.userId === currentUser.id),
@@ -1563,8 +1581,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           <div className="task-table__actions">
             {!isMyTasksPage ? (
               <Button
+                type='primary'
                 size="small"
-                className="task-table__action-button"
                 onClick={() => {
                   void handleExpandTask(true, record.id, selectedVersionIds[record.id])
                 }}
@@ -1575,16 +1593,17 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             {completedTask ? (
               <>
                 <Button
-                  type='primary'
                   size="small"
-                  className="task-table__action-button"
+                  variant="solid"
+                  color='geekblue'
                   onClick={() => void openServiceDrawer('售后', record.id)}
                 >
                   售后
                 </Button>
                 <Button
                   size="small"
-                  className="task-table__action-button"
+                   color='volcano'
+                   variant="solid"
                   onClick={() => void openServiceDrawer('迭代', record.id)}
                 >
                   迭代
@@ -1594,7 +1613,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               <Button
                 danger
                 size="small"
-                className="task-table__action-button"
+                variant="solid"
                 onClick={() => {
                   setProcessingTaskId(record.id)
                 }}
@@ -1606,7 +1625,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               <Button
                 type="primary"
                 size="small"
-                className="task-table__action-button"
+                variant="solid"
                 onClick={() => void openEditDrawer(record)}
               >
                 编辑
@@ -1616,7 +1635,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               <Button
                 danger
                 size="small"
-                className="task-table__action-button"
+                variant="solid"
+                color='red'
                 loading={mutating}
                 onClick={() => {
                   Modal.confirm({
@@ -1634,14 +1654,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 删除
               </Button>
             ) : null}
-            {!completedTask && cancelableSubTask ? (
+            {canCancelServiceTask ? (
               <Button
                 danger
+                variant="solid"
                 size="small"
                 className="task-table__action-button"
                 onClick={() => void cancelOpeTask(record)}
               >
-                取消
+                取消售后
               </Button>
             ) : null}
           </div>
@@ -1653,15 +1674,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         title: '操作',
       },
     ]
-
-    return baseDefinitions
-  }, [
-    canManageTaskActions,
-    currentUser?.id,
-    enabledFieldConfigs,
-    mutating,
-    role,
-  ])
 
   useEffect(() => {
     const availableColumnKeySet = new Set(taskColumnDefinitions.map((definition) => definition.key))
@@ -1700,9 +1712,29 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     (definition) => definition.key.startsWith('field:'),
   )
 
+  const visibleColumnKeySet = useMemo(
+    () => new Set(visibleColumnKeys),
+    [visibleColumnKeys],
+  )
+
   const columns: ColumnsType<TaskListRecord> = taskColumnDefinitions
-    .filter((definition) => visibleColumnKeys.includes(definition.key))
-    .map((definition) => definition.column)
+    .filter((definition) => visibleColumnKeySet.has(definition.key))
+    .map((definition, index) => {
+      const fixedPosition =
+        definition.key === 'actions'
+          ? 'right'
+          : index < 3
+            ? 'left'
+            : undefined
+
+      return {
+        ...definition.column,
+        // Table 依赖稳定的 key 来区分列，否则动态切换时容易复用错误列节点。
+        key: definition.key,
+        // 前三列固定在左侧，操作列固定在右侧，保证宽表横向滚动时核心信息始终可见。
+        fixed: fixedPosition,
+      }
+    })
 
   const displayTasks = useMemo(
     () => tasks.map((task) => taskRowOverrides[task.id] ?? task),
@@ -1710,7 +1742,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   )
 
   const tableScrollX = taskColumnDefinitions
-    .filter((definition) => visibleColumnKeys.includes(definition.key))
+    .filter((definition) => visibleColumnKeySet.has(definition.key))
     .reduce((totalWidth, definition) => {
       const width = 'width' in definition.column ? definition.column.width : undefined
       return totalWidth + (typeof width === 'number' ? width : 180)
@@ -1773,7 +1805,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </Typography.Text>
           <div className="task-table-column-picker__list">
             {fixedColumnDefinitions.map((definition) => (
-              <label
+              <div
                 key={definition.key}
                 className="task-table-column-picker__option"
               >
@@ -1781,6 +1813,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   checked={visibleColumnKeys.includes(definition.key)}
                   disabled={definition.required}
                   onChange={(event) => {
+                    // 只保留 Checkbox 这一处点击入口，避免外层 label 二次触发导致勾选状态闪回。
                     handleVisibleColumnToggle(definition.key, event.target.checked)
                   }}
                 >
@@ -1789,7 +1822,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 {definition.required ? (
                   <span className="task-table-column-picker__badge">必显</span>
                 ) : null}
-              </label>
+              </div>
             ))}
           </div>
         </div>
@@ -1800,19 +1833,20 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </Typography.Text>
           <div className="task-table-column-picker__list">
             {fieldColumnDefinitions.map((definition) => (
-              <label
+              <div
                 key={definition.key}
                 className="task-table-column-picker__option"
               >
                 <Checkbox
                   checked={visibleColumnKeys.includes(definition.key)}
                   onChange={(event) => {
+                    // 配置字段和固定列共用同一套 visible keys，保证勾选状态与表格列同步。
                     handleVisibleColumnToggle(definition.key, event.target.checked)
                   }}
                 >
                   {definition.title}
                 </Checkbox>
-              </label>
+              </div>
             ))}
           </div>
         </div>
@@ -1878,7 +1912,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           {canCreateCourse && canManageTaskActions ? (
             <Button
               type="primary"
-              danger
+               variant="solid"
+              color='blue'
               onClick={openCreateDrawer}
               loading={fieldConfigLoading || workflowLoading}
             >

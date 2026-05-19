@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type Key,
@@ -126,6 +127,10 @@ function renderWorkflowStageCard(
     >
       <div className="workflow-stage-node__header">
         <div>
+          <div className="workflow-stage-node__eyebrow">
+            <span>{`步骤 ${index + 1}`}</span>
+            {selected ? <span className="workflow-stage-node__eyebrow-active">当前选中</span> : null}
+          </div>
           <div className="workflow-stage-node__title">{stage.stageName || '未命名节点'}</div>
         </div>
         <Tag color={stage.status === 'enabled' ? 'success' : 'default'}>
@@ -202,12 +207,14 @@ export function ProjectManagementPage() {
   })
   const [workflowName, setWorkflowName] = useState('')
   const [workflowStatus, setWorkflowStatus] = useState<'enabled' | 'disabled'>('enabled')
+  const [type,setType] = useState('')
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageConfig[]>(
     createDefaultWorkflowStages(),
   )
   const [selectedWorkflowStageKey, setSelectedWorkflowStageKey] = useState<string | null>(
     null,
   )
+  const workflowInspectorRef = useRef<HTMLElement | null>(null)
   const [projectForm] = Form.useForm<ProjectFormValues>()
   const [memberForm] = Form.useForm<MemberFormValues>()
   const [roleForm] = Form.useForm<RoleFormValues>()
@@ -336,6 +343,17 @@ export function ProjectManagementPage() {
       workflowStages.find((stage) => stage.localId === selectedWorkflowStageKey) ?? null,
     [selectedWorkflowStageKey, workflowStages],
   )
+
+  useEffect(() => {
+    if (!workflowEditorOpen || !selectedWorkflowStageKey || !workflowInspectorRef.current) {
+      return
+    }
+
+    workflowInspectorRef.current.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    })
+  }, [selectedWorkflowStageKey, workflowEditorOpen])
 
   const projectColumns: ColumnsType<ProjectManagementRecord> = [
     {
@@ -1119,19 +1137,6 @@ export function ProjectManagementPage() {
 
   return (
     <Card className="panel-card">
-      <div className="workspace-header">
-        {/* <div className="workspace-header-main">
-          <Typography.Title level={4} className="workspace-header-title">
-            项目列表
-          </Typography.Title>
-        </div> */}
-        <div className="workspace-header-side">
-          <Button type="primary" onClick={openCreateDrawer}>
-            新增项目
-          </Button>
-        </div>
-      </div>
-
       <div className="workspace-filter-bar">
       <div className='workspace-search'> 
         <Input
@@ -1203,18 +1208,16 @@ export function ProjectManagementPage() {
         footer={null}
         onCancel={resetMemberModalState}
       >
-        <div className="workspace-header">
+        {/* <div className="workspace-header">
           <div className="workspace-header-main">
             <Typography.Text type="secondary">
               当前页成员数：{members.length}，成员总数：{memberPagination.total}
             </Typography.Text>
           </div>
           <div className="workspace-header-side">
-            <Button type="primary" onClick={openCreateMemberDrawer}>
-              添加成员
-            </Button>
+         
           </div>
-        </div>
+        </div> */}
 
         <div className="workspace-filter-bar">
           <Input
@@ -1259,9 +1262,12 @@ export function ProjectManagementPage() {
           >
             重置筛选
           </Button>
+          <Button type="primary" className='addopen' onClick={openCreateMemberDrawer}>
+              添加成员
+            </Button>
         </div>
 
-        <div className="workspace-header">
+        <div className="workspace-headers">
           <div className="workspace-header-main">
             <Typography.Text type="secondary">
               已选成员：{selectedMemberRecords.length}
@@ -1367,18 +1373,14 @@ export function ProjectManagementPage() {
         footer={null}
         onCancel={resetRoleModalState}
       >
-        <div className="workspace-header">
+        {/* <div className="workspace-headers">
           <div className="workspace-header-main">
             <Typography.Text type="secondary">
               当前项目角色数：{roles.length}
             </Typography.Text>
           </div>
-          <div className="workspace-header-side">
-            <Button type="primary" onClick={openCreateRoleDrawer}>
-              新增角色
-            </Button>
-          </div>
-        </div>
+       
+        </div> */}
 
         <div className="workspace-filter-bar">
           <Input
@@ -1387,6 +1389,11 @@ export function ProjectManagementPage() {
             placeholder="搜索角色名称 / 编码"
             className="workspace-filter-input"
           />
+             <div className="workspace-header-side">
+            <Button type="primary" className='addopen' onClick={openCreateRoleDrawer}>
+              新增角色
+            </Button>
+          </div>
         </div>
 
         <Table
@@ -1507,9 +1514,10 @@ export function ProjectManagementPage() {
                 className="workflow-editor-toolbar__name"
                 onChange={(event) => setWorkflowName(event.target.value)}
               />
+              <div>
+              <span>流程启用状态:</span>
               <Select
                 value={workflowStatus}
-                disabled={Boolean(editingWorkflow)}
                 style={{ width: 140 }}
                 options={[
                   { label: '启用', value: 'enabled' },
@@ -1517,11 +1525,23 @@ export function ProjectManagementPage() {
                 ]}
                 onChange={setWorkflowStatus}
               />
-              <Typography.Text type="secondary">
-                {editingWorkflow
-                  ? '左侧按顺序维护流程节点，点击节点后在右侧修改字段，保存时会按节点顺序写入流程关系。'
-                  : '点击新增节点后会在左侧列表中依次生成，并用连接样式串起来；点击节点后在右侧填写配置。'}
-              </Typography.Text>
+              </div>
+            
+              <div>
+                <span>流程类型:</span>
+                <Select
+                value={type}
+                style={{ width: 140 }}
+                placeholder='请选择工单类型'
+                options={[
+                  { label: '工单', value: 'normal' },
+                  { label: '售后', value: 'aftersale' },
+                ]}
+                onChange={setType}
+              />
+              </div>
+            
+          
             </div>
             <Space>
               <Button
@@ -1582,14 +1602,31 @@ export function ProjectManagementPage() {
               </div>
             </aside>
 
-            <aside className="workflow-editor-inspector">
+            <aside ref={workflowInspectorRef} className="workflow-editor-inspector">
               <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>
                 节点配置
               </Typography.Title>
               {selectedWorkflowStage ? (
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <div className="workflow-editor-inspector__summary">
-                    <Typography.Text strong>{selectedWorkflowStage.stageName || '未命名节点'}</Typography.Text>
+                    <div className="workflow-editor-inspector__summary-main">
+                      <div className="workflow-editor-inspector__summary-badge">
+                        {`步骤 ${workflowStages
+                          .sort((left, right) => left.sortValue - right.sortValue)
+                          .findIndex((stage) => stage.localId === selectedWorkflowStage.localId) + 1}`}
+                      </div>
+                      <div className="workflow-editor-inspector__summary-copy">
+                        <Typography.Text strong>
+                          {selectedWorkflowStage.stageName || '未命名节点'}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          当前正在编辑这个流程节点，左侧卡片与右侧表单实时联动。
+                        </Typography.Text>
+                      </div>
+                    </div>
+                    <Tag color="blue" bordered={false}>
+                      当前配置中
+                    </Tag>
                   </div>
 
                   <label className="workflow-stage-field">
@@ -1783,9 +1820,26 @@ export function ProjectManagementPage() {
                               className="workflow-stage-file-rule-card"
                             >
                               <div className="workflow-stage-file-rule-card__header">
-                                <Typography.Text strong>
-                                  规则 {index + 1}
-                                </Typography.Text>
+                                <Space size={12}>
+                                  <Typography.Text strong>
+                                    规则 {index + 1}
+                                  </Typography.Text>
+                                  <Space size={8}>
+                                    <Typography.Text type="secondary">
+                                      是否必填：
+                                    </Typography.Text>
+                                    <Switch
+                                      size="small"
+                                      checked={rule.required}
+                                      onChange={(checked) =>
+                                        handleWorkflowFileRuleChange(
+                                          selectedWorkflowStage.localId,
+                                          index,
+                                          { required: checked },
+                                        )}
+                                    />
+                                  </Space>
+                                </Space>
                                 <Button
                                   size="small"
                                   danger

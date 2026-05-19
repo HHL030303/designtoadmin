@@ -37,6 +37,7 @@ import './TaskProcessModal.css'
 type StageCompletionFormValues = {
   total_page_count?: number
   due_days?: number
+  package_file_name?: string
   remark?: string
   nextStageUserId?: string
   nextStageAssignees?: Array<{
@@ -45,24 +46,24 @@ type StageCompletionFormValues = {
   }>
 }
 
-const taskStatusMeta: Record<string, { color: string; label: string }> = {
-  archived: { color: 'green', label: '已归档' },
-  assigned: { color: 'blue', label: '已指派' },
-  completed: { color: 'green', label: '已完成' },
-  in_progress: { color: 'processing', label: '进行中' },
-  page_in_progress: { color: 'cyan', label: '内页制作中' },
-  pending: { color: 'default', label: '待开始' },
-  submitted: { color: 'orange', label: '待处理' },
-  unpublished: { color: 'default', label: '未发布' },
-}
+// const taskStatusMeta: Record<string, { color: string; label: string }> = {
+//   archived: { color: 'green', label: '已归档' },
+//   assigned: { color: 'blue', label: '已指派' },
+//   completed: { color: 'green', label: '已完成' },
+//   in_progress: { color: 'processing', label: '进行中' },
+//   page_in_progress: { color: 'cyan', label: '内页制作中' },
+//   pending: { color: 'default', label: '待开始' },
+//   submitted: { color: 'orange', label: '待处理' },
+//   unpublished: { color: 'default', label: '未发布' },
+// }
 
-function getStatusLabel(status: string) {
-  return taskStatusMeta[status]?.label ?? status
-}
+// function getStatusLabel(status: string) {
+//   return taskStatusMeta[status]?.label ?? status
+// }
 
-function getStatusColor(status: string) {
-  return taskStatusMeta[status]?.color ?? 'default'
-}
+// function getStatusColor(status: string) {
+//   return taskStatusMeta[status]?.color ?? 'default'
+// }
 
 function getNextStageDisplayName(stage: TaskWorkflowStageRecord | undefined) {
   if (!stage) {
@@ -84,13 +85,13 @@ function buildAssigneeText(stage: TaskWorkflowStageRecord) {
   }
 
   return stage.stageAssignees
-    .map((assignee) => `${assignee.userName}${assignee.isPrimary ? '（主）' : ''}`)
+    .map((assignee) => `${assignee.userName}${assignee.isPrimary  &&stage.stageAssignees.length>1? '（主）' : ''}`)
     .join('、')
 }
 
-function getStageModeLabel(isLastStage: boolean) {
-  return isLastStage ? '最终校验' : '阶段流转'
-}
+// function getStageModeLabel(isLastStage: boolean) {
+//   return isLastStage ? '最终校验' : '阶段流转'
+// }
 
 function resolveCurrentWorkflowStage(detail: TaskDetailRecord | null) {
   const currentStageId = detail?.currentStage?.id
@@ -139,6 +140,51 @@ function buildEmptyFilesByRuleId(fileRules: TaskWorkflowFileRuleRecord[]) {
     accumulator[rule.id] = []
     return accumulator
   }, {})
+}
+
+function buildPackageNameTags(fieldValues: Record<string, unknown>): string[] {
+  const tags: string[] = []
+
+  Object.values(fieldValues).forEach((value) => {
+    if (value === null || value === undefined || value === '') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        const text = String(item).trim()
+        if (
+          text &&
+          text.toLowerCase() !== 'true' &&
+          text.toLowerCase() !== 'false' &&
+          !tags.includes(text)
+        ) {
+          tags.push(text)
+        }
+      })
+      return
+    }
+
+    if (typeof value === 'boolean') {
+      return
+    }
+
+    const text = String(value).trim()
+    if (
+      text &&
+      text.toLowerCase() !== 'true' &&
+      text.toLowerCase() !== 'false' &&
+      !tags.includes(text)
+    ) {
+      tags.push(text)
+    }
+  })
+
+  return tags
+}
+
+function buildPackageFileName(tags: string[]): string {
+  return tags.join('_')
 }
 
 function isAttachmentMatchedToRule(
@@ -289,11 +335,13 @@ export function TaskProcessModal({
   const [nextStageLoading, setNextStageLoading] = useState(false)
   const [nextStageMembers, setNextStageMembers] = useState<ProjectMemberRecord[]>([])
   const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
+  const [selectedPackageNameTags, setSelectedPackageNameTags] = useState<string[]>([])
 
   useEffect(() => {
     if (!open || !taskId) {
       setDetail(null)
       setFilesByRuleId({})
+      setSelectedPackageNameTags([])
       form.resetFields()
       return
     }
@@ -365,6 +413,10 @@ export function TaskProcessModal({
   const shouldCollectTotalPageCount = Boolean(
     !isHistoricalStageEdit && currentStage?.collectTotalPageCount,
   )
+  const packageNameTags = useMemo(
+    () => (detail ? buildPackageNameTags(detail.fieldValues) : []),
+    [detail],
+  )
 
   useEffect(() => {
     if (!detail || !currentStage) {
@@ -381,9 +433,21 @@ export function TaskProcessModal({
     form.setFieldsValue({
       total_page_count: undefined,
       due_days: currentStage.dueDays,
+      package_file_name: '',
       nextStageAssignees: buildDefaultNextStageAssignees(),
     })
   }, [currentStage, detail, form])
+
+  useEffect(() => {
+    if (!open || !isLastStage) {
+      setSelectedPackageNameTags([])
+      form.setFieldValue('package_file_name', '')
+      return
+    }
+
+    setSelectedPackageNameTags(packageNameTags)
+    form.setFieldValue('package_file_name', buildPackageFileName(packageNameTags))
+  }, [form, isLastStage, open, packageNameTags])
 
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
@@ -527,6 +591,7 @@ export function TaskProcessModal({
         (item) =>
           !item?.userId ||
           item.assignedPageCount === undefined ||
+          item.assignedPageCount == 0||
           item.assignedPageCount === null,
       )
 
@@ -534,13 +599,20 @@ export function TaskProcessModal({
         message.warning('请完整填写下一阶段任务人员和分配页数')
         return
       }
+      if((values.nextStageAssignees as any)?.length>0){
+        const totalpage = (values.nextStageAssignees as any).reduce((pre:any,next:any)=>{
+          return pre + next?.assignedPageCount
+        },0)
+        if(totalpage>detail.currentVersion?.totalPageCount){
+         return message.error(`总页数不能大于预定的${detail.currentVersion?.totalPageCount}页`)
+        }
+      }
     }
 
     if (shouldCollectTotalPageCount && typeof values.total_page_count !== 'number') {
       message.warning('请填写总页数')
       return
     }
-
     try {
       setSubmitting(true)
 
@@ -579,7 +651,7 @@ export function TaskProcessModal({
 
   return (
     <Modal
-      title={isHistoricalStageEdit ? '编辑已完成阶段' : '处理任务'}
+      title={isHistoricalStageEdit ? '编辑已完成阶段(可修改上传文件）' : '处理任务'}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -618,8 +690,8 @@ export function TaskProcessModal({
             )}
             extra={
               <Space size={8}>
-                <Tag color={isLastStage ? 'gold' : 'blue'}>{getStageModeLabel(isLastStage)}</Tag>
-                <Tag color={getStatusColor(detail.task.status)}>{getStatusLabel(detail.task.status)}</Tag>
+                {/* <Tag color={isLastStage ? 'gold' : 'blue'}>{getStageModeLabel(isLastStage)}</Tag> */}
+                {/* <Tag color={getStatusColor(detail.task.status)}>{getStatusLabel(detail.task.status)}</Tag> */}
               </Space>
             }
           >
@@ -631,7 +703,7 @@ export function TaskProcessModal({
                 : '请根据当前节点的流程配置完成文件上传、下一节点指派和提交流转。'}
             </Typography.Paragraph>
             <Descriptions column={{ xs: 1, md: 2 }} size="small" className="panel-descriptions">
-              <Descriptions.Item label="当前节点">{currentStage.stageName}</Descriptions.Item>
+              <Descriptions.Item label="当前节点"><Tag color={isLastStage ? 'gold' : 'blue'}>{currentStage.stageName}</Tag></Descriptions.Item>
               <Descriptions.Item label="执行人">{buildAssigneeText(currentStage)}</Descriptions.Item>
               <Descriptions.Item label="当前版本">{detail.currentVersion.versionNo}</Descriptions.Item>
               <Descriptions.Item label="预计交付">
@@ -705,6 +777,55 @@ export function TaskProcessModal({
                   layout="vertical"
                   onFinish={(values) => void handleSubmit(values)}
                 >
+                  {isLastStage ? (
+                    <div className="task-process-modal__package-panel">
+                      <div className="task-process-modal__package-head">
+                        <Typography.Text strong>请为打包文件命名，从下列选项中选出。</Typography.Text>
+                        <Tag bordered={false} color="gold">
+                          {`${packageNameTags.length} 个可用标签`}
+                        </Tag>
+                      </div>
+                      <div className="task-process-modal__package-tags">
+                        {packageNameTags.map((tag) => {
+                          const checked = selectedPackageNameTags.includes(tag)
+
+                          return (
+                            <Tag
+                              key={tag}
+                              className={
+                                checked
+                                  ? 'task-process-modal__package-tag task-process-modal__package-tag--active'
+                                  : 'task-process-modal__package-tag'
+                              }
+                              bordered={false}
+                              onClick={() => {
+                                const nextTags = checked
+                                  ? selectedPackageNameTags.filter((item) => item !== tag)
+                                  : [...selectedPackageNameTags, tag]
+
+                                setSelectedPackageNameTags(nextTags)
+                                form.setFieldValue('package_file_name', buildPackageFileName(nextTags))
+                              }}
+                            >
+                              {tag}
+                            </Tag>
+                          )
+                        })}
+                      </div>
+                      <Form.Item
+                        label="打包文件名"
+                        name="package_file_name"
+                      >
+                        <Input
+                          className="task-process-modal__field-control"
+                          placeholder="可点击上方标签自动拼接，也可以直接修改文件名"
+                          onChange={(event) => {
+                            form.setFieldValue('package_file_name', event.target.value)
+                          }}
+                        />
+                      </Form.Item>
+                    </div>
+                  ) : null}
                   {!isHistoricalStageEdit && currentStage.canAssign && nextStage ? (
                     allowPageAssignment ? (
                       <Form.List name="nextStageAssignees">
@@ -832,6 +953,21 @@ export function TaskProcessModal({
                         />
                       </Form.Item>
                     ) : null}
+                    {/* {!isHistoricalStageEdit && nextStage && detail.currentVersion?.totalPageCount ? (
+                      <Form.Item
+                        className="task-process-modal__dual-field-item"
+                        label='总页数'
+                      >
+                        <InputNumber
+                          disabled
+                          value={detail.currentVersion?.totalPageCount}
+                          className="full-width-control task-process-modal__field-control"
+                          min={1}
+                          precision={0}
+                          placeholder="请输入预期完成天数"
+                        />
+                      </Form.Item>
+                    ) : null} */}
                     <Form.Item
                       className="task-process-modal__dual-field-item"
                       label="备注"

@@ -1,6 +1,5 @@
-import { Avatar, Badge, Breadcrumb, Button, Dropdown, Select, Space, Tag, Typography } from 'antd'
+import { Avatar, Breadcrumb, Button, Dropdown, Select, Space, Tag, Typography } from 'antd'
 import {
-  BellOutlined,
   DownOutlined,
   HomeOutlined,
   LogoutOutlined,
@@ -109,11 +108,11 @@ export function Topbar({
       <Breadcrumb className="topbar-breadcrumb" items={breadcrumbItems} />
 
       <div className="topbar-actions">
-        <Badge count={3} size="small" className="topbar-notice-badge">
+        {/* <Badge count={3} size="small" className="topbar-notice-badge">
           <button type="button" className="topbar-icon-button" aria-label="通知中心">
             <BellOutlined />
           </button>
-        </Badge>
+        </Badge> */}
         <Dropdown popupRender={() => dropdownContent} trigger={['click']} placement="bottomRight">
           <button type="button" className="topbar-account-trigger">
             <Avatar size={36} className="topbar-avatar" icon={<UserOutlined />} />

@@ -44,6 +44,8 @@ import type {
   ViewKey,
 } from '../types'
 
+const DEFAULT_AUTHORIZED_VIEW: ViewKey = 'courses'
+
 function getProjectRoles(project: ProjectOption | null) {
   if (!project || !Array.isArray(project.roles)) {
     return []
@@ -325,7 +327,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (hasSelectedProject && location.pathname === '/project-select') {
-      const nextView = getAvailableViews(role)[0]
+      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW)
+        ? DEFAULT_AUTHORIZED_VIEW
+        : getAvailableViews(role)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
@@ -333,7 +337,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (matchedView && !canAccessView(role, matchedView)) {
-      const nextView = getAvailableViews(role)[0]
+      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW)
+        ? DEFAULT_AUTHORIZED_VIEW
+        : getAvailableViews(role)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
@@ -387,7 +393,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
 
     if (location.pathname === '/project-select') {
-      const nextView = getAvailableViews(nextRole)[0]
+      const nextView = canAccessView(nextRole, DEFAULT_AUTHORIZED_VIEW)
+        ? DEFAULT_AUTHORIZED_VIEW
+        : getAvailableViews(nextRole)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
@@ -398,7 +406,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const nextView = getAvailableViews(nextRole)[0]
+    const nextView = canAccessView(nextRole, DEFAULT_AUTHORIZED_VIEW)
+      ? DEFAULT_AUTHORIZED_VIEW
+      : getAvailableViews(nextRole)[0]
     if (nextView) {
       navigate(getPathForView(nextView), { replace: true })
     }

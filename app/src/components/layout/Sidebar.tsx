@@ -7,7 +7,11 @@ import {
   MenuUnfoldOutlined,
   SettingOutlined,
   ShoppingOutlined,
+  TableOutlined,
+
+  UsergroupAddOutlined,
   TeamOutlined,
+  ProjectOutlined
 } from '@ant-design/icons'
 import { Button, Layout, Menu, Space, Typography } from 'antd'
 import { navItems } from '../../constants/navigation'
@@ -23,12 +27,13 @@ const iconMap = {
   dispatch: <DeploymentUnitOutlined />,
   designers: <TeamOutlined />,
   service: <ShoppingOutlined />,
-  'project-root': <DeploymentUnitOutlined />,
+  'project-root': <TableOutlined />,
   projectManagement: <DeploymentUnitOutlined />,
   'settings-root': <SettingOutlined />,
-  settingsUsers: <TeamOutlined />,
+  settingsUsers: <UsergroupAddOutlined />,
   settingsRoles: <SettingOutlined />,
   settingsProjectMembers: <TeamOutlined />,
+  'taskStatistics':<ProjectOutlined />
 }
 
 export function Sidebar({

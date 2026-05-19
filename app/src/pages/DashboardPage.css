@@ -9,7 +9,7 @@
   gap: 18px;
   /* min-height: 158px; */
   padding: 20px 22px 18px;
-  border-radius: 22px;
+  /* border-radius: 22px; */
   border: 1px solid #e4ecf7;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.88), transparent 34%),
@@ -100,7 +100,7 @@
 }
 
 .dashboard-overview-progress-card.ant-card {
-  border-radius: 22px;
+  border-radius: 0px;
   border: 1px solid #e4ecf7;
   background: rgba(255, 255, 255, 0.95);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
@@ -228,7 +228,7 @@
 }
 
 .dashboard-static-card.ant-card {
-  border-radius: 22px;
+  border-radius: 0px;
   border: 1px solid #e5edf7;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);

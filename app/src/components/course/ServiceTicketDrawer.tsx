@@ -157,6 +157,7 @@ export function ServiceTicketDrawer({
               </Form.Item>
             </Col>
           ) : null}
+          
           <Col span={showAssigneeField ? 12 : 24}>
             <Form.Item
               label="关联流程"
@@ -173,22 +174,7 @@ export function ServiceTicketDrawer({
               />
             </Form.Item>
           </Col>
-          {firstStageAssigneeLabel ? (
-            <Col span={24}>
-              <Form.Item
-                label={firstStageAssigneeLabel}
-                name="firstStageAssigneeUserId"
-                rules={[{ required: true, message: `请选择${firstStageAssigneeLabel}` }]}
-              >
-                <Select
-                  showSearch
-                  placeholder={`请选择${firstStageAssigneeLabel}`}
-                  optionFilterProp="label"
-                  options={firstStageAssigneeOptions}
-                />
-              </Form.Item>
-            </Col>
-          ) : null}
+        
           <Col span={showAssigneeField ? 12 : 24}>
             <Form.Item
               label="任务负责人"
@@ -219,6 +205,23 @@ export function ServiceTicketDrawer({
               </Col>
             </>
           ) : null}
+          {firstStageAssigneeLabel ? (
+            <Col span={12}>
+              <Form.Item
+                label={firstStageAssigneeLabel}
+                name="firstStageAssigneeUserId"
+                rules={[{ required: true,message: `请选择${firstStageAssigneeLabel}` }]}
+              >
+                <Select
+                  showSearch
+                  placeholder={`请选择${firstStageAssigneeLabel}`}
+                  optionFilterProp="label"
+                  options={firstStageAssigneeOptions}
+                />
+              </Form.Item>
+            </Col>
+          ) : null}
+          
           <Col span={24}>
             <Form.Item
               label="描述"

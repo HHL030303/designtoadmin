@@ -111,6 +111,7 @@ type WorkflowStageItem = {
   status?: WorkflowTemplateStatus
   file_rules?: WorkflowStageFileRuleItem[] | null
   config_json?: Record<string, unknown> | null
+  total_page_count?:number|undefined
 }
 
 type WorkflowStageFileRuleItem = {
