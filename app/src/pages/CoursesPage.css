@@ -60,7 +60,7 @@
 }
 
 .courses-page-card .workspace-search-input {
-  width: 320px;
+  width: 290px;
 }
 
 .courses-page-card .workspace-search-input.ant-input-affix-wrapper {
@@ -168,6 +168,73 @@
 
 .courses-page-card .workspace-tabs .ant-tabs-ink-bar {
   display: none;
+}
+
+.courses-page-card .workspace-filter-bar {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.courses-page-card .workspace-search {
+  flex: 1;
+}
+
+.courses-page-card .task-search-form {
+  width: 100%;
+}
+
+.courses-page-card .task-search-form .ant-form-item-row {
+  flex-wrap: nowrap;
+}
+
+.courses-page-card .task-search-form__row {
+  margin-bottom: 0;
+}
+
+.courses-page-card .task-search-form__item.ant-form-item {
+  margin-bottom: 6px;
+}
+
+.courses-page-card .task-search-form__item .ant-form-item-label {
+  padding-bottom: 2px;
+}
+
+.courses-page-card .task-search-form__item .ant-form-item-label > label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.courses-page-card .task-search-form__item .ant-input,
+.courses-page-card .task-search-form__item .ant-select-selector {
+  min-height: 32px !important;
+  border-radius: 8px;
+}
+
+.courses-page-card .task-search-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+  margin: 10px 0;
+}
+
+.courses-page-card .task-search-form__toggle.ant-btn {
+  padding-inline: 0;
+}
+
+.courses-page-card .task-search-form__actions .ant-btn {
+  height: 32px;
+}
+
+@media (max-width: 1280px) {
+  .courses-page-card .task-search-form .ant-form-item-row {
+    flex-wrap: wrap;
+  }
+
+  .courses-page-card .task-search-form__actions {
+    width: 100%;
+  }
 }
 
 .courses-page-card .task-table__actions-header {

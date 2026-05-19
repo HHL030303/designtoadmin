@@ -1,0 +1,13 @@
+.workflow-config-table .ant-table-pagination.ant-pagination {
+  margin-top: 16px;
+  margin-bottom: 4px;
+}
+
+.workflow-config-table .ant-pagination-total-text {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.workflow-config-table .ant-pagination-options {
+  margin-inline-start: 12px;
+}

@@ -458,6 +458,7 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
 export const taskService = {
   async listTasks(query: {
     assigneeId?: string
+    fieldFilters?: Record<string, unknown>
     keyword?: string
     mineScope?: string
     page?: number
@@ -466,6 +467,10 @@ export const taskService = {
   } = {}) {
     const data = await apiRequest<TaskListResponse>('/api/tasks', {
       query: {
+        field_filters:
+          query.fieldFilters && Object.keys(query.fieldFilters).length > 0
+            ? JSON.stringify(query.fieldFilters)
+            : undefined,
         keyword: query.keyword?.trim() || undefined,
         mine_scope: query.mineScope || undefined,
         page: query.page ?? 1,

@@ -1,13 +1,13 @@
 import { Layout } from 'antd'
 import { useState } from 'react'
-import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { AppFeedback } from '../components/common/AppFeedback'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
+import { getPathForView } from '../constants/navigation'
 import { useAppState } from '../context/AppStateContext'
 
 export function AppLayout() {
-  const location = useLocation()
   const navigate = useNavigate()
   const {
     view,
@@ -27,7 +27,7 @@ export function AppLayout() {
   return (
     <Layout className="app-layout">
       <Sidebar
-        view={location.pathname}
+        view={getPathForView(view)}
         role={role}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}

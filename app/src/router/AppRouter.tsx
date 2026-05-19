@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { LOGIN_REDIRECT_STORAGE_KEY } from '../constants/storage'
 import { getPathForView, getViewForPath } from '../constants/navigation'
 import { getAvailableViews } from '../domain/permissions'
 import { canAccessView } from '../domain/permissions'
@@ -8,9 +9,22 @@ import { privateRoutes, publicRoutes } from './routeConfig'
 
 const DEFAULT_AUTHORIZED_PATH = '/courses'
 
+function persistLoginRedirectPath(pathname: string): void {
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/project-select') ||
+    pathname === '/'
+  ) {
+    return
+  }
+
+  window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, pathname)
+}
+
 export function AppRouter() {
   const { role, isAuthenticated, hasSelectedProject } = useAppState()
   const location = useLocation()
+  const currentFullPath = `${location.pathname}${location.search}${location.hash}`
   const normalizedPathname =
     location.pathname === '/'
       ? '/'
@@ -72,7 +86,19 @@ export function AppRouter() {
           isAuthenticated && hasSelectedProject ? (
             <AppLayout />
           ) : (
-            <Navigate to={isAuthenticated ? '/project-select' : '/login'} replace />
+            (() => {
+              if (!isAuthenticated) {
+                persistLoginRedirectPath(currentFullPath)
+              }
+
+              return (
+                <Navigate
+                  to={isAuthenticated ? '/project-select' : '/login'}
+                  replace
+                  state={isAuthenticated ? undefined : { from: currentFullPath }}
+                />
+              )
+            })()
           )
         }
       >

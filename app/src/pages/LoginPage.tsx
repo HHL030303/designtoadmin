@@ -1,4 +1,4 @@
-import {useState } from 'react'
+import { useState } from 'react'
 import {
   Alert,
   Button,
@@ -10,6 +10,7 @@ import {
   Typography,
 } from 'antd'
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
+import { useLocation } from 'react-router-dom'
 import { useAppState } from '../context/AppStateContext'
 
 type LoginFormValues = {
@@ -18,14 +19,24 @@ type LoginFormValues = {
 }
 
 export function LoginPage() {
+  const location = useLocation()
   const { login, authenticating } = useAppState()
   const [error, setError] = useState<string | null>(null)
   const [form] = Form.useForm<LoginFormValues>()
+
   async function handleFinish(values: LoginFormValues) {
     setError(null)
 
     try {
-      await login(values.email, values.password)
+      const redirectPath =
+        typeof location.state === 'object' &&
+        location.state !== null &&
+        'from' in location.state &&
+        typeof location.state.from === 'string'
+          ? location.state.from
+          : null
+
+      await login(values.email, values.password, redirectPath)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : '登录失败，请稍后重试')
     }
@@ -38,6 +49,9 @@ export function LoginPage() {
           <Col xs={24} xl={13}>
             <Space orientation="vertical" size={20} className="login-hero">
               <div className="login-visual-stage">
+                <div className="login-visual-orb login-visual-orb--top" />
+                <div className="login-visual-orb login-visual-orb--right" />
+                <div className="login-visual-cube" />
                 <div className="login-orbit-ring login-orbit-ring-lg" />
                 <div className="login-orbit-ring login-orbit-ring-sm" />
                 <div className="login-visual-bars login-visual-bars-left">
@@ -61,16 +75,19 @@ export function LoginPage() {
                   </div>
                 </div>
               </div>
-
-              {/* <div className="login-hero-copy">
-                <Typography.Text className="section-label">Design Delivery Admin</Typography.Text>
+              <div className="login-hero-copy">
                 <Typography.Title level={1} className="login-title">
-                  设计交付管理系统
+                  欢迎回来
                 </Typography.Title>
                 <Typography.Paragraph className="login-copy">
-                  登录认证已经切换到真实后台接口，完成登录后会先进入项目选择页，再按所选项目加载后续管理数据。
+                  登录您的账户，继续进入设计交付系统，查看任务工单与项目协作流程。
                 </Typography.Paragraph>
-              </div> */}
+                <div className="login-hero-indicators" aria-hidden="true">
+                  <span className="login-hero-indicator login-hero-indicator--active" />
+                  <span className="login-hero-indicator" />
+                  <span className="login-hero-indicator" />
+                </div>
+              </div>
             </Space>
           </Col>
 
@@ -78,11 +95,11 @@ export function LoginPage() {
             <div className="login-form-card">
               <Space orientation="vertical" size={20} className="login-form-stack">
                 <div>
-                  <Typography.Title level={3} className="login-form-title">
-                    欢迎登录
+                  <Typography.Title level={2} className="login-form-title">
+                    登录
                   </Typography.Title>
                   <Typography.Text className="login-form-subtitle">
-                    输入后台账号后进入项目选择页
+                    使用您的账户登录
                   </Typography.Text>
                 </div>
 

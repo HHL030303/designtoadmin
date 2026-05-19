@@ -5,7 +5,9 @@ import {
   LogoutOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { getNavItemByView } from '../../constants/navigation'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { getNavItemByView, getPathForView } from '../../constants/navigation'
+import { getAvailableViews } from '../../domain/permissions'
 import type {
   AuthUser,
   AvailableProjectRole,
@@ -36,18 +38,63 @@ export function Topbar({
   onSwitchProject: (projectKey: string) => void
   onLogout: () => void
 }) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const { current, parent } = getNavItemByView(view)
+  const defaultHomeView = getAvailableViews(role).includes('dashboard')
+    ? 'dashboard'
+    : getAvailableViews(role)[0]
+  const isCourseDetailPage =
+    location.pathname.startsWith('/courses/') && location.pathname !== '/courses'
   const breadcrumbItems = [
     {
       title: (
-        <Space size={6}>
+        <button
+          type="button"
+          className="topbar-breadcrumb-button"
+          onClick={() => {
+            if (defaultHomeView) {
+              navigate(getPathForView(defaultHomeView))
+            }
+          }}
+        >
+          <Space size={6}>
           <HomeOutlined />
           <span>首页</span>
-        </Space>
+          </Space>
+        </button>
       ),
     },
-    ...(parent ? [{ title: parent.label }] : []),
-    { title: current?.label ?? '工作台' },
+    ...(parent
+      ? [
+          {
+            title: (
+              <button
+                type="button"
+                className="topbar-breadcrumb-button"
+                onClick={() => navigate(parent.path as string)}
+              >
+                {parent.label}
+              </button>
+            ),
+          },
+        ]
+      : []),
+    {
+      title:
+        isCourseDetailPage && current?.path
+          ? (
+              <button
+                type="button"
+                className="topbar-breadcrumb-button"
+                onClick={() => navigate(current.path as string)}
+              >
+                {current.label}
+              </button>
+            )
+          : (current?.label ?? '工作台'),
+    },
+    ...(isCourseDetailPage ? [{ title: '任务详情' }] : []),
   ]
   const dropdownContent = (
     <div className="topbar-dropdown-menu">

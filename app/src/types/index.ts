@@ -523,6 +523,7 @@ export interface WorkflowTemplateRecord {
   isDefault: boolean
   status: WorkflowTemplateStatus
   stages: WorkflowStageConfig[]
+  order_type:string
 }
 
 export interface RoleActionSummary {

@@ -90,6 +90,7 @@ type WorkflowTemplateItem = {
   is_default: boolean
   status: WorkflowTemplateStatus
   stages?: WorkflowStageItem[]
+  order_type:string
 }
 
 type WorkflowStageItem = {
@@ -543,6 +544,7 @@ export const adminService = {
       name: template.name,
       stages: (template.stages ?? []).map(mapWorkflowStage),
       status: template.status,
+      order_type:template.order_type
     }))
   },
 
@@ -554,6 +556,7 @@ export const adminService = {
       name: string
       stages: WorkflowStageConfig[]
       status: WorkflowTemplateStatus
+      orderType:string
     },
   ) {
     await apiRequest<null>('/admin_api/workflow_templates', {
@@ -563,6 +566,7 @@ export const adminService = {
         name: payload.name.trim(),
         stages: payload.stages.map(buildWorkflowStagePayload),
         status: payload.status,
+        order_type:payload.orderType
       },
       method: 'POST',
       projectHeaderId: projectId,

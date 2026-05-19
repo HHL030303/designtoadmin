@@ -9,6 +9,7 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   AUTH_STORAGE_KEY,
+  LOGIN_REDIRECT_STORAGE_KEY,
   PROJECT_ROLE_STORAGE_KEY,
   PROJECT_STORAGE_KEY,
 } from '../constants/storage'
@@ -95,6 +96,47 @@ function setStoredProjectRole(projectId: string, role: UserRole) {
   window.localStorage.setItem(PROJECT_ROLE_STORAGE_KEY, JSON.stringify(current))
 }
 
+function normalizeLoginRedirectPath(pathname?: string | null): string | null {
+  if (!pathname || typeof pathname !== 'string') {
+    return null
+  }
+
+  const trimmedPath = pathname.trim()
+
+  if (!trimmedPath.startsWith('/')) {
+    return null
+  }
+
+  if (trimmedPath.startsWith('/login') || trimmedPath.startsWith('/project-select')) {
+    return null
+  }
+
+  return trimmedPath
+}
+
+function getStoredLoginRedirectPath(): string | null {
+  const storedPath = window.sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY)
+  const normalizedPath = normalizeLoginRedirectPath(storedPath)
+
+  if (!normalizedPath && storedPath) {
+    console.error(111)
+    window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
+  }
+
+  return normalizedPath
+}
+
+function setStoredLoginRedirectPath(pathname?: string | null): void {
+  const normalizedPath = normalizeLoginRedirectPath(pathname)
+
+  if (!normalizedPath) {
+    window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
+    return
+  }
+
+  window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, normalizedPath)
+}
+
 type AppStateContextValue = {
   view: ViewKey
   role: UserRole
@@ -115,7 +157,7 @@ type AppStateContextValue = {
   search: string
   statusFilter: 'all' | CourseStatus
   canCreateCourse: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string, redirectPath?: string | null) => Promise<void>
   logout: () => Promise<void>
   selectProject: (projectKey: string) => void
   switchRole: (role: UserRole) => void
@@ -315,6 +357,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const canCreateCourse = useMemo(() => canCreateCourseByRole(role), [role])
   const isAuthenticated = Boolean(currentUser)
   const hasSelectedProject = Boolean(currentProject)
+  const currentFullPath = `${location.pathname}${location.search}${location.hash}`
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -327,6 +370,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (hasSelectedProject && location.pathname === '/project-select') {
+      const redirectPath = getStoredLoginRedirectPath()
+
+      if (redirectPath) {
+        navigate(redirectPath, { replace: true })
+        return
+      }
+
+      window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
+
       const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW)
         ? DEFAULT_AUTHORIZED_VIEW
         : getAvailableViews(role)[0]
@@ -334,6 +386,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         navigate(getPathForView(nextView), { replace: true })
       }
       return
+    }
+
+    const redirectPath = getStoredLoginRedirectPath()
+    if (redirectPath && redirectPath === currentFullPath) {
+      window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
     }
 
     if (matchedView && !canAccessView(role, matchedView)) {
@@ -344,7 +401,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         navigate(getPathForView(nextView), { replace: true })
       }
     }
-  }, [hasSelectedProject, isAuthenticated, location.pathname, matchedView, navigate, role])
+  }, [currentFullPath, hasSelectedProject, isAuthenticated, location.pathname, matchedView, navigate, role])
 
   function navigateToView(nextView: ViewKey) {
     navigate(getPathForView(nextView))
@@ -357,7 +414,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string, redirectPath?: string | null) {
     setAuthenticating(true)
 
     try {
@@ -367,6 +424,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
       window.localStorage.removeItem(PROJECT_STORAGE_KEY)
       setCurrentProject(null)
+      if (redirectPath !== undefined) {
+        if (redirectPath === null) {
+          if (!getStoredLoginRedirectPath()) {
+            setStoredLoginRedirectPath(null)
+          }
+        } else {
+          setStoredLoginRedirectPath(redirectPath)
+        }
+      }
       navigate('/project-select', { replace: true })
     } finally {
       setAuthenticating(false)
@@ -393,12 +459,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
 
     if (location.pathname === '/project-select') {
-      const nextView = canAccessView(nextRole, DEFAULT_AUTHORIZED_VIEW)
-        ? DEFAULT_AUTHORIZED_VIEW
-        : getAvailableViews(nextRole)[0]
-      if (nextView) {
-        navigate(getPathForView(nextView), { replace: true })
-      }
       return
     }
 
@@ -438,6 +498,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setActiveRole('planner')
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
     window.localStorage.removeItem(PROJECT_STORAGE_KEY)
+    window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
     setSelectedCourseId('')
     setSearch('')
     setStatusFilter('all')

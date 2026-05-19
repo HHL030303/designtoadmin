@@ -23,17 +23,19 @@ export function ProjectSelectPage() {
             <Col xs={24} md={8} key={project.key}>
               <Card className="project-select-card">
                 <Space orientation="vertical" size={14} className="project-select-card-stack">
-                  <div className="project-select-icon">
-                    <AppstoreOutlined />
-                  </div>
-                  <div>
+                  <div className='flex'>
+                    <div className="project-select-icon">
+                      <AppstoreOutlined />
+                    </div>
                     <Typography.Title level={4} className="card-title-reset">
-                      {project.name}
-                    </Typography.Title>
-                    <Typography.Paragraph className="project-select-card-copy">
+                        {project.name}
+                      </Typography.Title>
+                   
+                  </div>
+                       <Typography.Paragraph className="project-select-card-copy">
                       {project.description}
                     </Typography.Paragraph>
-                  </div>
+               
                   <Button
                     type="primary"
                     block

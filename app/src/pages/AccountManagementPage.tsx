@@ -12,6 +12,9 @@ import {
   Typography,
   message,
 } from 'antd'
+import {
+  SearchOutlined
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { adminService } from '../services/adminService'
 import type { AdminAccountRecord, SaveAdminAccountPayload } from '../types'
@@ -91,6 +94,8 @@ export function AccountManagementPage() {
       render: (_, record) => (
         <Button
           size="small"
+          variant='solid'
+          color='geekblue'
           onClick={() => {
             setEditingAccount(record)
             form.setFieldsValue({
@@ -167,9 +172,11 @@ export function AccountManagementPage() {
         <div className='workspace-search'> 
         <Input
           value={keyword}
+          prefix={<SearchOutlined />}
+          className="workspace-filter-input"
+          allowClear
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索姓名 / 邮箱 / 状态"
-          className="workspace-filter-input"
         />
           <Button type="primary"  onClick={handleQuery}>
               查询

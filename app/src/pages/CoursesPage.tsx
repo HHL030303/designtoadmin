@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Button,
@@ -15,6 +15,7 @@ import {
   Radio,
   Row,
   Select,
+  Space,
   Table,
   Tabs,
   Tag,
@@ -26,10 +27,11 @@ import type { TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import paginationZhCN from '@rc-component/pagination/es/locale/zh_CN'
+import { useNavigate } from 'react-router-dom'
 import {
   DownOutlined,
   FilterOutlined,
-  SearchOutlined,
+  UpOutlined,
 } from '@ant-design/icons'
 import { useAppState } from '../context/AppStateContext'
 import { adminService } from '../services/adminService'
@@ -58,6 +60,8 @@ import type {
 
 type TaskFormValue = string | number | boolean | Dayjs | null | undefined
 type TaskFormValues = Record<string, TaskFormValue>
+type TaskSearchFieldValue = string | number | boolean | string[] | null | undefined
+type TaskSearchFormValues = Record<string, TaskSearchFieldValue>
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
   archived: { color: 'green', label: '已归档' },
@@ -67,7 +71,7 @@ const taskStatusMeta: Record<string, { color: string; label: string }> = {
   pending: { color: 'default', label: '待开始' },
 }
 
-const DEFAULT_TASK_STATUS_META = { color: 'default', label: '未知状态' }
+const DEFAULT_TASK_STATUS_META = { color: 'blue', label: '未知状态' }
 const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
 const mandatoryTaskColumnKeys = ['task']
 
@@ -243,6 +247,67 @@ function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
     .sort((left, right) => left.sort_value - right.sort_value)
 }
 
+function getSearchableTaskFieldConfigs(fieldConfigs: FieldConfig[]) {
+  return [...fieldConfigs]
+    .filter(
+      (field) =>
+        field.status === 'enabled' &&
+        field.searchable &&
+        field.field_type !== 'date',
+    )
+    .sort((left, right) => left.sort_value - right.sort_value)
+}
+
+function buildTaskFieldFilters(
+  fieldConfigs: FieldConfig[],
+  values: TaskSearchFormValues,
+): Record<string, unknown> {
+  return fieldConfigs.reduce<Record<string, unknown>>((accumulator, field) => {
+    const value = values[field.field_key]
+
+    if (value === undefined || value === null || value === '') {
+      return accumulator
+    }
+
+    if (Array.isArray(value)) {
+      const normalizedValues = value
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+
+      if (normalizedValues.length > 0) {
+        accumulator[field.field_key] = normalizedValues
+      }
+      return accumulator
+    }
+
+    if (field.field_type === 'boolean') {
+      const normalizedValue = normalizeBooleanLike(value)
+
+      if (normalizedValue !== undefined) {
+        accumulator[field.field_key] = normalizedValue
+      }
+      return accumulator
+    }
+
+    if (field.field_type === 'number') {
+      const normalizedValue = Number(value)
+
+      if (Number.isFinite(normalizedValue)) {
+        accumulator[field.field_key] = normalizedValue
+      }
+      return accumulator
+    }
+
+    const normalizedText = String(value).trim()
+
+    if (normalizedText) {
+      accumulator[field.field_key] = normalizedText
+    }
+
+    return accumulator
+  }, {})
+}
+
 function isNotBeforeTodayField(field: FieldConfig) {
   return notBeforeTodayFieldKeys.has(field.field_key)
 }
@@ -314,6 +379,48 @@ function renderFieldControl(field: FieldConfig) {
   }
 
   return <Input placeholder={textPlaceholder} />
+}
+
+function renderSearchFieldControl(field: FieldConfig) {
+  const textPlaceholder = field.placeholder || `请输入${field.field_name}`
+  const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
+
+  if (field.field_type === 'textarea' || field.field_type === 'text') {
+    return <Input placeholder={textPlaceholder} allowClear />
+  }
+
+  if (field.field_type === 'select') {
+    return (
+      <Select
+        mode="multiple"
+        allowClear
+        placeholder={selectPlaceholder}
+        options={(field.option_config ?? []).map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))}
+      />
+    )
+  }
+
+  if (field.field_type === 'boolean') {
+    return (
+      <Select
+        allowClear
+        placeholder={selectPlaceholder}
+        options={[
+          { label: '是', value: 'true' },
+          { label: '否', value: 'false' },
+        ]}
+      />
+    )
+  }
+
+  if (field.field_type === 'number') {
+    return <Input placeholder={textPlaceholder} allowClear />
+  }
+
+  return <Input placeholder={textPlaceholder} allowClear />
 }
 
 function mapOrderTypeToApi(value: unknown): 'new' | 'aftersales' | 'iteration' {
@@ -706,6 +813,7 @@ function HistoryVersionDropdown({
 }
 
 export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks' }) {
+  const navigate = useNavigate()
   const { currentProject, canCreateCourse, currentUser, role } = useAppState()
   const isMyTasksPage = mode === 'myTasks'
   const [tasks, setTasks] = useState<TaskListRecord[]>([])
@@ -714,7 +822,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
   const [mutating, setMutating] = useState(false)
-  const [search, setSearch] = useState('')
+  const [fieldFilters, setFieldFilters] = useState<Record<string, unknown>>({})
+  const [searchExpanded, setSearchExpanded] = useState(false)
   const [statusFilter] = useState('all')
   const [tabKey, setTabKey] = useState<'todo' | 'joined' | 'completed'>('todo')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -745,10 +854,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     dueDays?: number
     templateStageId?: string
   }>({})
-  const deferredSearch = useDeferredValue(search)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
   const [form] = Form.useForm<TaskFormValues>()
+  const [searchForm] = Form.useForm<TaskSearchFormValues>()
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
   const shouldShowTaskTabs = !canManageTaskActions
@@ -758,7 +867,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     async (
       overrides?: Partial<{
         currentPage: number
-        keyword: string
+        fieldFilters: Record<string, unknown>
         pageSize: number
         statusFilter: string
         tabKey: 'todo' | 'joined' | 'completed'
@@ -766,7 +875,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     ) => {
       const nextPage = overrides?.currentPage ?? currentPage
       const nextPageSize = overrides?.pageSize ?? pageSize
-      const nextKeyword = overrides?.keyword ?? deferredSearch
+      const nextFieldFilters = overrides?.fieldFilters ?? fieldFilters
       const nextStatusFilter = overrides?.statusFilter ?? statusFilter
       const nextTabKey = overrides?.tabKey ?? tabKey
       const requestId = listRequestIdRef.current + 1
@@ -775,7 +884,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       try {
         setTasksLoading(true)
         const response = await taskService.listTasks({
-          keyword: nextKeyword.trim() || undefined,
+          fieldFilters: nextFieldFilters,
           // 管理员和计划员直接查看全部任务，其他角色按 mine_scope 切换接口视图。
           mineScope:
             shouldShowTaskTabs
@@ -806,7 +915,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
       }
     },
-    [currentPage, deferredSearch, pageSize, shouldShowTaskTabs, statusFilter, tabKey],
+    [currentPage, fieldFilters, pageSize, shouldShowTaskTabs, statusFilter, tabKey],
   )
 
   useEffect(() => {
@@ -818,6 +927,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
     if (!projectId) {
       setTaskFieldConfigs([])
+      searchForm.resetFields()
+      setFieldFilters({})
+      setSearchExpanded(false)
       return
     }
 
@@ -835,7 +947,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
 
     void loadTaskFields()
-  }, [currentProject?.id])
+  }, [currentProject?.id, searchForm])
 
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
@@ -981,6 +1093,17 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const enabledFieldConfigs = useMemo(
     () => getEnabledFieldConfigs(taskFieldConfigs),
     [taskFieldConfigs],
+  )
+  const searchableTaskFieldConfigs = useMemo(
+    () => getSearchableTaskFieldConfigs(taskFieldConfigs),
+    [taskFieldConfigs],
+  )
+  const visibleSearchFieldConfigs = useMemo(
+    () =>
+      searchExpanded
+        ? searchableTaskFieldConfigs
+        : searchableTaskFieldConfigs.slice(0, 4),
+    [searchExpanded, searchableTaskFieldConfigs],
   )
   const taskColumnStorageKey = buildTaskColumnStorageKey(currentProject?.id ?? 'global', mode)
 
@@ -1417,7 +1540,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         const displayLabel = record.currentStage?.stageName || getTaskStatusMeta(status).label
         const meta = getTaskStatusMeta(record.currentStage?.status || status)
         return (
-          <Tag color={meta.color} className="task-table__status-tag">
+          <Tag color={meta.color} className="task-table__status-tag all-tickets-page__tag">
             {displayLabel}
           </Tag>
         )
@@ -1494,7 +1617,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           render: (_, record) => {
             const outputFile = record.packageInfo?.outputFile
             const errorMessage = record.packageInfo?.errorMessage?.trim()
-            console.error(record.packageInfo,'record.packageInfo?.status')
             if(record.packageInfo?.status=='pending'||record.packageInfo?.status=='processing'){
               return  '打包中'
             }
@@ -1557,7 +1679,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </Popover>
         </div>
       ),
-      width: 220,
+      width: 240,
       render: (_, record) => {
         const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
         const completedTask = isCompletedTask(record)
@@ -1584,7 +1706,17 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 type='primary'
                 size="small"
                 onClick={() => {
-                  void handleExpandTask(true, record.id, selectedVersionIds[record.id])
+                  const nextQuery = new URLSearchParams()
+                  const selectedVersionId = selectedVersionIds[record.id]
+
+                  if (selectedVersionId) {
+                    nextQuery.set('versionId', selectedVersionId)
+                  }
+
+                  navigate({
+                    pathname: `/courses/${record.id}`,
+                    search: nextQuery.toString() ? `?${nextQuery.toString()}` : '',
+                  })
                 }}
               >
                 详情
@@ -1626,6 +1758,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 type="primary"
                 size="small"
                 variant="solid"
+                color='green'
                 onClick={() => void openEditDrawer(record)}
               >
                 编辑
@@ -1862,13 +1995,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setPageSize(nextPageSize)
   }
 
-  const handleReset = () =>{
-    setSearch('')
+  function handleReset() {
+    searchForm.resetFields()
+    setFieldFilters({})
     setCurrentPage(1)
   }
 
-  const handleQuery =()=>{
-    setSearch(search)
+  function handleQuery(values: TaskSearchFormValues) {
+    setFieldFilters(buildTaskFieldFilters(searchableTaskFieldConfigs, values))
     setCurrentPage(1)
   }
 
@@ -1890,37 +2024,61 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             <span className="workspace-header-subtitle-accent"> {activeTaskCount} 项进行中</span>
           </Typography.Text>
         </div> */}
-        {/* <div className="workspace-header-side"> */}
-        <div className='workspace-search'> 
-          <Input
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setCurrentPage(1)
-            }}
-            placeholder="搜索任务名称、负责人"
-            prefix={<SearchOutlined />}
-            className="workspace-search-input"
-            allowClear
-          />
-            <Button type="primary"  onClick={handleQuery}>
-              查询
-            </Button>
-            <Button onClick={handleReset}>重置</Button>
-          </div>
-          <div className='workspace-reset'>
-          {canCreateCourse && canManageTaskActions ? (
-            <Button
-              type="primary"
-               variant="solid"
-              color='blue'
-              onClick={openCreateDrawer}
-              loading={fieldConfigLoading || workflowLoading}
-            >
-              新建任务
-            </Button>
-          ) : null}
-          </div>
+        <div className="workspace-search">
+          <Form
+            form={searchForm}
+            layout="vertical"
+            className="task-search-form"
+            onFinish={(values) => handleQuery(values)}
+          >
+            <Row gutter={[12, 8]} className="task-search-form__row">
+              {visibleSearchFieldConfigs.map((field) => (
+                <Col xs={24} md={12} xl={6} key={field.field_key}>
+                  <Form.Item
+                    label={field.field_name}
+                    name={field.field_key}
+                    className="task-search-form__item"
+                  >
+                    {renderSearchFieldControl(field)}
+                  </Form.Item>
+                </Col>
+              ))}
+            </Row>
+            <div className="task-search-form__actions" style={
+                searchExpanded && visibleSearchFieldConfigs.length % 4 !== 0
+                  ? { marginTop: '-40px' }
+                  : undefined
+              }>
+              <Space size={8} wrap>
+                <Button type="primary" htmlType="submit">
+                  查询
+                </Button>
+                <Button onClick={handleReset}>重置</Button>
+                {canCreateCourse && canManageTaskActions ? (
+                  <Button
+                    type="primary"
+                    variant="solid"
+                    color="blue"
+                    onClick={openCreateDrawer}
+                    loading={fieldConfigLoading || workflowLoading}
+                  >
+                    新建任务
+                  </Button>
+                ) : null}
+                {searchableTaskFieldConfigs.length > 4 ? (
+                  <Button
+                    type="link"
+                    className="task-search-form__toggle"
+                    onClick={() => setSearchExpanded((current) => !current)}
+                  >
+                    {searchExpanded ? '收起' : '展开'}
+                    {searchExpanded ? <UpOutlined /> : <DownOutlined />}
+                  </Button>
+                ) : null}
+              </Space>
+            </div>
+          </Form>
+        </div>
      
         {/* </div> */}
       </div>
@@ -2037,7 +2195,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   placeholder="请选择当前项目下的工作流模板"
                   loading={workflowLoading}
                   disabled={Boolean(editingTaskId)}
-                  options={workflowTemplates.map((template) => ({
+                  options={workflowTemplates.filter((ele)=>{return ele.order_type=='new'}).map((template) => ({
                     label: template.isDefault ? `${template.name}（默认）` : template.name,
                     value: template.id,
                   }))}
@@ -2153,10 +2311,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         ownerOptions={serviceOwnerOptions}
         onSubmit={handleCreateServiceTask}
         showAssigneeField={serviceDrawerType === '售后'}
-        workflowTemplateOptions={workflowTemplates.map((template) => ({
-          label: template.name,
-          value: template.id,
-        }))}
+        workflowTemplateOptions={workflowTemplates
+          .filter((template) =>
+            serviceDrawerType === '售后'
+              ? template.order_type === 'aftersales'
+              : template.order_type === 'iteration',
+          )
+          .map((template) => ({
+            label: template.name,
+            value: template.id,
+          }))}
       />
     </div>
   )

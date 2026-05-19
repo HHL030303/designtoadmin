@@ -24,10 +24,14 @@ import {
   Typography,
   message,
 } from 'antd'
+import {
+  SearchOutlined
+} from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ProjectFieldConfigDrawer } from '../components/project/ProjectFieldConfigDrawer'
 import { adminService } from '../services/adminService'
+import './ProjectManagementPage.css'
 import type {
   AdminAccountRecord,
   ProjectManagementRecord,
@@ -191,6 +195,10 @@ export function ProjectManagementPage() {
   const [users, setUsers] = useState<AdminAccountRecord[]>([])
   const [roles, setRoles] = useState<SystemRoleRecord[]>([])
   const [workflows, setWorkflows] = useState<WorkflowTemplateRecord[]>([])
+  const [workflowPagination, setWorkflowPagination] = useState({
+    current: 1,
+    pageSize: 5,
+  })
   const [selectedProject, setSelectedProject] = useState<ProjectManagementRecord | null>(null)
   const [editingMember, setEditingMember] = useState<ProjectMemberRecord | null>(null)
   const [editingRole, setEditingRole] = useState<SystemRoleRecord | null>(null)
@@ -207,7 +215,7 @@ export function ProjectManagementPage() {
   })
   const [workflowName, setWorkflowName] = useState('')
   const [workflowStatus, setWorkflowStatus] = useState<'enabled' | 'disabled'>('enabled')
-  const [type,setType] = useState('')
+  const [type,setType] = useState('new')
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageConfig[]>(
     createDefaultWorkflowStages(),
   )
@@ -291,6 +299,10 @@ export function ProjectManagementPage() {
       ])
       setRoles(nextRoles)
       setWorkflows(nextWorkflows)
+      setWorkflowPagination((current) => ({
+        ...current,
+        current: 1,
+      }))
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载工作流配置失败')
     } finally {
@@ -336,7 +348,12 @@ export function ProjectManagementPage() {
         value: role.code,
       })),
     [roles],
+    
   )
+
+  const handleReset = () =>{
+    setKeyword('')
+  }
 
   const selectedWorkflowStage = useMemo(
     () =>
@@ -361,7 +378,6 @@ export function ProjectManagementPage() {
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{record.name}</Typography.Text>
-          <Typography.Text type="secondary">{record.code}</Typography.Text>
         </Space>
       ),
     },
@@ -383,6 +399,8 @@ export function ProjectManagementPage() {
         <Space size={8} wrap>
           <Button
             size="small"
+            color='green'
+            variant='solid'
             onClick={() => {
               setEditingProject(record)
               projectForm.setFieldsValue({
@@ -396,6 +414,8 @@ export function ProjectManagementPage() {
           </Button>
           <Button
             size="small"
+              color='geekblue'
+            variant='solid'
             onClick={() => {
               setSelectedProject(record)
               setMembersModalOpen(true)
@@ -408,6 +428,8 @@ export function ProjectManagementPage() {
           </Button>
           <Button
             size="small"
+               color='blue'
+            variant='solid'
             onClick={() => {
               setSelectedProject(record)
               setRolesModalOpen(true)
@@ -420,6 +442,8 @@ export function ProjectManagementPage() {
           </Button>
           <Button
             size="small"
+            variant='solid'
+            color='geekblue'
             onClick={() => {
               setSelectedProject(record)
               setFieldConfigDrawerOpen(true)
@@ -430,7 +454,7 @@ export function ProjectManagementPage() {
           <Button
             size="small"
             type="primary"
-            ghost
+            variant='solid'
             onClick={() => {
               setSelectedProject(record)
               setWorkflowsModalOpen(true)
@@ -443,7 +467,7 @@ export function ProjectManagementPage() {
             title="确认删除该项目吗？"
             onConfirm={() => void handleDeleteProject(record.id)}
           >
-            <Button size="small" danger>
+            <Button size="small" color='red' variant='solid'>
               删除
             </Button>
           </Popconfirm>
@@ -707,6 +731,7 @@ export function ProjectManagementPage() {
       setWorkflowStatus(template.status)
       setWorkflowStages(nextStages)
       setSelectedWorkflowStageKey(nextStages[0]?.localId ?? null)
+      setType(template.order_type)
     } else {
       setEditingWorkflow(null)
       // setWorkflowName(`${selectedProject.name}标准工作流`)
@@ -756,6 +781,10 @@ export function ProjectManagementPage() {
     setWorkflowStages(createDefaultWorkflowStages())
     setSelectedWorkflowStageKey(null)
     setWorkflows([])
+    setWorkflowPagination({
+      current: 1,
+      pageSize: 5,
+    })
     setSelectedProject(null)
   }
 
@@ -966,7 +995,6 @@ export function ProjectManagementPage() {
           ...(stage.configJson ?? {}),
         },
       }))
-
       if (editingWorkflow) {
         await adminService.createWorkflowTemplate(selectedProject.id, {
           id: editingWorkflow.id,
@@ -974,6 +1002,7 @@ export function ProjectManagementPage() {
           name: workflowName,
           stages: stagesToSave,
           status: workflowStatus,
+          orderType:type
         })
         message.success('工作流节点配置已更新')
       } else {
@@ -982,6 +1011,7 @@ export function ProjectManagementPage() {
           name: workflowName,
           stages: stagesToSave,
           status: workflowStatus,
+          orderType:type
         })
         message.success('工作流创建成功')
       }
@@ -1059,12 +1089,12 @@ export function ProjectManagementPage() {
     {
       title: '工作流名称',
       dataIndex: 'name',
-      render: (value: string, record) => (
+      render: (value: string) => (
         <Space orientation="vertical" size={0}>
           <Typography.Text strong>{value}</Typography.Text>
-          <Typography.Text type="secondary">
+          {/* <Typography.Text type="secondary">
             {record.isDefault ? '默认工作流' : '自定义工作流'}
-          </Typography.Text>
+          </Typography.Text> */}
         </Space>
       ),
     },
@@ -1141,13 +1171,16 @@ export function ProjectManagementPage() {
       <div className='workspace-search'> 
         <Input
           value={keyword}
+          prefix={<SearchOutlined />}
+          className="workspace-filter-input"
+          allowClear
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索项目名称 / 编码 / 状态"
-          className="workspace-filter-input"
         />
          <Button type="primary" onClick={()=>{setKeyword(keyword)}}>
             查询
           </Button>
+          <Button onClick={handleReset}>重置</Button>
           </div>
           <div className="workspace-reset">
           <Button type="primary" onClick={openCreateDrawer}>
@@ -1458,12 +1491,12 @@ export function ProjectManagementPage() {
         onCancel={resetWorkflowState}
       >
         <div className="workspace-header">
-          <div className="workspace-header-main">
+          {/* <div className="workspace-header-main">
             <Typography.Text type="secondary">
               当前项目工作流数：{workflows.length}
             </Typography.Text>
-          </div>
-          <div className="workspace-header-side">
+          </div> */}
+          <div className="workspace-header-side-pos">
             <Button type="primary" onClick={() => openWorkflowEditor()}>
               新建工作流
             </Button>
@@ -1479,10 +1512,25 @@ export function ProjectManagementPage() {
           <Table
             rowKey="id"
             size="small"
+            className="workflow-config-table"
             loading={workflowLoading}
             columns={workflowColumns}
             dataSource={workflows}
-            pagination={false}
+            pagination={{
+              current: workflowPagination.current,
+              pageSize: workflowPagination.pageSize,
+              pageSizeOptions: [5, 10, 20],
+              position: ['bottomRight'],
+              showSizeChanger: true,
+              showTotal: (total) => `共 ${total} 条`,
+              total: workflows.length,
+              onChange: (page, pageSize) => {
+                setWorkflowPagination({
+                  current: page,
+                  pageSize: pageSize ?? workflowPagination.pageSize,
+                })
+              },
+            }}
           />
         )}
       </Modal>
@@ -1534,8 +1582,9 @@ export function ProjectManagementPage() {
                 style={{ width: 140 }}
                 placeholder='请选择工单类型'
                 options={[
-                  { label: '工单', value: 'normal' },
-                  { label: '售后', value: 'aftersale' },
+                  { label: '工单', value: 'new' },
+                  { label: '售后', value: 'aftersales' },
+                  { label: '迭代', value: 'iteration' },
                 ]}
                 onChange={setType}
               />

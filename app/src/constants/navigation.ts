@@ -62,7 +62,18 @@ export function getPathForView(view: ViewKey) {
 }
 
 export function getViewForPath(pathname: string) {
-  return pathViewMap[normalizePath(pathname)]
+  const normalizedPath = normalizePath(pathname)
+  const exactMatchedView = pathViewMap[normalizedPath]
+
+  if (exactMatchedView) {
+    return exactMatchedView
+  }
+
+  const prefixMatchedPath = Object.keys(pathViewMap)
+    .sort((left, right) => right.length - left.length)
+    .find((path) => normalizedPath.startsWith(`${path}/`))
+
+  return prefixMatchedPath ? pathViewMap[prefixMatchedPath] : undefined
 }
 
 export function getNavItemByView(view: ViewKey) {

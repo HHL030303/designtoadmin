@@ -230,7 +230,9 @@ export function TaskHistoryDetailPanel({
         </div>
         <Descriptions column={4} size="small" className="panel-descriptions">
           <Descriptions.Item label="任务标题">{detail.task.title}</Descriptions.Item>
+          {/* <Descriptions.Item label="任务负责人">{detail?.task?.owner_id}</Descriptions.Item> */}
           <Descriptions.Item label="当前版本">{detail.currentVersion.versionNo}</Descriptions.Item>
+          
           <Descriptions.Item label="当前节点">
             {detail.currentStage?.stageName ?? '暂无'}
           </Descriptions.Item>

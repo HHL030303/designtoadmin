@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { AccountManagementPage } from '../pages/AccountManagementPage'
 import { AllTicketsPage } from '../pages/AllTicketsPage'
+import { CourseTaskDetailPage } from '../pages/CourseTaskDetailPage'
 import { CoursesPage } from '../pages/CoursesPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { DesignersPage } from '../pages/DesignersPage'
@@ -54,6 +55,10 @@ export const privateRoutes: AppRouteConfig[] = [
   {
     path: '/courses',
     element: <CoursesPage />,
+  },
+  {
+    path: '/courses/:taskId',
+    element: <CourseTaskDetailPage />,
   },
   {
     path: '/dispatch',

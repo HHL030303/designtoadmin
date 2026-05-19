@@ -352,7 +352,7 @@ export function AllTicketsPage() {
     return [
       {
         accent: 'blue',
-        caption: '较昨日 +3',
+        // caption: '较昨日 +3',
         icon: <SnippetsOutlined />,
         label: '工单总数',
         value: summary.total,

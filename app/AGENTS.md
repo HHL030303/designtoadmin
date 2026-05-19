@@ -11,6 +11,8 @@
 - Keep page files slim: page-specific `type` / `interface` definitions must live in dedicated type files under `src/types` or nearby domain type modules, not inline in page components
 - Every code change must include concise comments for non-obvious logic, data normalization, side effects, and business-rule branching
 - 所有新增注释必须使用中文，禁止新增英文注释
+- 不要把样式都写在app.css里面
+- 函数用
 
 # 业务上下文
 
@@ -74,6 +76,9 @@
   - 趋势折线图
   - 最近订单表格
   - 快捷操作入口
+# 函数风格
+- 所有独立工具函数、纯函数**必须**使用箭头函数定义：`const fn = (param) => { ... }`
+- 禁止使用 `function fn(param) {}` 声明
 
 ## 禁止
 - 不要生成纯 HTML 默认样式

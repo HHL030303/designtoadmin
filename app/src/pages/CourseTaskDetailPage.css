@@ -1,0 +1,21 @@
+.course-task-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.course-task-detail-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.course-task-detail-page__title.ant-typography {
+  margin-bottom: 4px;
+}
+
+.course-task-detail-page__description.ant-typography {
+  margin-bottom: 0;
+}
