@@ -50,7 +50,7 @@ export function AttachmentUploadField({
     }
 
     try {
-      return new RegExp(fileNamePattern).test(fileName)
+      return new RegExp(fileNamePattern, 'i').test(fileName)
     } catch {
       return true
     }

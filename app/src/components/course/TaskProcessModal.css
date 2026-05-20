@@ -2,8 +2,12 @@
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 20px 56px rgba(15, 23, 42, 0.14);
-}
+  height: 600px !important;
 
+}
+.ant-upload{
+  padding: 5px !important;
+}
 .task-process-modal .ant-modal-header {
   margin-bottom: 0;
   padding: 16px 20px 0;
@@ -20,6 +24,9 @@
   background:
     radial-gradient(circle at top right, rgba(191, 219, 254, 0.28), transparent 26%),
     linear-gradient(180deg, #f8fbff 0%, #ffffff 24%);
+    height: 600px;
+    overflow-y: scroll;
+
 }
 
 .task-process-modal__body {

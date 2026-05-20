@@ -13,6 +13,7 @@ type AuthProjectResponse = {
   code: string
   name: string
   status: 'enabled' | 'disabled'
+  workwx_bound: boolean
   roles: Array<{
     id: number
     code: string
@@ -30,7 +31,15 @@ type AuthResponse = {
   email: string
   name: string
   status: 'enabled' | 'disabled'
+  workwx_bound: boolean
   projects: AuthProjectResponse[]
+}
+
+export type WorkwxConfig = {
+  corp_name: string
+  corp_id: string
+  agent_id: string
+  can_bind_workwx: boolean
 }
 
 function mapRoleCodeToUserRole(roleCodes: string[]): UserRole {
@@ -74,6 +83,7 @@ function mapProject(project: AuthProjectResponse): ProjectOption {
     permissions: project.permissions.map(mapProjectPermission),
     roles,
     status: project.status,
+    workwxBound: project.workwx_bound,
   }
 }
 
@@ -100,6 +110,28 @@ export const authService = {
     })
 
     return mapAuthUser(data)
+  },
+
+  async getCurrentUser() {
+    const data = await apiRequest<AuthResponse>('/api/auth/me', {
+      includeProjectHeader: false,
+    })
+
+    return mapAuthUser(data)
+  },
+
+  async getWorkwxConfig() {
+    return apiRequest<WorkwxConfig>('/api/workwx/config')
+  },
+
+  async bindWorkwx(code: string, redirectUri: string) {
+    await apiRequest<null>('/api/auth/workwx/bind', {
+      body: {
+        code,
+        redirect_uri: redirectUri,
+      },
+      method: 'POST',
+    })
   },
 
   async logout() {

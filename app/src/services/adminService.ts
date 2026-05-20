@@ -106,6 +106,7 @@ type WorkflowStageItem = {
   can_skip?: boolean
   collect_total_page_count?: boolean
   allow_page_assignment?: boolean
+  allow_custom_due_days?: boolean
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
@@ -176,6 +177,7 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
 
   return {
     allowPageAssignment: stage.allow_page_assignment ?? false,
+    allowCustomDueDays: stage.allow_custom_due_days ?? false,
     canAssign: stage.can_assign ?? false,
     canSkip: stage.can_skip ?? false,
     collectTotalPageCount: stage.collect_total_page_count ?? true,
@@ -233,6 +235,7 @@ function buildWorkflowStagePayload(stage: WorkflowStageConfig) {
     stage_name: stage.stageName.trim(),
     status: stage.status,
     triggers_package: stage.triggersPackage,
+    allow_custom_due_days:stage.allowCustomDueDays
   }
 }
 

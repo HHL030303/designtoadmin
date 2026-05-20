@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Progress, Space, Typography, Upload, message } from 'antd'
 import { DeleteOutlined, InboxOutlined, LoadingOutlined } from '@ant-design/icons'
 import type { RcFile, UploadFile, UploadProps } from 'antd/es/upload/interface'
@@ -55,7 +55,7 @@ export function ObjectStorageUploadField({
     compact = false,
     fileNamePattern,
     maxCount,
-    maxFileSizeInMb = 200,
+    maxFileSizeInMb = 1000,
     multiple = true,
     taskId,
     uploadPrefix,
@@ -76,6 +76,12 @@ export function ObjectStorageUploadField({
     uploadPrefix?: string
 }) {
     const [uploadingItems, setUploadingItems] = useState<UploadingItem[]>([])
+    const latestValueRef = useRef<AttachmentFile[]>(value)
+
+    useEffect(() => {
+        latestValueRef.current = value
+    }, [value])
+
     const visibleFileList = useMemo(
         () => [...value.map(toUploadedFileItem), ...uploadingItems.map((item) => item.file)],
         [uploadingItems, value],
@@ -116,7 +122,7 @@ export function ObjectStorageUploadField({
         }
 
         try {
-            return new RegExp(fileNamePattern).test(fileName)
+            return new RegExp(fileNamePattern, 'i').test(fileName)
         } catch {
             return true
         }
@@ -168,7 +174,9 @@ export function ObjectStorageUploadField({
                     : uploadedFile
 
                 removeUploadingFile(uploadFile.uid)
-                onChange?.([...value, registeredFile])
+                const nextFiles = [...latestValueRef.current, registeredFile]
+                latestValueRef.current = nextFiles
+                onChange?.(nextFiles)
                 onSuccess?.(uploaded)
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : '上传失败'

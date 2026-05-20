@@ -19,6 +19,7 @@ export function AppLayout() {
     loading,
     error,
     logout,
+    refreshCurrentUser,
     selectProject,
     switchRole,
   } = useAppState()
@@ -47,6 +48,7 @@ export function AppLayout() {
               onSwitchRole={switchRole}
               onSwitchProject={selectProject}
               onLogout={() => void logout()}
+              onRefreshCurrentUser={() => void refreshCurrentUser()}
             />
           </div>
           <div className="app-content">

@@ -100,7 +100,10 @@ export function CourseTaskDetailPage() {
       <TaskProcessModal
         open={processingOpen}
         taskId={taskId}
-        onClose={() => setProcessingOpen(false)}
+        onClose={() => {
+          setProcessingOpen(false)
+          void loadDetail()
+        }}
         onProcessed={async () => {
           setProcessingOpen(false)
           await loadDetail()

@@ -37,7 +37,7 @@ import './TaskProcessModal.css'
 type StageCompletionFormValues = {
   total_page_count?: number
   due_days?: number
-  package_file_name?: string
+  package_original_name?: string
   remark?: string
   nextStageUserId?: string
   nextStageAssignees?: Array<{
@@ -135,11 +135,16 @@ function buildDefaultNextStageAssignees() {
   ]
 }
 
+const OTHER_FILES_RULE_ID = '__other_files__'
+
 function buildEmptyFilesByRuleId(fileRules: TaskWorkflowFileRuleRecord[]) {
-  return fileRules.reduce<Record<string, AttachmentFile[]>>((accumulator, rule) => {
+  const filesByRuleId = fileRules.reduce<Record<string, AttachmentFile[]>>((accumulator, rule) => {
     accumulator[rule.id] = []
     return accumulator
   }, {})
+
+  filesByRuleId[OTHER_FILES_RULE_ID] = []
+  return filesByRuleId
 }
 
 function buildPackageNameTags(fieldValues: Record<string, unknown>): string[] {
@@ -245,19 +250,7 @@ function buildInitialFilesByRuleId(
   }, {})
 
   const remainingFiles = currentStageFiles.filter((file) => !usedFileUids.has(file.uid))
-
-  for (const file of remainingFiles) {
-    const fallbackRule = fileRules.find((rule) => {
-      const currentCount = filesByRuleId[rule.id]?.length ?? 0
-      return currentCount < rule.requiredCount
-    })
-
-    if (!fallbackRule) {
-      break
-    }
-
-    filesByRuleId[fallbackRule.id] = [...(filesByRuleId[fallbackRule.id] ?? []), file]
-  }
+  filesByRuleId[OTHER_FILES_RULE_ID] = remainingFiles
 
   return filesByRuleId
 }
@@ -292,7 +285,7 @@ function DynamicFileRuleSection({
               {/* <Tag>以{rule.itemName}结尾</Tag>
               <Tag>{rule.fileCategory}</Tag> */}
               <Tag>{`数量 ${rule.requiredCount}`}</Tag>
-              <Tag>{`示例：xxxxx_${rule.itemName}.${rule.fileCategory}`}</Tag>
+              <Tag>{`示例：xxxxx-${rule.itemName}.${rule.fileCategory}`}</Tag>
             </Space>
             <ObjectStorageUploadField
               value={filesByRuleId[rule.id] ?? []}
@@ -310,6 +303,23 @@ function DynamicFileRuleSection({
           </Space>
         </Card>
       ))}
+      <Card key={OTHER_FILES_RULE_ID} type="inner" className="task-detail-action-card">
+        <Space direction="vertical" size={8} className="panel-stack-full">
+          <Space size={8} wrap>
+            <Typography.Text strong>其他文件</Typography.Text>
+            <Tag>不限制名称、类型和数量</Tag>
+          </Space>
+          <ObjectStorageUploadField
+            value={filesByRuleId[OTHER_FILES_RULE_ID] ?? []}
+            onChange={(files) => onFilesChange(OTHER_FILES_RULE_ID, files)}
+            onUploaded={onFileUploaded}
+            onDelete={onFileDeleted}
+            taskId={taskId}
+            compact
+            disabled={disabled}
+          />
+        </Space>
+      </Card>
     </Space>
   )
 }
@@ -433,7 +443,7 @@ export function TaskProcessModal({
     form.setFieldsValue({
       total_page_count: undefined,
       due_days: currentStage.dueDays,
-      package_file_name: '',
+      package_original_name: '',
       nextStageAssignees: buildDefaultNextStageAssignees(),
     })
   }, [currentStage, detail, form])
@@ -441,12 +451,12 @@ export function TaskProcessModal({
   useEffect(() => {
     if (!open || !isLastStage) {
       setSelectedPackageNameTags([])
-      form.setFieldValue('package_file_name', '')
+      form.setFieldValue('package_original_name', '')
       return
     }
 
     setSelectedPackageNameTags(packageNameTags)
-    form.setFieldValue('package_file_name', buildPackageFileName(packageNameTags))
+    form.setFieldValue('package_original_name', buildPackageFileName(packageNameTags))
   }, [form, isLastStage, open, packageNameTags])
 
   useEffect(() => {
@@ -506,10 +516,12 @@ export function TaskProcessModal({
       version_id: Number(detail.currentVersion.id),
       workflow_stage_id: Number(currentStage.id),
     })
+    console.log(file)
+    console.error(created)
 
     return {
       ...file,
-      fileRecordId: created?.id !== undefined && created?.id !== null ? String(created.id) : undefined,
+      fileRecordId: created?.file?.id !== undefined && created?.file?.id !== null ? String(created?.file?.id) : undefined,
     }
   }
 
@@ -599,14 +611,14 @@ export function TaskProcessModal({
         message.warning('请完整填写下一阶段任务人员和分配页数')
         return
       }
-      if((values.nextStageAssignees as any)?.length>0){
-        const totalpage = (values.nextStageAssignees as any).reduce((pre:any,next:any)=>{
-          return pre + next?.assignedPageCount
-        },0)
-        if(totalpage>detail.currentVersion?.totalPageCount){
-         return message.error(`总页数不能大于预定的${detail.currentVersion?.totalPageCount}页`)
-        }
-      }
+      // if((values.nextStageAssignees as any)?.length>0){
+      //   const totalpage = (values.nextStageAssignees as any).reduce((pre:any,next:any)=>{
+      //     return pre + next?.assignedPageCount
+      //   },0)
+      //   if(totalpage>detail.currentVersion?.totalPageCount){
+      //    return message.error(`总页数不能大于预定的${detail.currentVersion?.totalPageCount}页`)
+      //   }
+      // }
     }
 
     if (shouldCollectTotalPageCount && typeof values.total_page_count !== 'number') {
@@ -625,6 +637,7 @@ export function TaskProcessModal({
 
       await taskService.completeWorkflowStage(currentStage.id, {
         remark: values.remark?.trim() || undefined,
+        // package_original_name:values?.package_original_name?.trim()||undefined,
         next_stage_assignees: nextStageAssignments,
         due_days:
           !isHistoricalStageEdit && nextStage && typeof values.due_days === 'number'
@@ -656,6 +669,7 @@ export function TaskProcessModal({
       onCancel={onClose}
       footer={null}
       width={920}
+      height={600}
       className="task-process-modal"
       destroyOnClose
     >
@@ -804,7 +818,7 @@ export function TaskProcessModal({
                                   : [...selectedPackageNameTags, tag]
 
                                 setSelectedPackageNameTags(nextTags)
-                                form.setFieldValue('package_file_name', buildPackageFileName(nextTags))
+                                form.setFieldValue('package_original_name', buildPackageFileName(nextTags))
                               }}
                             >
                               {tag}
@@ -814,13 +828,13 @@ export function TaskProcessModal({
                       </div>
                       <Form.Item
                         label="打包文件名"
-                        name="package_file_name"
+                        name="package_original_name"
                       >
                         <Input
                           className="task-process-modal__field-control"
                           placeholder="可点击上方标签自动拼接，也可以直接修改文件名"
                           onChange={(event) => {
-                            form.setFieldValue('package_file_name', event.target.value)
+                            form.setFieldValue('package_original_name', event.target.value)
                           }}
                         />
                       </Form.Item>
@@ -936,7 +950,7 @@ export function TaskProcessModal({
                     )
                   ) : null}
                   <div className="task-process-modal__dual-field-row">
-                    {!isHistoricalStageEdit && nextStage ? (
+                    {!isHistoricalStageEdit && nextStage && currentStage.allowCustomDueDays ? (
                       <Form.Item
                         className="task-process-modal__dual-field-item"
                         label={`预期完成天数`}

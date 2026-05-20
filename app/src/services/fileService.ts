@@ -13,9 +13,43 @@ type CreateFileRecordPayload = {
 
 type CreateFileRecordResponse = {
     id?: number | string
+    file:ChecksumFileRecord
+}
+
+type ChecksumFileRecord = {
+    checksum: string
+    created_at: string
+    file_ext: string
+    file_path: string
+    file_url?: string | null
+    id: number | string
+    mime_type?: string | null
+    original_name: string
+    project_id: number
+    size_bytes: number
+    status: string
+    task_id: number
+    updated_at: string
+    uploaded_by: number
+    version_id: number
+    workflow_stage_id: number
+    file_biz_type?: string | null
+}
+
+type ChecksumLookupResponse = {
+    exists: boolean
+    file: ChecksumFileRecord | null
 }
 
 export const fileService = {
+    async checkFileChecksum(checksum: string) {
+        return apiRequest<ChecksumLookupResponse>('/api/files/checksum', {
+            query: {
+                checksum,
+            },
+        })
+    },
+
     async createFileRecord(payload: CreateFileRecordPayload) {
         return apiRequest<CreateFileRecordResponse>('/api/files', {
             body: payload,

@@ -110,6 +110,7 @@ function createWorkflowStage(index: number): WorkflowStageConfig {
     stageName: '',
     status: 'enabled',
     triggersPackage: false,
+    allowCustomDueDays:false
   }
 }
 
@@ -601,7 +602,7 @@ export function ProjectManagementPage() {
   function buildWorkflowFilePattern(itemName: string, fileCategory: string) {
     const escapedName = itemName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const escapedCategory = fileCategory.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return `^.+_${escapedName}\\.${escapedCategory}$`
+    return `^.+-${escapedName}\\.${escapedCategory}$`
   }
 
   function handleAddWorkflowFileRule(stageLocalId: string) {
@@ -726,6 +727,7 @@ export function ProjectManagementPage() {
 
     if (template) {
       const nextStages = template.stages.length > 0 ? cloneWorkflowStages(template.stages) : []
+      console.error(nextStages,'nextStages')
       setEditingWorkflow(template)
       setWorkflowName(template.name)
       setWorkflowStatus(template.status)
@@ -985,6 +987,7 @@ export function ProjectManagementPage() {
       const sortedWorkflowStages = [...workflowStages].sort(
         (left, right) => left.sortValue - right.sortValue,
       )
+      console.error(workflowStages)
       const stagesToSave = sortedWorkflowStages.map((stage, index) => ({
         ...stage,
         nextStageIds:
@@ -1780,6 +1783,17 @@ export function ProjectManagementPage() {
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             allowPageAssignment: checked,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="workflow-stage-switch">
+                      <span>是否允许为下一阶段分配天数</span>
+                      <Switch
+                        checked={selectedWorkflowStage.allowCustomDueDays}
+                        onChange={(checked) =>
+                          handleWorkflowStageChange(selectedWorkflowStage.localId, {
+                            allowCustomDueDays: checked,
                           })
                         }
                       />

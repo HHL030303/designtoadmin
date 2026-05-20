@@ -159,6 +159,7 @@ type AppStateContextValue = {
   canCreateCourse: boolean
   login: (email: string, password: string, redirectPath?: string | null) => Promise<void>
   logout: () => Promise<void>
+  refreshCurrentUser: () => Promise<void>
   selectProject: (projectKey: string) => void
   switchRole: (role: UserRole) => void
   setSearch: (value: string) => void
@@ -192,7 +193,27 @@ function getStoredUser(): AuthUser | null {
   }
 
   try {
-    return JSON.parse(raw) as AuthUser
+    const parsed = JSON.parse(raw) as Partial<AuthUser>
+
+    if (
+      typeof parsed?.id !== 'string' ||
+      typeof parsed?.email !== 'string' ||
+      typeof parsed?.name !== 'string' ||
+      !Array.isArray(parsed?.projects)
+    ) {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY)
+      return null
+    }
+
+    return {
+      ...parsed,
+      projects: parsed.projects.map((project) => ({
+        ...project,
+        workwxBound: project.workwxBound ?? false,
+      })),
+      role: parsed.role ?? 'planner',
+      status: parsed.status ?? 'enabled',
+    } as AuthUser
   } catch {
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
     return null
@@ -302,6 +323,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSelectedCourseId(courses[0].id)
     }
   }, [courses, selectedCourseId])
+
+  useEffect(() => {
+    if (!currentUser) {
+      return
+    }
+
+    void refreshCurrentUser()
+  }, [])
 
   useEffect(() => {
     if (!currentProject) {
@@ -437,6 +466,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     } finally {
       setAuthenticating(false)
     }
+  }
+
+  async function refreshCurrentUser() {
+    const user = await authService.getCurrentUser()
+    setCurrentUser(user)
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
   }
 
   function selectProject(projectKey: string) {
@@ -640,6 +675,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       canCreateCourse,
       login,
       logout,
+      refreshCurrentUser,
       selectProject,
       switchRole,
       setSearch,
@@ -686,6 +722,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       canCreateCourse,
       login,
       logout,
+      refreshCurrentUser,
       selectProject,
       switchRole,
       navigateToView,

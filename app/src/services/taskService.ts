@@ -153,6 +153,7 @@ type TaskWorkflowStageResponse = {
   assigned_by?:string
   collect_total_page_count?: boolean
   allow_page_assignment?: boolean
+  allow_custom_due_days?: boolean
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
@@ -214,6 +215,7 @@ type UpdateTaskPayload = {
 
 type CompleteWorkflowStagePayload = {
   remark?: string
+  package_original_name?:string
   due_days?: number
   total_page_count?:number
   next_stage_assignees: Array<{
@@ -366,6 +368,7 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
   const stageAssignees = stage.assignees ?? stage.stage_assignees ?? []
 
   return {
+    allowCustomDueDays: stage.allow_custom_due_days ?? false,
     allowPageAssignment: stage.allow_page_assignment ?? false,
     canAssign: stage.can_assign ?? false,
     canSkip: stage.can_skip ?? false,

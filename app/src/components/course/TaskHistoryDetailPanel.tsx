@@ -152,6 +152,7 @@ export function TaskHistoryDetailPanel({
   function handleCloseStageEdit() {
     setStageEditOpen(false)
     setEditingStageId(null)
+    void onUpdated?.()
   }
 
   async function handleOpenModal() {

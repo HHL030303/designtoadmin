@@ -10,6 +10,7 @@ export const projectOptions: ProjectOption[] = [
     permissions: [],
     roles: [],
     status: 'enabled',
+    workwxBound: false,
   },
   {
     key: 'yiqi-courseware',
@@ -20,6 +21,7 @@ export const projectOptions: ProjectOption[] = [
     permissions: [],
     roles: [],
     status: 'enabled',
+    workwxBound: false,
   },
   {
     key: 'medical-ppt',
@@ -30,5 +32,6 @@ export const projectOptions: ProjectOption[] = [
     permissions: [],
     roles: [],
     status: 'enabled',
+    workwxBound: false,
   },
 ]

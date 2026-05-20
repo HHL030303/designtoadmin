@@ -167,6 +167,7 @@ export interface TaskWorkflowStageRecord {
   fileRules: TaskWorkflowFileRuleRecord[]
   stageAssignees: TaskWorkflowStageAssigneeRecord[]
   totalPageCount?:number|undefined|null
+  allowCustomDueDays?:boolean
 }
 
 export interface TaskDetailRecord {
@@ -410,6 +411,7 @@ export interface ProjectOption {
   name: string
   description: string
   status: 'enabled' | 'disabled'
+  workwxBound: boolean
   roles: ProjectRole[]
   permissions: ProjectPermission[]
 }
@@ -515,6 +517,7 @@ export interface WorkflowStageConfig {
   nextStageIds: string[]
   fileRules: WorkflowStageFileRule[]
   configJson?: Record<string, unknown>
+  allowCustomDueDays?:boolean
 }
 
 export interface WorkflowTemplateRecord {

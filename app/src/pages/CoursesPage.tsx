@@ -27,7 +27,7 @@ import type { TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import paginationZhCN from '@rc-component/pagination/es/locale/zh_CN'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   DownOutlined,
   FilterOutlined,
@@ -322,6 +322,11 @@ function validateNotBeforeToday(_: unknown, value?: Dayjs) {
   }
 
   return Promise.reject(new Error('日期不得早于当天'))
+}
+
+function parsePositiveInteger(value: string | null, fallback: number): number {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function renderFieldControl(field: FieldConfig) {
@@ -813,13 +818,22 @@ function HistoryVersionDropdown({
 }
 
 export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks' }) {
+  const location = useLocation()
   const navigate = useNavigate()
   const { currentProject, canCreateCourse, currentUser, role } = useAppState()
+  const initialSearchParams = useMemo(
+    () => new URLSearchParams(location.search),
+    [location.search],
+  )
   const isMyTasksPage = mode === 'myTasks'
   const [tasks, setTasks] = useState<TaskListRecord[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(() =>
+    parsePositiveInteger(initialSearchParams.get('page'), 1),
+  )
+  const [pageSize, setPageSize] = useState(() =>
+    parsePositiveInteger(initialSearchParams.get('pageSize'), 10),
+  )
   const [total, setTotal] = useState(0)
   const [mutating, setMutating] = useState(false)
   const [fieldFilters, setFieldFilters] = useState<Record<string, unknown>>({})
@@ -1712,6 +1726,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   if (selectedVersionId) {
                     nextQuery.set('versionId', selectedVersionId)
                   }
+
+                  nextQuery.set('listPage', String(currentPage))
+                  nextQuery.set('listPageSize', String(pageSize))
 
                   navigate({
                     pathname: `/courses/${record.id}`,
