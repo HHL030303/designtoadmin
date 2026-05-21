@@ -614,6 +614,7 @@ export function ProjectManagementPage() {
 
         const nextIndex = stage.fileRules.length + 1
         const nextRule: WorkflowStageFileRule = {
+          excludeFromPackage: false,
           fileCategory: 'txt',
           filenamePattern: buildWorkflowFilePattern(`文件${nextIndex}`, 'txt'),
           itemName: `文件${nextIndex}`,
@@ -1821,7 +1822,7 @@ export function ProjectManagementPage() {
                         }
                       />
                     </div>
-                    <div className="workflow-stage-switch">
+                    {/* <div className="workflow-stage-switch">
                       <span>需要校验</span>
                       <Switch
                         checked={selectedWorkflowStage.requiresValidation}
@@ -1831,7 +1832,7 @@ export function ProjectManagementPage() {
                           })
                         }
                       />
-                    </div>
+                    </div> */}
                     <div className="workflow-stage-switch">
                       <span>需要打包</span>
                       <Switch
@@ -1899,6 +1900,21 @@ export function ProjectManagementPage() {
                                           selectedWorkflowStage.localId,
                                           index,
                                           { required: checked },
+                                        )}
+                                    />
+                                  </Space>
+                                  <Space size={8}>
+                                    <Typography.Text type="secondary">
+                                      打包时是否排除：
+                                    </Typography.Text>
+                                    <Switch
+                                      size="small"
+                                      checked={rule.excludeFromPackage}
+                                      onChange={(checked) =>
+                                        handleWorkflowFileRuleChange(
+                                          selectedWorkflowStage.localId,
+                                          index,
+                                          { excludeFromPackage: checked },
                                         )}
                                     />
                                   </Space>

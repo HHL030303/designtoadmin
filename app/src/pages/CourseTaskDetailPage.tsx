@@ -63,7 +63,7 @@ export function CourseTaskDetailPage() {
             type="secondary"
             className="course-task-detail-page__description"
           >
-            查看任务当前流程、历史文件，并在需要时直接处理当前节点。
+            查看任务当前流程、历史文件，并在需要时直接处理当前节点。1
           </Typography.Paragraph>
         </div>
         <Space>

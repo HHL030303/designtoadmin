@@ -255,6 +255,24 @@ function buildInitialFilesByRuleId(
   return filesByRuleId
 }
 
+function flattenFilesByRuleId(filesByRuleId: Record<string, AttachmentFile[]>) {
+  const seenFileUids = new Set<string>()
+  const flattenedFiles: AttachmentFile[] = []
+
+  Object.values(filesByRuleId).forEach((files) => {
+    files.forEach((file) => {
+      if (seenFileUids.has(file.uid)) {
+        return
+      }
+
+      seenFileUids.add(file.uid)
+      flattenedFiles.push(file)
+    })
+  })
+
+  return flattenedFiles
+}
+
 function DynamicFileRuleSection({
   disabled,
   fileRules,
@@ -282,35 +300,23 @@ function DynamicFileRuleSection({
               <Tag color={rule.required ? 'red' : 'default'}>
                 {rule.required ? '必传' : '选传'}
               </Tag>
-              {/* <Tag>以{rule.itemName}结尾</Tag>
-              <Tag>{rule.fileCategory}</Tag> */}
-              <Tag>{`数量 ${rule.requiredCount}`}</Tag>
-              <Tag>{`示例：xxxxx-${rule.itemName}.${rule.fileCategory}`}</Tag>
             </Space>
-            <ObjectStorageUploadField
-              value={filesByRuleId[rule.id] ?? []}
-              onChange={(files) => onFilesChange(rule.id, files)}
-              onUploaded={onFileUploaded}
-              onDelete={onFileDeleted}
-              taskId={taskId}
-              accept={`.${rule.fileCategory}`}
-              fileNamePattern={rule.filenamePattern}
-              maxCount={rule.requiredCount}
-              helperText={`命名规则：${rule.filenamePattern}；最多上传 ${rule.requiredCount} 个文件。`}
-              compact
-              disabled={disabled}
-            />
+            <Typography.Text type="secondary">
+              {rule.required
+                ? `必传：示例：xxxxx-${rule.itemName}.${rule.fileCategory}。`
+                : `选传：示例：xxxxx-${rule.itemName}.${rule.fileCategory}。`}
+            </Typography.Text>
           </Space>
         </Card>
       ))}
       <Card key={OTHER_FILES_RULE_ID} type="inner" className="task-detail-action-card">
         <Space direction="vertical" size={8} className="panel-stack-full">
           <Space size={8} wrap>
-            <Typography.Text strong>其他文件</Typography.Text>
-            <Tag>不限制名称、类型和数量</Tag>
+            <Typography.Text strong>上传文件</Typography.Text>
+            <Tag>支持上传文件和文件夹</Tag>
           </Space>
           <ObjectStorageUploadField
-            value={filesByRuleId[OTHER_FILES_RULE_ID] ?? []}
+            value={flattenFilesByRuleId(filesByRuleId)}
             onChange={(files) => onFilesChange(OTHER_FILES_RULE_ID, files)}
             onUploaded={onFileUploaded}
             onDelete={onFileDeleted}
@@ -511,17 +517,17 @@ export function TaskProcessModal({
       file_ext: file.fileExt || '',
       file_path: file.url || '',
       original_name: file.name,
+      original_path: file.originalPath,
       size_bytes: file.size ?? 0,
       task_id: Number(detail.task.id),
       version_id: Number(detail.currentVersion.id),
       workflow_stage_id: Number(currentStage.id),
     })
-    console.log(file)
-    console.error(created)
 
     return {
       ...file,
       fileRecordId: created?.file?.id !== undefined && created?.file?.id !== null ? String(created?.file?.id) : undefined,
+      workflowStageId: currentStage.id,
     }
   }
 
@@ -538,18 +544,18 @@ export function TaskProcessModal({
       return
     }
 
-    const invalidRule = currentStage.fileRules.find((rule) => {
-      if (!rule.required) {
-        return false
-      }
+    // const invalidRule = currentStage.fileRules.find((rule) => {
+    //   if (!rule.required) {
+    //     return false
+    //   }
 
-      return (filesByRuleId[rule.id] ?? []).length < rule.requiredCount
-    })
+    //   return (filesByRuleId[rule.id] ?? []).length < rule.requiredCount
+    // })
 
-    if (invalidRule) {
-      message.warning(`请先按要求上传 ${invalidRule.itemName}`)
-      return
-    }
+    // if (invalidRule) {
+    //   message.warning(`请先按要求上传 ${invalidRule.itemName}`)
+    //   return
+    // }
 
     const nextStageAssignments = nextStage
       ? currentStage.canAssign
@@ -727,6 +733,10 @@ export function TaskProcessModal({
                 {getNextStageDisplayName(nextStage)}
               </Descriptions.Item>
               <Descriptions.Item label="截止时间">{currentStage.dueDate || '未配置'}</Descriptions.Item>
+              {
+                detail.currentVersion?.totalPageCount && <Descriptions.Item label="总页数">{detail.currentVersion?.totalPageCount }</Descriptions.Item>
+              }
+             
             </Descriptions>
           </Card>
 
@@ -745,11 +755,8 @@ export function TaskProcessModal({
                 onFileUploaded={handleFileUploaded}
                 onFileDeleted={handleFileDeleted}
                 taskId={detail.currentVersion.id ? String(detail.currentVersion.id) : undefined}
-                onFilesChange={(ruleId, files) =>
-                  setFilesByRuleId((current) => ({
-                    ...current,
-                    [ruleId]: files,
-                  }))
+                onFilesChange={(_, files) =>
+                  setFilesByRuleId(buildInitialFilesByRuleId(currentStage.fileRules, files, currentStage.id))
                 }
                 disabled={submitting}
               />
@@ -760,7 +767,12 @@ export function TaskProcessModal({
                 <Typography.Text strong>阶段已上传文件</Typography.Text>
                 <Tag bordered={false}>{`${currentStageFiles.length} 个文件`}</Tag>
               </div>
-              <AttachmentList files={currentStageFiles} compact emptyText="暂无阶段文件" />
+              <AttachmentList
+                files={currentStageFiles}
+                compact
+                emptyText="暂无阶段文件"
+                groupFolders
+              />
             </div>
           ) : null}
 

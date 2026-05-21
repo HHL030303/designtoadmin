@@ -194,6 +194,7 @@ export interface AttachmentFile {
   checksum?: string
   fileExt?: string
   name: string
+  originalPath?: string
   size?: number
   type?: string
   uploadedAt?: string
@@ -495,6 +496,7 @@ export interface WorkflowStageFileRule {
   filenamePattern: string
   requiredCount: number
   required: boolean
+  excludeFromPackage?: boolean
 }
 
 export interface WorkflowStageConfig {

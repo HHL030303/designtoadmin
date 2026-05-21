@@ -5,6 +5,7 @@ type CreateFileRecordPayload = {
     file_ext: string
     file_path: string
     original_name: string
+    original_path?: string
     size_bytes: number
     task_id: number
     version_id: number

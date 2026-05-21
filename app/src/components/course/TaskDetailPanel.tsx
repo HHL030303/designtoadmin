@@ -400,19 +400,28 @@ function DynamicFileRuleSection({
                             <Tag>{rule.fileCategory}</Tag>
                             <Tag>{`数量 ${rule.requiredCount}`}</Tag>
                         </Space>
-                        <ObjectStorageUploadField
-                            value={filesByRuleId[rule.id] ?? []}
-                            onChange={(files) => onFilesChange(rule.id, files)}
-                            onUploaded={onFileUploaded}
-                            onDelete={onFileDeleted}
-                            taskId={taskId}
-                            accept={`.${rule.fileCategory}`}
-                            fileNamePattern={rule.filenamePattern}
-                            maxCount={rule.requiredCount}
-                            helperText={`命名规则：${rule.filenamePattern}；最多上传 ${rule.requiredCount} 个文件。`}
-                            compact
-                            disabled={disabled}
-                        />
+                        {disabled ? (
+                            <AttachmentList
+                                files={filesByRuleId[rule.id] ?? []}
+                                compact
+                                emptyText="暂无阶段文件"
+                                groupFolders
+                            />
+                        ) : (
+                            <ObjectStorageUploadField
+                                value={filesByRuleId[rule.id] ?? []}
+                                onChange={(files) => onFilesChange(rule.id, files)}
+                                onUploaded={onFileUploaded}
+                                onDelete={onFileDeleted}
+                                taskId={taskId}
+                                accept={`.${rule.fileCategory}`}
+                                fileNamePattern={rule.filenamePattern}
+                                maxCount={rule.requiredCount}
+                                helperText={`命名规则：${rule.filenamePattern}；最多上传 ${rule.requiredCount} 个文件。`}
+                                compact
+                                disabled={disabled}
+                            />
+                        )}
                     </Space>
                 </Card>
             ))}
@@ -579,6 +588,7 @@ function RoleTaskCard({
             file_ext: file.fileExt || '',
             file_path: file.url || '',
             original_name: file.name,
+            original_path: file.originalPath,
             size_bytes: file.size ?? 0,
             task_id: Number(detail.task.id),
             version_id: Number(detail.currentVersion.id),
@@ -801,7 +811,12 @@ function RoleTaskCard({
                         <Typography.Text type="secondary">
                             当前阶段没有可匹配的 `file_rules`，已按接口原始文件列表只读展示。
                         </Typography.Text>
-                        <AttachmentList files={displayStageFiles} compact emptyText="暂无阶段文件" />
+                        <AttachmentList
+                            files={displayStageFiles}
+                            compact
+                            emptyText="暂无阶段文件"
+                            groupFolders
+                        />
                     </div>
                 ) : null}
 

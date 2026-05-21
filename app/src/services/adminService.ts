@@ -123,6 +123,7 @@ type WorkflowStageFileRuleItem = {
   filename_pattern: string
   required_count: number
   required?: boolean
+  exclude_from_package?: boolean
 }
 
 type TaskFieldItem = {
@@ -194,6 +195,7 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
       filenamePattern: rule.filename_pattern,
       id: rule.id ? String(rule.id) : undefined,
       itemName: rule.item_name,
+      excludeFromPackage: rule.exclude_from_package ?? false,
       required: rule.required ?? true,
       requiredCount: rule.required_count,
     })),
@@ -222,6 +224,7 @@ function buildWorkflowStagePayload(stage: WorkflowStageConfig) {
     default_due_days: stage.defaultDueDays ?? null,
     file_rules: stage.fileRules.map((rule) => ({
       ...(rule.id ? { id: Number(rule.id) } : {}),
+      exclude_from_package: rule.excludeFromPackage ?? false,
       file_category: rule.fileCategory.trim(),
       filename_pattern: rule.filenamePattern.trim(),
       item_name: rule.itemName.trim(),

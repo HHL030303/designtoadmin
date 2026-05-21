@@ -14,7 +14,8 @@ import {
   Typography,
   message,
 } from 'antd'
-import { DownloadOutlined, EditOutlined, FileTextOutlined } from '@ant-design/icons'
+import { EditOutlined } from '@ant-design/icons'
+import { AttachmentList } from '../common/AttachmentList'
 import { useAppState } from '../../context/AppStateContext'
 import { adminService } from '../../services/adminService'
 import { taskService } from '../../services/taskService'
@@ -131,16 +132,16 @@ export function TaskHistoryDetailPanel({
   //     currentUser?.id &&
   //     currentWorkflowStage.stageAssignees.some((assignee) => assignee.userId === currentUser.id),
   // )
-  const currentStageBelongsToUser = Boolean(
-    currentWorkflowStage &&
-      currentUser?.id &&
-      currentWorkflowStage?.assignedBy == currentUser.id,
-  )
+  // const currentStageBelongsToUser = Boolean(
+  //   currentWorkflowStage &&
+  //     currentUser?.id &&
+  //     currentWorkflowStage?.assignedBy == currentUser.id,
+  // )
   const canEditCurrentAssignee = Boolean(
-    currentProject?.id &&
+      currentProject?.id &&
       currentWorkflowStage?.id &&
       currentRoleCode &&
-      currentStageBelongsToUser,
+      detail?.task?.ownerId==currentUser.id,
   )
   const canEditCompletedStage = role === 'admin' || role === 'planner'
 
@@ -354,34 +355,7 @@ export function TaskHistoryDetailPanel({
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <div className="task-history-panel__file-list">
-            {detail.files.map((file) => (
-              <div key={file.uid} className="task-history-panel__file-item">
-                <div className="task-history-panel__file-main">
-                  <span className="task-history-panel__file-icon">
-                    <FileTextOutlined />
-                  </span>
-                  <div className="task-history-panel__file-copy">
-                    <Typography.Text strong ellipsis={{ tooltip: file.name }}>
-                      {file.name}
-                    </Typography.Text>
-                    <Typography.Text type="secondary">
-                      {file.uploadedAt || '历史上传时间未记录'}
-                    </Typography.Text>
-                  </div>
-                </div>
-                <Button
-                  type="default"
-                  size="small"
-                  icon={<DownloadOutlined />}
-                  className="task-history-panel__download"
-                  onClick={() => makeDemoDownload(file)}
-                >
-                  下载
-                </Button>
-              </div>
-            ))}
-          </div>
+          <AttachmentList files={detail.files} groupFolders />
         )}
       </Card>
       <Modal

@@ -19,6 +19,10 @@ export type UploadedObjectFile = {
     url: string
 }
 
+type RelativePathFile = File & {
+    webkitRelativePath?: string
+}
+
 function getFileExtension(file: File) {
     const lastDotIndex = file.name.lastIndexOf('.')
     if (lastDotIndex < 0) {
@@ -36,9 +40,25 @@ function buildDateSegment() {
     return `${year}${month}${day}`
 }
 
-function buildObjectKey(file: File, prefix?: string, taskId?: string) {
+function normalizeRelativePath(relativePath: string) {
+    return relativePath
+        .replace(/^\/+|\/+$/g, '')
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .join('/')
+}
+
+function buildObjectKey(file: RelativePathFile, prefix?: string, taskId?: string) {
     const extension = getFileExtension(file)
     const normalizedPrefix = (prefix || 'task-attachments').replace(/^\/+|\/+$/g, '')
+    const relativePath = normalizeRelativePath(file.webkitRelativePath ?? '')
+    console.log(relativePath,'relativePath',file)
+
+    if (taskId && relativePath) {
+        return `${normalizedPrefix}/${taskId}/${relativePath}`
+    }
+
     const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${extension}`
     if (taskId) {
         return `${normalizedPrefix}/${taskId}/${uniqueName}`
@@ -116,7 +136,7 @@ class ObjectStorageService {
     }
 
     async uploadFile(
-        file: File,
+        file: RelativePathFile,
         options?: {
             onProgress?: onProgress
             prefix?: string

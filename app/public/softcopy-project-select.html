@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Softcopy Project Select</title>
+</head>
+<body>
+    <script>
+        const authStorageKey = 'design-delivery-auth-user';
+        const projectStorageKey = 'design-delivery-current-project';
+        const roleStorageKey = 'design-delivery-project-role-map';
+
+        const project = {
+            key: 'P-001',
+            id: 'P-001',
+            code: 'DESIGN-DELIVERY',
+            name: '设计交付管理系统演示项目',
+            description: '当前账号角色：系统管理员、计划员、设计统筹',
+            status: 'enabled',
+            workwxBound: false,
+            roles: [
+                { id: 1, code: 'admin', name: '系统管理员' },
+                { id: 2, code: 'planner', name: '计划员' },
+                { id: 3, code: 'coordinator', name: '设计统筹' }
+            ],
+            permissions: []
+        };
+
+        const currentUser = {
+            id: 'U-ADMIN-001',
+            email: 'admin@example.com',
+            name: '系统管理员',
+            role: 'admin',
+            status: 'enabled',
+            projects: [
+                project,
+                {
+                    ...project,
+                    key: 'P-002',
+                    id: 'P-002',
+                    code: 'RESEARCH-DELIVERY',
+                    name: '科研资讯交付项目',
+                    description: '当前账号角色：系统管理员、计划员'
+                },
+                {
+                    ...project,
+                    key: 'P-003',
+                    id: 'P-003',
+                    code: 'COURSE-DELIVERY',
+                    name: '课件设计交付项目',
+                    description: '当前账号角色：设计统筹、计划员'
+                }
+            ]
+        };
+
+        window.localStorage.setItem(authStorageKey, JSON.stringify(currentUser));
+        window.localStorage.removeItem(projectStorageKey);
+        window.localStorage.setItem(roleStorageKey, JSON.stringify({}));
+        window.location.replace('/project-select');
+    </script>
+</body>
+</html>

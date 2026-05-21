@@ -70,6 +70,7 @@
   gap: 12px;
   min-width: 0;
   box-sizing: border-box;
+  margin-bottom: 10px;
 }
 
 .task-history-panel__workflow-item {
