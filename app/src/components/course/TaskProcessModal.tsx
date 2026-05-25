@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import {
   Button,
   Card,
+  DatePicker,
   Descriptions,
   Empty,
   Form,
@@ -11,6 +12,7 @@ import {
   Modal,
   Row,
   Col,
+  Radio,
   Select,
   Space,
   Spin,
@@ -25,6 +27,7 @@ import { fileService } from '../../services/fileService'
 import { taskService } from '../../services/taskService'
 import type {
   AttachmentFile,
+  FieldConfig,
   ProjectMemberRecord,
   TaskDetailRecord,
   TaskWorkflowFileRuleRecord,
@@ -44,6 +47,7 @@ type StageCompletionFormValues = {
     assignedPageCount?: number
     userId?: string
   }>
+  [key: string]: unknown
 }
 
 // const taskStatusMeta: Record<string, { color: string; label: string }> = {
@@ -190,6 +194,153 @@ function buildPackageNameTags(fieldValues: Record<string, unknown>): string[] {
 
 function buildPackageFileName(tags: string[]): string {
   return tags.join('_')
+}
+
+const normalizeBooleanLike = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  if (typeof value === 'number') {
+    if (value === 1) {
+      return true
+    }
+
+    if (value === 0) {
+      return false
+    }
+  }
+
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  if (['true', '1', 'yes', 'y', '是', '有'].includes(normalized)) {
+    return true
+  }
+
+  if (['false', '0', 'no', 'n', '否', '无'].includes(normalized)) {
+    return false
+  }
+
+  return undefined
+}
+
+const getEnabledFieldConfigs = (fieldConfigs: FieldConfig[]) => {
+  return [...fieldConfigs]
+    .filter((field) => field.status === 'enabled')
+    .sort((left, right) => left.sort_value - right.sort_value)
+}
+
+const buildTaskFieldInitialValues = (
+  fieldConfigs: FieldConfig[],
+  rawValues?: Record<string, unknown>,
+) => {
+  return fieldConfigs.reduce<Record<string, unknown>>((accumulator, field) => {
+    const rawValue = rawValues?.[field.field_key] ?? field.default_value
+
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return accumulator
+    }
+
+    if (field.field_type === 'date') {
+      if (typeof rawValue === 'number') {
+        accumulator[field.field_key] = dayjs.unix(rawValue)
+        return accumulator
+      }
+
+      const parsedDate = dayjs(String(rawValue))
+      if (parsedDate.isValid()) {
+        accumulator[field.field_key] = parsedDate
+      }
+
+      return accumulator
+    }
+
+    if (field.field_type === 'boolean') {
+      accumulator[field.field_key] = normalizeBooleanLike(rawValue) ?? rawValue
+      return accumulator
+    }
+
+    accumulator[field.field_key] = rawValue
+    return accumulator
+  }, {})
+}
+
+const serializeTaskFieldValue = (field: FieldConfig, value: unknown): unknown => {
+  if (value === undefined || value === null || value === '') {
+    return undefined
+  }
+
+  if (field.field_type === 'date' && dayjs.isDayjs(value)) {
+    return value.format('YYYY-MM-DD')
+  }
+
+  if (field.field_type === 'number') {
+    return Number(value)
+  }
+
+  if (field.field_type === 'boolean') {
+    return normalizeBooleanLike(value) ?? value
+  }
+
+  return value
+}
+
+const renderTaskFieldControl = (field: FieldConfig) => {
+  const textPlaceholder = field.placeholder || `请输入${field.field_name}`
+  const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
+
+  if (field.field_type === 'textarea') {
+    return <Input.TextArea className="task-process-modal__field-control" placeholder={textPlaceholder} rows={3} />
+  }
+
+  if (field.field_type === 'select') {
+    return (
+      <Select
+        placeholder={selectPlaceholder}
+        options={(field.option_config ?? []).map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))}
+      />
+    )
+  }
+
+  if (field.field_type === 'boolean') {
+    return (
+      <Radio.Group
+        optionType="button"
+        buttonStyle="solid"
+        options={[
+          { label: '是', value: true },
+          { label: '否', value: false },
+        ]}
+      />
+    )
+  }
+
+  if (field.field_type === 'number') {
+    return (
+      <InputNumber
+        className="full-width-control task-process-modal__field-control"
+        placeholder={textPlaceholder}
+      />
+    )
+  }
+
+  if (field.field_type === 'date') {
+    return (
+      <DatePicker
+        className="full-width-control task-process-modal__field-control"
+        placeholder={selectPlaceholder}
+      />
+    )
+  }
+
+  return <Input className="task-process-modal__field-control" placeholder={textPlaceholder} />
 }
 
 function isAttachmentMatchedToRule(
@@ -352,6 +503,8 @@ export function TaskProcessModal({
   const [nextStageMembers, setNextStageMembers] = useState<ProjectMemberRecord[]>([])
   const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
   const [selectedPackageNameTags, setSelectedPackageNameTags] = useState<string[]>([])
+  const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
+  const [taskFieldLoading, setTaskFieldLoading] = useState(false)
 
   useEffect(() => {
     if (!open || !taskId) {
@@ -433,6 +586,42 @@ export function TaskProcessModal({
     () => (detail ? buildPackageNameTags(detail.fieldValues) : []),
     [detail],
   )
+  const enabledTaskFieldConfigs = useMemo(
+    () => getEnabledFieldConfigs(taskFieldConfigs),
+    [taskFieldConfigs],
+  )
+  const shouldLoadTaskFields = Boolean(isLastStage && currentStage?.canUpdateFields)
+  const shouldBackfillTaskFields = Boolean(
+    isLastStage && !isHistoricalStageEdit && currentStage?.canUpdateFields,
+  )
+  const shouldShowPackageNameSection = Boolean(isLastStage && !currentStage?.canUpdateFields)
+
+  useEffect(() => {
+    const projectId = currentProject?.id
+
+    if (!open || !projectId || !shouldLoadTaskFields) {
+      setTaskFieldConfigs([])
+      setTaskFieldLoading(false)
+      return
+    }
+
+    const safeProjectId = projectId
+
+    async function loadTaskFields() {
+      try {
+        setTaskFieldLoading(true)
+        const response = await adminService.listTaskFields(safeProjectId)
+        setTaskFieldConfigs(response)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '任务字段加载失败')
+        setTaskFieldConfigs([])
+      } finally {
+        setTaskFieldLoading(false)
+      }
+    }
+
+    void loadTaskFields()
+  }, [currentProject?.id, open, shouldLoadTaskFields])
 
   useEffect(() => {
     if (!detail || !currentStage) {
@@ -455,15 +644,26 @@ export function TaskProcessModal({
   }, [currentStage, detail, form])
 
   useEffect(() => {
-    if (!open || !isLastStage) {
+    if (!open || !shouldShowPackageNameSection) {
       setSelectedPackageNameTags([])
       form.setFieldValue('package_original_name', '')
       return
     }
 
-    setSelectedPackageNameTags(packageNameTags)
-    form.setFieldValue('package_original_name', buildPackageFileName(packageNameTags))
-  }, [form, isLastStage, open, packageNameTags])
+    setSelectedPackageNameTags([])
+    form.setFieldValue('package_original_name', '')
+  }, [form, open, shouldShowPackageNameSection])
+
+  useEffect(() => {
+    if (!open || !detail || enabledTaskFieldConfigs.length === 0 || !shouldBackfillTaskFields) {
+      return
+    }
+
+    // 最后阶段的字段编辑必须以详情接口返回的 field_values 为准回填。
+    form.setFieldsValue(
+      buildTaskFieldInitialValues(enabledTaskFieldConfigs, detail.fieldValues) as StageCompletionFormValues,
+    )
+  }, [detail, enabledTaskFieldConfigs, form, open, shouldBackfillTaskFields])
 
   useEffect(() => {
     const projectId = currentProject?.id ?? ''
@@ -631,6 +831,12 @@ export function TaskProcessModal({
       message.warning('请填写总页数')
       return
     }
+
+    if (shouldBackfillTaskFields && taskFieldLoading) {
+      message.warning('任务字段仍在加载，请稍后再提交')
+      return
+    }
+
     try {
       setSubmitting(true)
 
@@ -641,9 +847,34 @@ export function TaskProcessModal({
         })
       }
 
+      if (shouldBackfillTaskFields) {
+        // 最后阶段开启 can_update_fields 时，需要先把任务字段通过任务编辑接口提交完成。
+        const nextFieldValues = enabledTaskFieldConfigs.reduce<Record<string, unknown>>(
+          (accumulator, field) => {
+            const serializedValue = serializeTaskFieldValue(field, values[field.field_key])
+
+            if (serializedValue !== undefined) {
+              accumulator[field.field_key] = serializedValue
+            }
+
+            return accumulator
+          },
+          { ...detail.fieldValues },
+        )
+
+        await taskService.updateTask(detail.task.id, {
+          expect_complete_at:
+            typeof nextFieldValues.finalDueDate === 'string'
+              ? nextFieldValues.finalDueDate
+              : detail.currentVersion.expectCompleteAt,
+          field_values: nextFieldValues,
+          title: detail.task.title,
+        })
+      }
+
       await taskService.completeWorkflowStage(currentStage.id, {
         remark: values.remark?.trim() || undefined,
-        // package_original_name:values?.package_original_name?.trim()||undefined,
+        package_original_name:values?.package_original_name?.trim()||undefined,
         next_stage_assignees: nextStageAssignments,
         due_days:
           !isHistoricalStageEdit && nextStage && typeof values.due_days === 'number'
@@ -803,7 +1034,7 @@ export function TaskProcessModal({
                   layout="vertical"
                   onFinish={(values) => void handleSubmit(values)}
                 >
-                  {isLastStage ? (
+                  {shouldShowPackageNameSection ? (
                     <div className="task-process-modal__package-panel">
                       <div className="task-process-modal__package-head">
                         <Typography.Text strong>请为打包文件命名，从下列选项中选出。</Typography.Text>
@@ -850,6 +1081,72 @@ export function TaskProcessModal({
                           }}
                         />
                       </Form.Item>
+                    </div>
+                  ) : null}
+                  {shouldBackfillTaskFields ? (
+                    <div className="task-process-modal__task-fields-panel">
+                      <div className="task-process-modal__task-fields-head">
+                        <div className="task-process-modal__task-fields-title-block">
+                          <Typography.Text strong>任务字段回填</Typography.Text>
+                          <Typography.Text type="secondary">
+                            将以当前详情接口返回的字段值为基础进行回填和编辑。
+                          </Typography.Text>
+                        </div>
+                        <div className="task-process-modal__task-fields-metas">
+                          <Tag bordered={false} color="processing">
+                            {`${enabledTaskFieldConfigs.length} 个字段`}
+                          </Tag>
+                          <span className="task-process-modal__task-fields-badge">
+                            完成阶段前自动保存
+                          </span>
+                        </div>
+                      </div>
+                      <div className="task-process-modal__task-fields-notice">
+                        <Typography.Paragraph type="secondary">
+                        当前阶段开启了允许编辑字段，完成最后阶段前会按详情接口返回的字段值回填，
+                        并在提交时同步调用任务编辑接口保存这些字段。
+                        </Typography.Paragraph>
+                      </div>
+                      {taskFieldLoading ? (
+                        <div className="table-expanded-panel task-process-modal__task-fields-loading">
+                          <Spin size="small" />
+                        </div>
+                      ) : (
+                        <div className="task-process-modal__task-fields-form-shell">
+                          <Row gutter={[12, 4]}>
+                          {enabledTaskFieldConfigs.map((field) => (
+                            <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>
+                              <div className="task-process-modal__task-fields-item">
+                                <Form.Item
+                                  label={(
+                                    <span className="task-process-modal__task-fields-label">
+                                      <span>{field.field_name}</span>
+                                      {field.required ? (
+                                        <span className="task-process-modal__task-fields-required">必填</span>
+                                      ) : (
+                                        <span className="task-process-modal__task-fields-optional">选填</span>
+                                      )}
+                                    </span>
+                                  )}
+                                  name={field.field_key}
+                                  rules={[
+                                    ...(field.required
+                                      ? [{
+                                          required: true,
+                                          message:
+                                            `${field.field_type === 'select' ? '请选择' : '请输入'}${field.field_name}`,
+                                        }]
+                                      : []),
+                                  ]}
+                                >
+                                  {renderTaskFieldControl(field)}
+                                </Form.Item>
+                              </div>
+                            </Col>
+                          ))}
+                          </Row>
+                        </div>
+                      )}
                     </div>
                   ) : null}
                   {!isHistoricalStageEdit && currentStage.canAssign && nextStage ? (
@@ -994,7 +1291,7 @@ export function TaskProcessModal({
                         />
                       </Form.Item>
                     ) : null} */}
-                    <Form.Item
+                    {/* <Form.Item
                       className="task-process-modal__dual-field-item"
                       label="备注"
                       name="remark"
@@ -1004,7 +1301,7 @@ export function TaskProcessModal({
                         placeholder={isHistoricalStageEdit ? '可选填写本次阶段修改说明' : '可选填写阶段备注，如上一阶段已完成'}
                         rows={3}
                       />
-                    </Form.Item>
+                    </Form.Item> */}
                   </div>
                   {shouldCollectTotalPageCount ? (
                           <Col span={12}>
@@ -1030,7 +1327,7 @@ export function TaskProcessModal({
                         type="primary"
                         htmlType="submit"
                         loading={submitting}
-                        disabled={!canProcessCurrentStage}
+                        disabled={!canProcessCurrentStage || (shouldBackfillTaskFields && taskFieldLoading)}
                       >
                         {isHistoricalStageEdit
                           ? '保存阶段修改'

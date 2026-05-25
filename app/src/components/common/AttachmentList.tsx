@@ -10,32 +10,16 @@ type FolderGroup = {
 }
 
 function getFolderGroup(file: AttachmentFile): FolderGroup | null {
-  const rawPath = (file.storageKey ?? '').trim()
+  const originalPath = file.originalPath?.trim()
 
-  if (!rawPath) {
-    return null
-  }
-
-  const pathSegments = rawPath
-    .replace(/^\/+|\/+$/g, '')
-    .split('/')
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-
-  if (pathSegments.length <= 3 || pathSegments[0] !== 'task-attachments') {
-    return null
-  }
-
-  const folderSegments = pathSegments.slice(2, -1)
-
-  if (folderSegments.length === 0) {
+  if (!originalPath) {
     return null
   }
 
   return {
     files: [file],
-    folderPath: folderSegments.join('/'),
-    label: folderSegments[0],
+    folderPath: originalPath,
+    label: originalPath,
   }
 }
 

@@ -149,6 +149,7 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
       sort_value: nextSortValue,
       span: 12,
       status: 'enabled',
+      type:""
     }
 
     setEditingFieldKey(NEW_FIELD_EDITOR_KEY)

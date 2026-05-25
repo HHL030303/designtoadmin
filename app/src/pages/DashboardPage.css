@@ -235,16 +235,68 @@
 }
 
 .dashboard-static-card > .ant-card-head {
-  min-height: 72px;
+  /* min-height: 72px; */
   padding: 0 18px;
   border-bottom: 1px solid #edf2f7;
 }
 
 .dashboard-static-card > .ant-card-head .ant-card-head-title {
-  padding: 18px 0 16px;
+  padding: 8px 0 6px;
   color: #0f172a;
-  font-size: 17px;
-  font-weight: 800;
+  font-size: 12px;
+}
+
+.dashboard-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dashboard-card-title__text {
+  /* overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; */
+  overflow: hidden;
+  /* text-overflow: ellipsis; */
+  /* white-space: nowrap; */
+  width: 200px;
+  /* background: red; */
+  white-space: break-spaces;
+  line-height: 1.1;
+  font-size: 12px;
+}
+
+.dashboard-card-title__tag.ant-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.dashboard-card-title__tag--value.ant-tag {
+  background: #f8fbff;
+  color: #0f172a;
+}
+
+.dashboard-card-title__tag--percent.ant-tag {
+  background: #eff6ff;
+  color: #2563eb;
+  margin-right: 5px;
+}
+
+.dashboard-card-title__metric-value {
+  color: #0f172a;
+}
+
+.dashboard-card-title__metric-percent {
+  color: #2563eb;
 }
 
 .dashboard-static-card > .ant-card-body {
@@ -253,7 +305,7 @@
 
 .dashboard-static-card-lg > .ant-card-body,
 .dashboard-static-card-tall > .ant-card-body {
-  min-height: 328px;
+  /* min-height: 328px; */
 }
 
 .dashboard-stack {
@@ -272,7 +324,7 @@
 }
 
 .dashboard-table-range-picker.ant-picker {
-  width: 220px;
+  width: 200px;
   height: 30px;
   padding: 0 10px;
   border-color: #dbe3ef;

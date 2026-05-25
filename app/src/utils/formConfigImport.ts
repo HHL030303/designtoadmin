@@ -367,11 +367,12 @@ function ensureBooleanValue(value: unknown, fieldName: string): boolean {
 }
 
 function ensureStringValue(value: unknown, fieldName: string): string {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    return value.trim()
+  if(value){
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim()
+      }
+      throw new Error(`字段“${fieldName}”必须是非空字符串`)
   }
-
-  throw new Error(`字段“${fieldName}”必须是非空字符串`)
 }
 
 function ensureOptionalStringValue(value: unknown): string | undefined {
@@ -469,6 +470,7 @@ export function validateFieldConfigJson(
   const required = ensureBooleanValue(value.required, 'required')
   const searchable = ensureBooleanValue(value.searchable, 'searchable')
   const sortValue = ensureSortNumber(value.sort_value, 'sort_value')
+  const typeValue = ensureStringValue(value.type, 'type')
   const status = ensureStatus(value.status)
   const span = ensureSpanValue(value.span)
   const placeholder = ensureOptionalStringValue(value.placeholder)
@@ -526,5 +528,6 @@ export function validateFieldConfigJson(
     sort_value: sortValue,
     span,
     status,
+    type:typeValue
   }
 }

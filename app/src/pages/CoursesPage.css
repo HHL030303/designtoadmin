@@ -454,7 +454,20 @@
   background: #ffffff;
   padding-top: 14px;
   padding-bottom: 14px;
+  vertical-align: top;
   transition: background 0.2s ease;
+}
+
+.courses-page-card .task-table__cell-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 22px;
+  /* max-height: 44px; */
 }
 
 .courses-page-card .task-table .ant-table-tbody > tr:hover > td {
@@ -491,6 +504,8 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 44px;
+  overflow: hidden;
 }
 
 .courses-page-card .task-table__title-row {
@@ -498,14 +513,21 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .courses-page-card .task-table__title {
-  display: inline-block;
+  display: -webkit-box;
   color: #0f172a;
   font-size: 14px;
   font-weight: 700;
   line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .courses-page-card .task-table__meta {
@@ -607,16 +629,29 @@
 }
 
 .courses-page-card .task-table__assignee {
+  display: -webkit-box;
   color: #374151;
   font-size: 12px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .courses-page-card .task-table__package-link.ant-btn {
+  display: -webkit-box;
   padding: 0;
   height: auto;
   color: #1677ff;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .courses-page-card .task-table__package-link.ant-btn:hover,
@@ -625,8 +660,14 @@
 }
 
 .courses-page-card .task-table__package-error {
+  display: -webkit-box;
   color: #ff4d4f;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .courses-page-card .task-table__actions {
@@ -634,6 +675,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  /* max-height: 44px; */
+  overflow: hidden;
 }
 
 .courses-page-card .task-table__action-button.ant-btn {

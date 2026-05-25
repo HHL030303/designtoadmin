@@ -292,6 +292,7 @@
   width: 120px;
   color:rgb(107, 114, 128) ;
   font-size: 12px;
+  margin: 4px 0;
 }
 
 .topbar-project-select .ant-select-selector {

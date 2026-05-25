@@ -331,12 +331,12 @@ export function Topbar({
               </div>
               {
                 availableRoles.length>1 &&   <div>
-                <span>角色:</span>
+                <span>角色：</span>
                 {availableRoles.length > 1 ? (
                 <Select
                   value={role}
                   size="small"
-                  className="topbar-role-select"
+                  className="topbar-project-select"
                   options={availableRoles.map((item) => ({
                     label: item.name,
                     value: item.role,

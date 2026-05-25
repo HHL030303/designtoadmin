@@ -5,7 +5,6 @@ import {
     Descriptions,
     Empty,
     Form,
-    Input,
     InputNumber,
     Modal,
     Select,
@@ -882,12 +881,12 @@ function RoleTaskCard({
                                             placeholder="请输入预期完成天数"
                                         />
                                     </Form.Item>
-                                    <Form.Item label="备注" name="remark">
+                                    {/* <Form.Item label="备注" name="remark">
                                         <Input.TextArea
                                             placeholder="可选填写阶段备注，如上一阶段已完成"
                                             rows={3}
                                         />
-                                    </Form.Item>
+                                    </Form.Item> */}
                                     <Button
                                         type="primary"
                                         htmlType="submit"

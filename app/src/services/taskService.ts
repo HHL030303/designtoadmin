@@ -130,6 +130,7 @@ type AttachmentFileResponse = {
   name?: string
   filename?: string
   original_name?: string
+  original_path?: string
   file_path?: string
   size?: number
   type?: string
@@ -154,9 +155,11 @@ type TaskWorkflowStageResponse = {
   collect_total_page_count?: boolean
   allow_page_assignment?: boolean
   allow_custom_due_days?: boolean
+  can_update_fields?: boolean
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
+  completed_at?: number | string | null
   due_days?: number | null
   due_date?: number | string | null
   overdue_status?: string | null
@@ -323,6 +326,7 @@ function mapAttachment(file: AttachmentFileResponse): AttachmentFile {
       ? displayName.split('.').pop()?.toLowerCase()
       : undefined,
     name: displayName,
+    originalPath: file.original_path ?? undefined,
     size: file.size,
     storageKey: file.file_path,
     type: file.type,
@@ -371,8 +375,10 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
     allowCustomDueDays: stage.allow_custom_due_days ?? false,
     allowPageAssignment: stage.allow_page_assignment ?? false,
     canAssign: stage.can_assign ?? false,
+    canUpdateFields: stage.can_update_fields ?? false,
     canSkip: stage.can_skip ?? false,
     collectTotalPageCount: stage.collect_total_page_count ?? false,
+    completedAt: normalizeDate(stage.completed_at) ?? null,
     dueDays: stage.due_days ?? undefined,
     dueDate: normalizeDate(stage.due_date),
     assignedBy:stage.assigned_by,

@@ -72,12 +72,16 @@ function buildAssigneeText(detailStage: TaskDetailRecord['workflowStages'][numbe
     .join('、')
 }
 
-function isStageOverdue(dueDate?: string) {
+function isStageOverdue(completedAt?: string | null, dueDate?: string) {
   if (!dueDate) {
     return false
   }
 
-  return !dayjs(dueDate).isAfter(dayjs(), 'day')
+  if (completedAt) {
+    return dayjs(completedAt).isAfter(dayjs(dueDate), 'day')
+  }
+
+  return dayjs().isAfter(dayjs(dueDate), 'day')
 }
 
 export function TaskHistoryDetailPanel({
@@ -141,7 +145,7 @@ export function TaskHistoryDetailPanel({
       currentProject?.id &&
       currentWorkflowStage?.id &&
       currentRoleCode &&
-      detail?.task?.ownerId==currentUser.id,
+      detail?.task?.ownerId == currentUser?.id,
   )
   const canEditCompletedStage = role === 'admin' || role === 'planner'
 
@@ -294,7 +298,7 @@ export function TaskHistoryDetailPanel({
         >
           {detail.workflowStages.map((stage, index) => {
             const isActive = stage.id === currentWorkflowStage?.id
-            const overdue = isStageOverdue(stage.dueDate)
+            const overdue = isStageOverdue(stage.completedAt, stage.dueDate)
             const canEditThisStage = Boolean(
               canEditCompletedStage &&
                 detail.task.status !== 'completed' &&

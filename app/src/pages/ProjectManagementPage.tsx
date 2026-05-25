@@ -94,6 +94,7 @@ function createWorkflowStage(index: number): WorkflowStageConfig {
 
   return {
     allowPageAssignment: false,
+    canUpdateFields: false,
     canAssign: index > 0,
     canSkip: false,
     collectTotalPageCount: false,
@@ -161,6 +162,7 @@ function renderWorkflowStageCard(
       <div className="workflow-stage-node__flags">
         {stage.canAssign ? <Tag color="blue">可派单</Tag> : null}
         {stage.canSkip ? <Tag color="orange">可跳过</Tag> : null}
+        {stage.canUpdateFields ? <Tag color="volcano">允许编辑字段</Tag> : null}
         {stage.allowPageAssignment ? <Tag color="geekblue">分配页数</Tag> : null}
         {stage.requiresFileUpload ? <Tag color="purple">需上传</Tag> : null}
         {stage.requiresValidation ? <Tag color="cyan">需校验</Tag> : null}
@@ -361,6 +363,18 @@ export function ProjectManagementPage() {
       workflowStages.find((stage) => stage.localId === selectedWorkflowStageKey) ?? null,
     [selectedWorkflowStageKey, workflowStages],
   )
+  const isSelectedWorkflowStageLast = useMemo(() => {
+    if (!selectedWorkflowStage) {
+      return false
+    }
+
+    // 保存时会按排序值串联下一节点，这里用同一口径判断“最后一个节点”。
+    const sortedWorkflowStages = [...workflowStages].sort(
+      (left, right) => left.sortValue - right.sortValue,
+    )
+
+    return sortedWorkflowStages[sortedWorkflowStages.length - 1]?.localId === selectedWorkflowStage.localId
+  }, [selectedWorkflowStage, workflowStages])
 
   useEffect(() => {
     if (!workflowEditorOpen || !selectedWorkflowStageKey || !workflowInspectorRef.current) {
@@ -991,6 +1005,9 @@ export function ProjectManagementPage() {
       console.error(workflowStages)
       const stagesToSave = sortedWorkflowStages.map((stage, index) => ({
         ...stage,
+        canUpdateFields: index === sortedWorkflowStages.length - 1
+          ? stage.canUpdateFields ?? false
+          : false,
         nextStageIds:
           index < sortedWorkflowStages.length - 1
             ? [sortedWorkflowStages[index + 1].localId]
@@ -1777,6 +1794,19 @@ export function ProjectManagementPage() {
                         }
                       />
                     </div>
+                    {isSelectedWorkflowStageLast ? (
+                      <div className="workflow-stage-switch">
+                        <span>允许编辑字段</span>
+                        <Switch
+                          checked={selectedWorkflowStage.canUpdateFields ?? false}
+                          onChange={(checked) =>
+                            handleWorkflowStageChange(selectedWorkflowStage.localId, {
+                              canUpdateFields: checked,
+                            })
+                          }
+                        />
+                      </div>
+                    ) : null}
                     <div className="workflow-stage-switch">
                       <span>是否分配页数</span>
                       <Switch

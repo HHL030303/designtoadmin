@@ -1,4 +1,4 @@
-import { Card, Col, DatePicker, Empty, Row, Space, Typography, message } from 'antd'
+import { Card, Col, DatePicker, Empty, Row, Space, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -25,19 +25,16 @@ import {
 } from '../services/dashboardService'
 import './DashboardPage.css'
 
-interface DashboardMetricRow {
-  label: string
-  subject: string
-  total: number
-  completed: number
-  pending: number
+type DashboardStaticTableCellTone = 'accent' | 'success'
+
+interface DashboardStaticTableCell {
+  tone?: DashboardStaticTableCellTone
+  value: number | string
 }
 
-interface DashboardDesignerRow {
-  name: string
-  shouldComplete: number
-  completed: number
-  pending: number
+interface DashboardStaticTableData {
+  headers: string[]
+  rows: DashboardStaticTableCell[][]
 }
 
 interface DashboardSubjectRow {
@@ -82,6 +79,168 @@ function extractItems(data: unknown): Record<string, unknown>[] {
   return data.items.filter((item): item is Record<string, unknown> => isRecord(item))
 }
 
+function extractUnknownItems(data: unknown): unknown[] {
+  if (!isRecord(data) || !Array.isArray(data.items)) {
+    return []
+  }
+
+  return data.items
+}
+
+function getLabelText(label: unknown): string {
+  if (typeof label === 'string') {
+    return label.trim()
+  }
+
+  if (isRecord(label)) {
+    return getStringField(label, ['label', 'name', 'title', 'value'])
+  }
+
+  return ''
+}
+
+function extractLabels(data: unknown): string[] {
+  if (!isRecord(data) || !Array.isArray(data.labels)) {
+    return []
+  }
+
+  return data.labels
+    .map((label) => getLabelText(label))
+    .filter((label) => label !== '')
+}
+
+function normalizeLabel(label: string): string {
+  return label.replace(/\s+/g, '').toLowerCase()
+}
+
+function toDisplayValue(value: unknown): number | string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false'
+  }
+
+  return '-'
+}
+
+function getCellTone(label: string): DashboardStaticTableCellTone | undefined {
+  const normalizedLabel = normalizeLabel(label)
+
+  if (['已完成', '完成数', '完成量'].includes(normalizedLabel)) {
+    return 'success'
+  }
+
+  if (['待完成', '未完成', '处理中', '进行中', '未开始'].includes(normalizedLabel)) {
+    return 'accent'
+  }
+
+  return undefined
+}
+
+function getMetricValueByLabel(item: Record<string, unknown>, label: string): number | string {
+  const normalizedLabel = normalizeLabel(label)
+
+  if (normalizedLabel.includes('年级')) {
+    return getStringField(item, ['grade', 'grade_name']) || getGroupValue(item, 'grade') || '-'
+  }
+
+  if (normalizedLabel.includes('学科')) {
+    return getStringField(item, ['subject', 'subject_name']) || getGroupValue(item, 'subject') || '-'
+  }
+
+  if (normalizedLabel.includes('总数') || normalizedLabel.includes('总量')) {
+    return getNumberField(item, ['task_total', 'total'])
+  }
+
+  if (normalizedLabel === '已完成' || normalizedLabel.includes('完成数')) {
+    return getNumberField(item, ['task_completed', 'completed'])
+  }
+
+  if (
+    normalizedLabel === '待完成' ||
+    normalizedLabel === '未完成' ||
+    normalizedLabel.includes('处理中') ||
+    normalizedLabel.includes('进行中')
+  ) {
+    return getNumberField(item, ['task_processing', 'processing', 'pending'])
+  }
+
+  return '-'
+}
+
+function getDesignerValueByLabel(item: Record<string, unknown>, label: string): number | string {
+  const normalizedLabel = normalizeLabel(label)
+
+  if (
+    normalizedLabel.includes('姓名') ||
+    normalizedLabel.includes('设计师') ||
+    normalizedLabel.includes('成员')
+  ) {
+    return getStringField(item, ['user_name', 'name', 'nickname', 'real_name']) || '-'
+  }
+
+  if (normalizedLabel.includes('应完成') || normalizedLabel.includes('分配')) {
+    return getNumberField(item, ['assigned_count'])
+  }
+
+  if (normalizedLabel === '已完成' || normalizedLabel.includes('完成数')) {
+    return getNumberField(item, ['completed_count'])
+  }
+
+  if (
+    normalizedLabel === '待完成' ||
+    normalizedLabel === '未完成' ||
+    normalizedLabel.includes('处理中') ||
+    normalizedLabel.includes('进行中')
+  ) {
+    return getNumberField(item, ['pending_count'])
+  }
+
+  return '-'
+}
+
+function buildStaticTableData(
+  data: unknown,
+  fallbackHeaders: string[],
+  resolveFallbackValue: (item: Record<string, unknown>, label: string) => number | string,
+): DashboardStaticTableData {
+  const headers = extractLabels(data)
+  const effectiveHeaders = headers.length > 0 ? headers : fallbackHeaders
+
+  const rows = extractUnknownItems(data).reduce<DashboardStaticTableCell[][]>((result, item) => {
+    let row: DashboardStaticTableCell[] | null = null
+
+    if (Array.isArray(item)) {
+      row = effectiveHeaders.map((header, index) => ({
+        tone: getCellTone(header),
+        value: toDisplayValue(item[index]),
+      }))
+    } else if (isRecord(item)) {
+      row = effectiveHeaders.map((header) => ({
+        tone: getCellTone(header),
+        value: resolveFallbackValue(item, header),
+      }))
+    }
+
+    if (row !== null) {
+      result.push(row)
+    }
+
+    return result
+  }, [])
+
+  return {
+    headers: effectiveHeaders,
+    rows,
+  }
+}
+
 function getGroupValue(item: Record<string, unknown>, fieldKey: string): string {
   if (!Array.isArray(item.groups)) {
     return ''
@@ -116,53 +275,6 @@ function getNumberField(item: Record<string, unknown>, keys: string[]): number {
   }
 
   return 0
-}
-
-function parseMetricRows(data: unknown): DashboardMetricRow[] {
-  return extractItems(data)
-    .map((item) => {
-      const label = getStringField(item, ['grade', 'grade_name']) || getGroupValue(item, 'grade')
-      const subject = getStringField(item, ['subject', 'subject_name']) ||
-        getGroupValue(item, 'subject')
-      const total = getNumberField(item, ['task_total', 'total'])
-      const completed = getNumberField(item, ['task_completed', 'completed'])
-      const pending = getNumberField(item, ['task_processing', 'processing', 'pending'])
-
-      if (!label && !subject) {
-        return null
-      }
-
-      return {
-        label: label || '-',
-        subject: subject || '-',
-        total,
-        completed,
-        pending,
-      }
-    })
-    .filter((item): item is DashboardMetricRow => item !== null)
-}
-
-function parseDesignerRows(data: unknown): DashboardDesignerRow[] {
-  return extractItems(data)
-    .map((item) => {
-      const name = getStringField(item, ['user_name', 'name', 'nickname', 'real_name'])
-      const shouldComplete = getNumberField(item, ['assigned_count'])
-      const completed = getNumberField(item, ['completed_count'])
-      const pending = getNumberField(item, ['pending_count'])
-
-      if (!name) {
-        return null
-      }
-
-      return {
-        name,
-        shouldComplete,
-        completed,
-        pending,
-      }
-    })
-    .filter((item): item is DashboardDesignerRow => item !== null)
 }
 
 function parseSubjectRows(data: unknown): DashboardSubjectRow[] {
@@ -210,15 +322,76 @@ function formatPercent(value: number, total: number): string {
   return `${((value / total) * 100).toFixed(1)}%`
 }
 
-function getDatasetKey(dataset: Pick<DashboardResolvedDataset, 'apiPath' | 'datasetName'>): string {
-  return `${dataset.datasetName}::${dataset.apiPath}`
+function getTotalValueByHeader(label: string, value: number | string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0
+  }
+
+  const normalizedLabel = normalizeLabel(label)
+
+  if (
+    normalizedLabel.includes('总数') ||
+    normalizedLabel.includes('总量') ||
+    normalizedLabel.includes('应完成') ||
+    normalizedLabel.includes('分配')
+  ) {
+    return value
+  }
+
+  return 0
 }
 
-function sumMetricRows(rows: DashboardMetricRow[]): DashboardProgressTotals {
-  return rows.reduce<DashboardProgressTotals>((result, row) => ({
-    completed: result.completed + row.completed,
-    total: result.total + row.total,
-  }), { completed: 0, total: 0 })
+function getCompletedValueByHeader(label: string, value: number | string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0
+  }
+
+  const normalizedLabel = normalizeLabel(label)
+  if (normalizedLabel === '已完成' || normalizedLabel.includes('完成数')) {
+    return value
+  }
+
+  return 0
+}
+
+function summarizeStaticTableData(tableData: DashboardStaticTableData): DashboardProgressTotals {
+  return tableData.rows.reduce<DashboardProgressTotals>((result, row) => {
+    row.forEach((cell, index) => {
+      const header = tableData.headers[index] ?? ''
+      result.completed += getCompletedValueByHeader(header, cell.value)
+      result.total += getTotalValueByHeader(header, cell.value)
+    })
+
+    return result
+  }, { completed: 0, total: 0 })
+}
+
+function DashboardCardTitle({
+  title,
+  totals,
+}: {
+  title: string
+  totals: DashboardProgressTotals
+}) {
+  const percent = getProgressPercent(totals.completed, totals.total)
+
+  return (
+    <div className="dashboard-card-title">
+      <span className="dashboard-card-title__text">{title}</span>
+      <Tag className="dashboard-card-title__tag dashboard-card-title__tag--value" bordered={false}>
+        <span className="dashboard-card-title__metric-value">
+          {totals.completed}/{totals.total}
+        </span>
+      </Tag>
+      <Tag className="dashboard-card-title__tag dashboard-card-title__tag--percent" bordered={false}>
+        <span className="dashboard-card-title__metric-percent">{percent}%</span>
+      </Tag>
+    </div>
+  )
+}
+
+function getDatasetKey(dataset: Pick<DashboardResolvedDataset, 'apiPath' | 'datasetName'>): string {
+  return `${dataset.datasetName}::${dataset.apiPath}`
 }
 
 function getProgressPercent(completed: number, total: number): number {
@@ -372,86 +545,90 @@ function DashboardSummaryCard({
   )
 }
 
-function DashboardOverviewProgress({
-  items,
-}: {
-  items: Array<{
-    accent: 'green' | 'blue' | 'violet'
-    completed: number
-    label: string
-    percent: number
-    total: number
-  }>
-}) {
-  // const totalWeight = items.reduce((sum, item) => sum + item.total, 0)
+// function DashboardOverviewProgress({
+//   items,
+// }: {
+//   items: Array<{
+//     accent: 'green' | 'blue' | 'violet'
+//     completed: number
+//     label: string
+//     percent: number
+//     total: number
+//   }>
+// }) {
+//   // const totalWeight = items.reduce((sum, item) => sum + item.total, 0)
 
-  return (
-    <Card className="dashboard-overview-progress-card" bordered={false}>
-      {/* <div className="dashboard-overview-progress__header">
-        <Typography.Title level={4} className="dashboard-overview-progress__title">
-          本月综合进度
-        </Typography.Title>
-        <Typography.Text className="dashboard-overview-progress__helper">
-          基于教研、设计、成品三块任务的完成度前端汇总计算
-        </Typography.Text>
-      </div> */}
-      {/* <div className="dashboard-overview-progress__bar">
-        {items.map((item) => {
-          const width = totalWeight > 0 ? `${(item.total / totalWeight) * 100}%` : `${100 / items.length}%`
-          const fillWidth = `${item.percent}%`
+//   return (
+//     <Card className="dashboard-overview-progress-card" bordered={false}>
+//       {/* <div className="dashboard-overview-progress__header">
+//         <Typography.Title level={4} className="dashboard-overview-progress__title">
+//           本月综合进度
+//         </Typography.Title>
+//         <Typography.Text className="dashboard-overview-progress__helper">
+//           基于教研、设计、成品三块任务的完成度前端汇总计算
+//         </Typography.Text>
+//       </div> */}
+//       {/* <div className="dashboard-overview-progress__bar">
+//         {items.map((item) => {
+//           const width = totalWeight > 0 ? `${(item.total / totalWeight) * 100}%` : `${100 / items.length}%`
+//           const fillWidth = `${item.percent}%`
 
-          return (
-            <div key={item.label} className="dashboard-overview-progress__segment" style={{ width }}>
-              <div
-                className={`dashboard-overview-progress__segment-fill dashboard-overview-progress__segment-fill--${item.accent}`}
-                style={{ width: fillWidth }}
-              />
-            </div>
-          )
-        })}
-      </div> */}
-      <div className="dashboard-overview-progress__legend">
-        {items.map((item) => (
-          <div key={item.label} className="dashboard-overview-progress__legend-item">
-            <span
-              className={`dashboard-overview-progress__legend-dot dashboard-overview-progress__legend-dot--${item.accent}`}
-            />
-            <span className="dashboard-overview-progress__legend-label">{item.label}</span>
-            <span className="dashboard-overview-progress__legend-value">
-              {item.completed}/{item.total}
-            </span>
-            <span className="dashboard-overview-progress__legend-percent">{item.percent}%</span>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
+//           return (
+//             <div key={item.label} className="dashboard-overview-progress__segment" style={{ width }}>
+//               <div
+//                 className={`dashboard-overview-progress__segment-fill dashboard-overview-progress__segment-fill--${item.accent}`}
+//                 style={{ width: fillWidth }}
+//               />
+//             </div>
+//           )
+//         })}
+//       </div> */}
+//       <div className="dashboard-overview-progress__legend">
+//         {items.map((item) => (
+//           <div key={item.label} className="dashboard-overview-progress__legend-item">
+//             <span
+//               className={`dashboard-overview-progress__legend-dot dashboard-overview-progress__legend-dot--${item.accent}`}
+//             />
+//             <span className="dashboard-overview-progress__legend-label">{item.label}</span>
+//             <span className="dashboard-overview-progress__legend-value">
+//               {item.completed}/{item.total}
+//             </span>
+//             <span className="dashboard-overview-progress__legend-percent">{item.percent}%</span>
+//           </div>
+//         ))}
+//       </div>
+//     </Card>
+//   )
+// }
 
 function ProgressSummaryCard({
+  data,
   dateFilter,
   title,
-  helper,
   onDateRangeChange,
-  rows,
 }: {
+  data: unknown
   dateFilter: DashboardDateFilter
   title: string
-  helper: string
   onDateRangeChange: (dateFrom: string, dateTo: string) => void
-  rows: DashboardMetricRow[]
 }) {
+  const tableData = buildStaticTableData(
+    data,
+    ['年级', '学科', '总数', '已完成', '待完成'],
+    getMetricValueByLabel,
+  )
+  const totals = summarizeStaticTableData(tableData)
+
   return (
     <Card
-      title={title}
+      title={<DashboardCardTitle title={title} totals={totals} />}
       extra={(
         <TableDateFilter dateFilter={dateFilter} onDateRangeChange={onDateRangeChange} />
       )}
       className="dashboard-static-card dashboard-static-card-lg"
     >
       <Space orientation="vertical" size={16} className="dashboard-stack">
-        <Typography.Text type="secondary">{helper}</Typography.Text>
-        {rows.length === 0 ? (
+        {tableData.rows.length === 0 ? (
           <div className="dashboard-empty-state">
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
           </div>
@@ -459,22 +636,29 @@ function ProgressSummaryCard({
           <div className="dashboard-static-table-scroll">
             <div className="dashboard-static-table">
               <div className="dashboard-static-table-head dashboard-static-table-metric">
-                <span>年级</span>
-                <span>学科</span>
-                <span>总数</span>
-                <span>已完成</span>
-                <span>待完成</span>
+                {tableData.headers.map((header) => (
+                  <span key={`${title}-${header}`}>{header}</span>
+                ))}
               </div>
-              {rows.map((row) => (
+              {tableData.rows.map((row, rowIndex) => (
                 <div
-                  key={`${title}-${row.label}-${row.subject}`}
+                  key={`${title}-${rowIndex}`}
                   className="dashboard-static-table-row dashboard-static-table-metric"
                 >
-                  <span>{row.label}</span>
-                  <span>{row.subject}</span>
-                  <span>{row.total}</span>
-                  <span className="dashboard-static-text-success">{row.completed}</span>
-                  <span className="dashboard-static-text-accent">{row.pending}</span>
+                  {row.map((cell, cellIndex) => (
+                    <span
+                      key={`${title}-${rowIndex}-${cellIndex}`}
+                      className={
+                        cell.tone === 'success'
+                          ? 'dashboard-static-text-success'
+                          : cell.tone === 'accent'
+                            ? 'dashboard-static-text-accent'
+                            : undefined
+                      }
+                    >
+                      {cell.value}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
@@ -486,29 +670,33 @@ function ProgressSummaryCard({
 }
 
 function DesignerWorkloadCard({
+  data,
   dateFilter,
   title,
-  helper,
   onDateRangeChange,
-  rows,
 }: {
+  data: unknown
   dateFilter: DashboardDateFilter
   title: string
-  helper: string
   onDateRangeChange: (dateFrom: string, dateTo: string) => void
-  rows: DashboardDesignerRow[]
 }) {
+  const tableData = buildStaticTableData(
+    data,
+    ['姓名', '应完成', '已完成', '待完成'],
+    getDesignerValueByLabel,
+  )
+  const totals = summarizeStaticTableData(tableData)
+
   return (
     <Card
-      title={title}
+      title={<DashboardCardTitle title={title} totals={totals} />}
       extra={(
         <TableDateFilter dateFilter={dateFilter} onDateRangeChange={onDateRangeChange} />
       )}
       className="dashboard-static-card"
     >
       <Space orientation="vertical" size={16} className="dashboard-stack">
-        <Typography.Text type="secondary">{helper}</Typography.Text>
-        {rows.length === 0 ? (
+        {tableData.rows.length === 0 ? (
           <div className="dashboard-empty-state">
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
           </div>
@@ -516,20 +704,29 @@ function DesignerWorkloadCard({
           <div className="dashboard-static-table-scroll">
             <div className="dashboard-static-table">
               <div className="dashboard-static-table-head dashboard-static-table-designer">
-                <span>姓名</span>
-                <span>应完成</span>
-                <span>已完成</span>
-                <span>待完成</span>
+                {tableData.headers.map((header) => (
+                  <span key={`${title}-${header}`}>{header}</span>
+                ))}
               </div>
-              {rows.map((row) => (
+              {tableData.rows.map((row, rowIndex) => (
                 <div
-                  key={`${title}-${row.name}`}
+                  key={`${title}-${rowIndex}`}
                   className="dashboard-static-table-row dashboard-static-table-designer"
                 >
-                  <span>{row.name}</span>
-                  <span>{row.shouldComplete}</span>
-                  <span className="dashboard-static-text-success">{row.completed}</span>
-                  <span className="dashboard-static-text-accent">{row.pending}</span>
+                  {row.map((cell, cellIndex) => (
+                    <span
+                      key={`${title}-${rowIndex}-${cellIndex}`}
+                      className={
+                        cell.tone === 'success'
+                          ? 'dashboard-static-text-success'
+                          : cell.tone === 'accent'
+                            ? 'dashboard-static-text-accent'
+                            : undefined
+                      }
+                    >
+                      {cell.value}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
@@ -626,13 +823,12 @@ export function DashboardPage() {
         return (
           <ProgressSummaryCard
             key={`${dataset.datasetName}-${dataset.apiPath}`}
+            data={dataset.data}
             dateFilter={dateFilter}
             title={dataset.datasetName}
-            helper="基于统计配置实时拉取，展示当前分组任务进度。"
             onDateRangeChange={(dateFrom, dateTo) => (
               handleDateRangeChange(datasetKey, dateFrom, dateTo)
             )}
-            rows={parseMetricRows(dataset.data)}
           />
         )
       }
@@ -641,13 +837,12 @@ export function DashboardPage() {
         return (
           <ProgressSummaryCard
             key={`${dataset.datasetName}-${dataset.apiPath}`}
+            data={dataset.data}
             dateFilter={dateFilter}
             title={dataset.datasetName}
-            helper="基于统计配置实时拉取，展示 B 端任务当前分组进度。"
             onDateRangeChange={(dateFrom, dateTo) => (
               handleDateRangeChange(datasetKey, dateFrom, dateTo)
             )}
-            rows={parseMetricRows(dataset.data)}
           />
         )
       }
@@ -656,13 +851,12 @@ export function DashboardPage() {
         return (
           <DesignerWorkloadCard
             key={`${dataset.datasetName}-${dataset.apiPath}`}
+            data={dataset.data}
             dateFilter={dateFilter}
             title={dataset.datasetName}
-            helper="基于统计配置实时拉取，展示设计师任务承接与完成情况。"
             onDateRangeChange={(dateFrom, dateTo) => (
               handleDateRangeChange(datasetKey, dateFrom, dateTo)
             )}
-            rows={parseDesignerRows(dataset.data)}
           />
         )
       }
@@ -685,9 +879,9 @@ export function DashboardPage() {
             )}
           >
             <Space orientation="vertical" size={16} className="dashboard-stack">
-              <Typography.Text type="secondary" className="dashboard-subject-helper">
+              {/* <Typography.Text type="secondary" className="dashboard-subject-helper">
                 基于当月 B 端任务按学科聚合，展示总量占比与状态明细。
-              </Typography.Text>
+              </Typography.Text> */}
               <div className="dashboard-subject-list dashboard-subject-list-scroll">
                 {subjectRows.length === 0 ? (
                   <div className="dashboard-empty-state">
@@ -790,9 +984,9 @@ export function DashboardPage() {
             className="dashboard-static-card"
           >
             <Space orientation="vertical" size={16} className="dashboard-stack">
-              <Typography.Text type="secondary">
+              {/* <Typography.Text type="secondary">
                 基于统计配置实时拉取，展示流程阶段在制量趋势。
-              </Typography.Text>
+              </Typography.Text> */}
               {trendRows.length === 0 ? (
                 <div className="dashboard-empty-state">
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
@@ -834,40 +1028,6 @@ export function DashboardPage() {
       return null
     })
   ), [dateFilters, datasets])
-
-  const progressOverview = useMemo(() => {
-    const researchDataset = datasets.find((dataset) => dataset.datasetName.includes('本月教研进度'))
-    const designDataset = datasets.find((dataset) => dataset.datasetName.includes('本月设计进度'))
-    const finalDataset = datasets.find((dataset) => dataset.datasetName.includes('本月成品进度'))
-
-    const researchTotals = sumMetricRows(parseMetricRows(researchDataset?.data))
-    const designTotals = sumMetricRows(parseMetricRows(designDataset?.data))
-    const finalTotals = sumMetricRows(parseMetricRows(finalDataset?.data))
-
-    return [
-      {
-        accent: 'green' as const,
-        completed: researchTotals.completed,
-        label: '教研进度',
-        percent: getProgressPercent(researchTotals.completed, researchTotals.total),
-        total: researchTotals.total,
-      },
-      {
-        accent: 'blue' as const,
-        completed: designTotals.completed,
-        label: '设计进度',
-        percent: getProgressPercent(designTotals.completed, designTotals.total),
-        total: designTotals.total,
-      },
-      {
-        accent: 'violet' as const,
-        completed: finalTotals.completed,
-        label: '成品进度',
-        percent: getProgressPercent(finalTotals.completed, finalTotals.total),
-        total: finalTotals.total,
-      },
-    ]
-  }, [datasets])
 
   return (
     <Space orientation="vertical" size={18} className="dashboard-stack dashboard-page-shell">
@@ -913,9 +1073,6 @@ export function DashboardPage() {
           />
         </Col>
       </Row>
-
-      <DashboardOverviewProgress items={progressOverview} />
-
       <div className="dashboard-static-grid">{datasetCards}</div>
     </Space>
   )

@@ -107,6 +107,7 @@ type WorkflowStageItem = {
   collect_total_page_count?: boolean
   allow_page_assignment?: boolean
   allow_custom_due_days?: boolean
+  can_update_fields?: boolean
   requires_file_upload?: boolean
   requires_validation?: boolean
   triggers_package?: boolean
@@ -180,6 +181,7 @@ function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
     allowPageAssignment: stage.allow_page_assignment ?? false,
     allowCustomDueDays: stage.allow_custom_due_days ?? false,
     canAssign: stage.can_assign ?? false,
+    canUpdateFields: stage.can_update_fields ?? false,
     canSkip: stage.can_skip ?? false,
     collectTotalPageCount: stage.collect_total_page_count ?? true,
     configJson,
@@ -213,6 +215,7 @@ function buildWorkflowStagePayload(stage: WorkflowStageConfig) {
     id: stage.id,
     allow_page_assignment: stage.allowPageAssignment,
     can_assign: stage.canAssign,
+    can_update_fields: stage.canUpdateFields ?? false,
     can_skip: stage.canSkip,
     collect_total_page_count: stage.collectTotalPageCount,
     config_json: {
@@ -622,6 +625,7 @@ export const adminService = {
         searchable: field.searchable,
         sort_value: field.sort_value,
         status: field.status,
+        type:field.type
       })),
       method: 'POST',
       projectHeaderId: projectId,

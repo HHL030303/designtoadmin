@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Button,
@@ -37,15 +37,15 @@ import { useAppState } from '../context/AppStateContext'
 import { adminService } from '../services/adminService'
 import { taskService } from '../services/taskService'
 import { makeDemoDownload } from '../utils/attachments'
-import {
-  parseCourseImportFile,
-} from '../utils/courseImport'
+// import {
+//   parseCourseImportFile,
+// } from '../utils/courseImport'
 import { TaskProcessModal } from '../components/course/TaskProcessModal'
 import { TaskHistoryDetailPanel } from '../components/course/TaskHistoryDetailPanel'
 import { ServiceTicketDrawer } from '../components/course/ServiceTicketDrawer'
 import './CoursesPage.css'
 import type {
-  CreateCoursePayload,
+  // CreateCoursePayload,
   FieldConfig,
   FieldOptionConfig,
   FormFieldType,
@@ -81,6 +81,10 @@ type TaskColumnDefinition = {
   key: string
   required?: boolean
   title: string
+}
+
+function renderClampedCell(content: ReactNode) {
+  return <div className="task-table__cell-clamp">{content}</div>
 }
 
 function getTaskStatusMeta(status: string) {
@@ -227,6 +231,10 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
     }
 
     if (field.field_type === 'date' && dayjs.isDayjs(value)) {
+        if (field.type === 'year') {
+            return value.format('YYYY')
+        }
+
         return value.format('YYYY-MM-DD')
     }
 
@@ -377,7 +385,9 @@ function renderFieldControl(field: FieldConfig) {
     return (
       <DatePicker
         className="control-full-width"
-        placeholder={selectPlaceholder}
+        picker={field.type === 'year' ? 'year' : 'date'}
+        format={field.type === 'year' ? 'YYYY' : 'YYYY-MM-DD'}
+        placeholder={field.type === 'year' ? `请选择${field.field_name}年份` : selectPlaceholder}
         disabledDate={isNotBeforeTodayField(field) ? getDisabledPastDate : undefined}
       />
     )
@@ -484,34 +494,34 @@ function buildTaskPayload(
   }
 }
 
-function buildImportTaskPayload(payload: CreateCoursePayload) {
-    const fieldValues = {
-        artCopyright: normalizeBooleanLike(payload.artCopyright),
-        chapterName: payload.chapterName,
-        educationStage: payload.educationStage,
-        finalDueDate: payload.finalDueDate,
-        grade: payload.grade,
-        hasLessonPlan: normalizeBooleanLike(payload.hasLessonPlan),
-        hasScript: normalizeBooleanLike(payload.hasScript),
-        isBEnd: normalizeBooleanLike(payload.isBEnd),
-        orderType: payload.orderType,
-        researchDueDate: payload.researchDueDate,
-        researchOwner: payload.researchOwner,
-        series: payload.series,
-        subject: payload.subject,
-    textbook: payload.textbook,
-    textCopyright: normalizeBooleanLike(payload.textCopyright),
-    title: payload.title,
-    volume: payload.volume,
-  }
+// function buildImportTaskPayload(payload: CreateCoursePayload) {
+//     const fieldValues = {
+//         artCopyright: normalizeBooleanLike(payload.artCopyright),
+//         chapterName: payload.chapterName,
+//         educationStage: payload.educationStage,
+//         finalDueDate: payload.finalDueDate,
+//         grade: payload.grade,
+//         hasLessonPlan: normalizeBooleanLike(payload.hasLessonPlan),
+//         hasScript: normalizeBooleanLike(payload.hasScript),
+//         isBEnd: normalizeBooleanLike(payload.isBEnd),
+//         orderType: payload.orderType,
+//         researchDueDate: payload.researchDueDate,
+//         researchOwner: payload.researchOwner,
+//         series: payload.series,
+//         subject: payload.subject,
+//     textbook: payload.textbook,
+//     textCopyright: normalizeBooleanLike(payload.textCopyright),
+//     title: payload.title,
+//     volume: payload.volume,
+//   }
 
-  return {
-    expect_complete_at: payload.finalDueDate,
-    field_values: fieldValues,
-    order_type: mapOrderTypeToApi(payload.orderType),
-    title: payload.title.trim(),
-  }
-}
+//   return {
+//     expect_complete_at: payload.finalDueDate,
+//     field_values: fieldValues,
+//     order_type: mapOrderTypeToApi(payload.orderType),
+//     title: payload.title.trim(),
+//   }
+// }
 
 function canDeleteTaskRecord(
   task: TaskListRecord,
@@ -868,7 +878,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     dueDays?: number
     templateStageId?: string
   }>({})
-  const importInputRef = useRef<HTMLInputElement | null>(null)
+  // const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
   const [form] = Form.useForm<TaskFormValues>()
   const [searchForm] = Form.useForm<TaskSearchFormValues>()
@@ -1218,6 +1228,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         secondStageAssigneeUserId: firstStageAssigneeUserId,
         taskOwnerUserId: detail.task.ownerId,
         workflowTemplateId,
+        title:detail?.task?.title
       })
       setDrawerOpen(true)
     } catch (error) {
@@ -1452,30 +1463,30 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
   }
 
-  async function handleImportChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
+  // async function handleImportChange(event: React.ChangeEvent<HTMLInputElement>) {
+  //   const file = event.target.files?.[0]
+  //   event.target.value = ''
 
-    if (!file) {
-      return
-    }
+  //   if (!file) {
+  //     return
+  //   }
 
-    try {
-      setMutating(true)
-      const payloads = await parseCourseImportFile(file)
+  //   try {
+  //     setMutating(true)
+  //     const payloads = await parseCourseImportFile(file)
 
-      for (const payload of payloads) {
-        await taskService.createTask(buildImportTaskPayload(payload))
-      }
+  //     for (const payload of payloads) {
+  //       await taskService.createTask(buildImportTaskPayload(payload))
+  //     }
 
-      await loadTasks({ currentPage: 1 })
-      message.success(`成功导入 ${payloads.length} 条任务`)
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '批量导入失败')
-    } finally {
-      setMutating(false)
-    }
-  }
+  //     await loadTasks({ currentPage: 1 })
+  //     message.success(`成功导入 ${payloads.length} 条任务`)
+  //   } catch (error) {
+  //     message.error(error instanceof Error ? error.message : '批量导入失败')
+  //   } finally {
+  //     setMutating(false)
+  //   }
+  // }
 
   async function handleDeleteTask(taskId: string) {
     try {
@@ -1506,15 +1517,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       dataIndex: 'title',
       render: (_, record) => {
         // 子任务类型按名称去重，只展示售后/迭代这类业务标识，不重复堆叠相同标签。
-        const activeSubTaskTypes = Array.from(
-          new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
-        )
+        // const activeSubTaskTypes = Array.from(
+        //   new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
+        // )
 
         return (
           <div className="task-table__title-cell">
             <div className="task-table__title-row">
               <span className="task-table__title">{record.title}</span>
-              {activeSubTaskTypes.map((subTaskType) => {
+              {/* {activeSubTaskTypes.map((subTaskType) => {
                 const meta = getActiveSubTaskTypeMeta(subTaskType)
 
                 return (
@@ -1526,7 +1537,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                     {meta.label}
                   </Tag>
                 )
-              })}
+              })} */}
               {/* 已完成任务在列表中单独标识，方便管理员查看全量任务时快速识别。 */}
               {/* {isCompletedTask(record) ? (
                 <Tag color="success" className="task-table__completed-tag">
@@ -1551,15 +1562,34 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       title: '状态',
       dataIndex: 'status',
       render: (status: string, record) => {
+        const activeSubTaskTypes = Array.from(
+          new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
+        )
+        
         const displayLabel = record.currentStage?.stageName || getTaskStatusMeta(status).label
         const meta = getTaskStatusMeta(record.currentStage?.status || status)
         return (
+          <>
+           {activeSubTaskTypes.map((subTaskType) => {
+                const meta = getActiveSubTaskTypeMeta(subTaskType)
+
+                return (
+                  <Tag
+                    key={subTaskType}
+                    color={meta.color}
+                    className="task-table__subtask-tag"
+                  >
+                    {meta.label}
+                  </Tag>
+                )
+              })}
           <Tag color={meta.color} className="task-table__status-tag all-tickets-page__tag">
             {displayLabel}
           </Tag>
+          </>
         )
       },
-      width: 140,
+      width: 190,
         },
         defaultVisible: true,
         key: 'status',
@@ -1770,7 +1800,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 处理
               </Button>
             ) : null}
-            {canManageTaskActions && !record.readonly && !completedTask ? (
+            {/* {canManageTaskActions && !record.readonly  ? (
               <Button
                 type="primary"
                 size="small"
@@ -1780,7 +1810,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               >
                 编辑
               </Button>
-            ) : null}
+            ) : null} */}
+              <Button
+                type="primary"
+                size="small"
+                variant="solid"
+                color='green'
+                onClick={() => void openEditDrawer(record)}
+              >
+                编辑
+              </Button>
             {canManageTaskActions && canDeleteTask ? (
               <Button
                 danger
@@ -1870,6 +1909,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const columns: ColumnsType<TaskListRecord> = taskColumnDefinitions
     .filter((definition) => visibleColumnKeySet.has(definition.key))
     .map((definition, index) => {
+      const originalRender = definition.column.render
       const fixedPosition =
         definition.key === 'actions'
           ? 'right'
@@ -1879,6 +1919,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
       return {
         ...definition.column,
+        render: (value, record, renderIndex) => {
+          const content = originalRender
+            ? originalRender(value, record, renderIndex)
+            : (typeof value === 'string' || typeof value === 'number'
+              ? value
+              : value ?? '-')
+
+          return renderClampedCell(content)
+        },
         // Table 依赖稳定的 key 来区分列，否则动态切换时容易复用错误列节点。
         key: definition.key,
         // 前三列固定在左侧，操作列固定在右侧，保证宽表横向滚动时核心信息始终可见。
@@ -2100,13 +2149,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         {/* </div> */}
       </div>
 
-      <input
+      {/* <input
         ref={importInputRef}
         type="file"
         accept=".xlsx"
-        style={{ display: 'none' }}
         onChange={(event) => void handleImportChange(event)}
-      />
+      /> */}
 
       {shouldShowTaskTabs ? (
         <Tabs

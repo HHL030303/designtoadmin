@@ -226,12 +226,12 @@
 
 .all-tickets-page__tag.ant-tag {
   margin-inline-end: 0;
-  padding: 2px 10px;
+  padding: 2px 3px;
   border: none;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
   line-height: 20px;
+  margin-right: 2px;
 }
 
 .all-tickets-page__tag--success.ant-tag {

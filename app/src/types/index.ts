@@ -67,6 +67,7 @@ export interface FieldConfig {
   status: FieldConfigStatus
   placeholder?: string
   span?: 12 | 24
+  type?:string|undefined
 }
 
 export interface TaskVersionRecord {
@@ -159,6 +160,7 @@ export interface TaskWorkflowStageRecord {
   requiresFileUpload: boolean
   requiresValidation: boolean
   triggersPackage: boolean
+  completedAt?: string | null
   dueDays?: number
   dueDate?: string
   overdueStatus?: string
@@ -168,6 +170,7 @@ export interface TaskWorkflowStageRecord {
   stageAssignees: TaskWorkflowStageAssigneeRecord[]
   totalPageCount?:number|undefined|null
   allowCustomDueDays?:boolean
+  canUpdateFields?: boolean
 }
 
 export interface TaskDetailRecord {
@@ -520,6 +523,7 @@ export interface WorkflowStageConfig {
   fileRules: WorkflowStageFileRule[]
   configJson?: Record<string, unknown>
   allowCustomDueDays?:boolean
+  canUpdateFields?: boolean
 }
 
 export interface WorkflowTemplateRecord {
