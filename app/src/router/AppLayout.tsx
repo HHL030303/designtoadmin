@@ -4,7 +4,6 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { AppFeedback } from '../components/common/AppFeedback'
 import { Sidebar } from '../components/layout/Sidebar'
 import { Topbar } from '../components/layout/Topbar'
-import { getPathForView } from '../constants/navigation'
 import { useAppState } from '../context/AppStateContext'
 
 export function AppLayout() {
@@ -28,8 +27,8 @@ export function AppLayout() {
   return (
     <Layout className="app-layout">
       <Sidebar
-        view={getPathForView(view)}
         role={role}
+        currentProjectId={currentProject?.id ?? null}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onChange={(nextPath) => navigate(nextPath)}

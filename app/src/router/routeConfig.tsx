@@ -41,7 +41,15 @@ export const privateRoutes: AppRouteConfig[] = [
     element: <AllTicketsPage />,
   },
   {
+    path: '/tickets/custom/:menuKey',
+    element: <AllTicketsPage />,
+  },
+  {
     path: '/task-statistics',
+    element: <TaskStatisticsPage />,
+  },
+  {
+    path: '/task-statistics/custom/:menuKey',
     element: <TaskStatisticsPage />,
   },
   {

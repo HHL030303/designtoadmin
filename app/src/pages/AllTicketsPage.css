@@ -186,6 +186,7 @@
   overflow: hidden;
   /* border-radius: 22px; */
   border: 1px solid #e6edf7;
+  margin-top: 10px;
   /* background: rgba(255, 255, 255, 0.96); */
   /* box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05); */
 }
@@ -226,12 +227,12 @@
 
 .all-tickets-page__tag.ant-tag {
   margin-inline-end: 0;
-  padding: 2px 3px;
+  /* padding: 2px 3px; */
   border: none;
   border-radius: 999px;
   font-size: 12px;
   line-height: 20px;
-  margin-right: 2px;
+  margin-left: 2px;
 }
 
 .all-tickets-page__tag--success.ant-tag {

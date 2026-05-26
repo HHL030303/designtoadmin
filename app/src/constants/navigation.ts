@@ -2,8 +2,6 @@ import type { NavItem, ViewKey } from '../types'
 
 export const navItems: NavItem[] = [
   { key: 'dashboard', viewKey: 'dashboard', label: '总览看板', hint: '指标与风险', path: '/dashboard' },
-  { key: 'allTickets', viewKey: 'allTickets', label: '全部工单', hint: '展示与统计', path: '/tickets' },
-  { key: 'taskStatistics', viewKey: 'taskStatistics', label: '任务明细', hint: '角色与工时统计', path: '/task-statistics' },
   { key: 'courses', viewKey: 'courses', label: '任务工单', hint: '主流程推进', path: '/courses' },
   // { key: 'dispatch', viewKey: 'dispatch', label: '派单中心', hint: '设计统筹视角', path: '/dispatch' },
   // { key: 'designers', viewKey: 'designers', label: '设计师任务台', hint: '上传与交付', path: '/designers' },

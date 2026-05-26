@@ -32,6 +32,8 @@ const VALID_FIELD_TYPES: FormFieldType[] = [
   'number',
   'date',
   'boolean',
+  'multi_select',
+  'year'
 ]
 
 const VALID_STATUSES: FieldConfigStatus[] = ['enabled', 'disabled']
@@ -327,7 +329,7 @@ export async function parseFormConfigBuffer(buffer: ArrayBuffer): Promise<FieldC
     }
 
     const optionConfig = optionSetKey ? groupedOptions.get(optionSetKey) ?? [] : undefined
-    if (fieldType === 'select' && (!optionConfig || !optionConfig.length)) {
+    if ((fieldType === 'select' || fieldType === 'multi_select') && (!optionConfig || !optionConfig.length)) {
       throw new Error(`第 ${rowNumber} 行字段“${fieldName}”缺少有效选项配置`)
     }
 
@@ -367,12 +369,14 @@ function ensureBooleanValue(value: unknown, fieldName: string): boolean {
 }
 
 function ensureStringValue(value: unknown, fieldName: string): string {
-  if(value){
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value.trim()
-      }
-      throw new Error(`字段“${fieldName}”必须是非空字符串`)
+  if (fieldName === 'type') {
+    return ''
   }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim()
+  }
+
+  throw new Error(`字段“${fieldName}”必须是非空字符串`)
 }
 
 function ensureOptionalStringValue(value: unknown): string | undefined {
@@ -436,7 +440,6 @@ function validateOptionConfig(value: unknown): FieldOptionConfig[] | undefined {
     if (!isPlainObject(option)) {
       throw new Error(`option_config 第 ${index + 1} 项必须是对象`)
     }
-
     const label = ensureStringValue(option.label, `option_config[${index}].label`)
     const optionValue = ensureStringValue(option.value, `option_config[${index}].value`)
     const sortValue =
@@ -449,6 +452,7 @@ function validateOptionConfig(value: unknown): FieldOptionConfig[] | undefined {
       sort_value: sortValue,
       status,
       value: optionValue,
+      relate_show_field_key:option?.relate_show_field_key||undefined
     }
   })
 }
@@ -483,7 +487,7 @@ export function validateFieldConfigJson(
     throw new Error(`field_key“${fieldKey}”已存在，请保持唯一`)
   }
 
-  if (fieldType === 'select' && (!optionConfig || !optionConfig.length)) {
+  if ((fieldType === 'select' || fieldType === 'multi_select') && (!optionConfig || !optionConfig.length)) {
     throw new Error(`${fieldName} 为 ${fieldType} 类型时，option_config 不能为空`)
   }
 
@@ -491,7 +495,13 @@ export function validateFieldConfigJson(
     throw new Error(`${fieldName} 为 boolean 类型时，不需要 option_config`)
   }
 
-  if (fieldType !== 'select' && fieldType !== 'boolean' && optionConfig && optionConfig.length > 0) {
+  if (
+    fieldType !== 'select' &&
+    fieldType !== 'multi_select' &&
+    fieldType !== 'boolean' &&
+    optionConfig &&
+    optionConfig.length > 0
+  ) {
     throw new Error(`${fieldName} 不是选项类型，不需要 option_config`)
   }
 

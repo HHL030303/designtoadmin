@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Card, DatePicker, Empty, Select, Table, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { TablePaginationConfig } from 'antd/es/table'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { roleOptions } from '../constants/roles'
 import { statisticsService } from '../services/statisticsService'
 import { backendRoleMap } from '../constants/roles'
@@ -69,20 +71,40 @@ function getBackendRoleCode(appRoleKey: string): string {
 }
 
 export function TaskStatisticsPage() {
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<TaskStatisticsRow[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState<TaskStatisticsFilters>(getCurrentMonthFilters)
+  const isCustomStatisticsPage = location.pathname.startsWith('/task-statistics/custom/')
+  const pageTitle = searchParams.get('menu_name')?.trim() || '任务明细'
 
-  async function loadStatistics(nextFilters: TaskStatisticsFilters): Promise<void> {
+  async function loadStatistics(
+    nextFilters: TaskStatisticsFilters,
+    options?: {
+      page?: number
+      pageSize?: number
+    },
+  ): Promise<void> {
     try {
       setLoading(true)
-      const response = await statisticsService.getUserWorkload(nextFilters)
+      const response = await statisticsService.getUserWorkload({
+        ...nextFilters,
+        page: options?.page ?? currentPage,
+        pageSize: options?.pageSize ?? pageSize,
+      })
       setRows(
         response.items.map((item, index) => ({
           ...item,
           __rowKey: buildRowKey(item, index),
         })),
       )
+      setCurrentPage(response.page)
+      setPageSize(response.pageSize)
+      setTotal(response.total)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '任务明细加载失败')
     } finally {
@@ -91,7 +113,7 @@ export function TaskStatisticsPage() {
   }
 
   useEffect(() => {
-    void loadStatistics(filters)
+    void loadStatistics(filters, { page: 1, pageSize })
   }, [])
 
   const roleSelectOptions = useMemo(() => (
@@ -152,58 +174,67 @@ export function TaskStatisticsPage() {
   ]
 
   function handleQuery(): void {
-    void loadStatistics(filters)
+    void loadStatistics(filters, { page: 1, pageSize })
   }
 
   function handleReset(): void {
     const nextFilters = getCurrentMonthFilters()
     setFilters(nextFilters)
-    void loadStatistics(nextFilters)
+    void loadStatistics(nextFilters, { page: 1, pageSize: 20 })
   }
+
+  const pagination = useMemo<TablePaginationConfig>(() => ({
+    current: currentPage,
+    pageSize,
+    showSizeChanger: true,
+    total,
+  }), [currentPage, pageSize, total])
 
   return (
     <div className="task-statistics-page">
-      <Card bordered={false} className="task-statistics-page__filter">
-        <div className="task-statistics-page__toolbar">
-          <div className="task-statistics-page__filters">
-            <Select
-              allowClear
-              placeholder="全部角色"
-              value={filters.roleCode}
-              options={roleSelectOptions}
-              className="task-statistics-page__role-select"
-              onChange={(value) => {
-                setFilters((current) => ({
-                  ...current,
-                  roleCode: value,
-                }))
-              }}
-            />
-            <DatePicker.RangePicker
-              value={dateRangeValue}
-              format="YYYY-MM-DD"
-              className="task-statistics-page__range-picker"
-              placeholder={['开始日期', '截止日期']}
-              onChange={(_, dateStrings) => {
-                const [dateFrom, dateTo] = dateStrings
-                setFilters((current) => ({
-                  ...current,
-                  dateFrom,
-                  dateTo,
-                }))
-              }}
-            />
+      {!isCustomStatisticsPage ? (
+        <Card bordered={false} className="task-statistics-page__filter">
+          <div className="task-statistics-page__toolbar">
+            <div className="task-statistics-page__filters">
+              <Select
+                allowClear
+                placeholder="全部角色"
+                value={filters.roleCode}
+                options={roleSelectOptions}
+                className="task-statistics-page__role-select"
+                onChange={(value) => {
+                  setFilters((current) => ({
+                    ...current,
+                    roleCode: value,
+                  }))
+                }}
+              />
+              <DatePicker.RangePicker
+                value={dateRangeValue}
+                format="YYYY-MM-DD"
+                className="task-statistics-page__range-picker"
+                placeholder={['开始日期', '截止日期']}
+                onChange={(_, dateStrings) => {
+                  const [dateFrom, dateTo] = dateStrings
+                  setFilters((current) => ({
+                    ...current,
+                    dateFrom,
+                    dateTo,
+                  }))
+                }}
+              />
+            </div>
+            <div className="task-statistics-page__actions">
+              <Button onClick={handleReset}>重置</Button>
+              <Button type="primary" loading={loading} onClick={handleQuery}>
+                查询
+              </Button>
+            </div>
           </div>
-          <div className="task-statistics-page__actions">
-            <Button onClick={handleReset}>重置</Button>
-            <Button type="primary" loading={loading} onClick={handleQuery}>
-              查询
-            </Button>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card bordered={false} className="task-statistics-page__table">
+      <Card title={pageTitle} bordered={false} className="task-statistics-page__table">
         {rows.length === 0 ? (
           <div className="task-statistics-page__empty">
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
@@ -214,7 +245,15 @@ export function TaskStatisticsPage() {
             loading={loading}
             columns={columns}
             dataSource={rows}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
+            pagination={pagination}
+            onChange={(nextPagination) => {
+              const nextPage = nextPagination.current ?? 1
+              const nextPageSize = nextPagination.pageSize ?? pageSize
+              void loadStatistics(filters, {
+                page: nextPage,
+                pageSize: nextPageSize,
+              })
+            }}
             scroll={{ x: Math.max(columns.length * 160, 960) }}
           />
         )}

@@ -23,7 +23,34 @@ type FolderGroup = {
     label: string
 }
 
-function getFolderGroup(file: AttachmentFile): FolderGroup | null {
+type BeforeUploadPayload = {
+    checksum: string
+    file: RcFile
+    originalPath?: string
+}
+
+type BeforeUploadResult =
+    | {
+        mode: 'abort'
+    }
+    | {
+        file: {
+            filePath: string
+            fileUrl?: string
+            storageKey?: string
+        }
+        mode: 'register_only'
+    }
+    | {
+        mode: 'upload'
+        replaceDisplay?: {
+            fileRecordId?: string
+            name: string
+            originalPath?: string
+        }
+    }
+
+const getFolderGroup = (file: AttachmentFile): FolderGroup | null => {
     const originalPath = file.originalPath?.trim()
 
     if (!originalPath) {
@@ -37,7 +64,7 @@ function getFolderGroup(file: AttachmentFile): FolderGroup | null {
     }
 }
 
-function buildAttachmentGroups(files: AttachmentFile[]) {
+const buildAttachmentGroups = (files: AttachmentFile[]) => {
     const directFiles: AttachmentFile[] = []
     const folderGroupsMap = new Map<string, FolderGroup>()
 
@@ -65,7 +92,7 @@ function buildAttachmentGroups(files: AttachmentFile[]) {
     }
 }
 
-function toUploadedFileItem(file: AttachmentFile): UploadFile {
+const toUploadedFileItem = (file: AttachmentFile): UploadFile => {
     return {
         name: file.name,
         percent: 100,
@@ -77,29 +104,34 @@ function toUploadedFileItem(file: AttachmentFile): UploadFile {
     }
 }
 
-function toAttachmentFile(
+const resolveOriginalPath = (file: Pick<RcFile, 'webkitRelativePath'>) => {
+    const relativePath = file.webkitRelativePath?.trim() ?? ''
+
+    if (!relativePath) {
+        return undefined
+    }
+
+    return relativePath
+        .replace(/^\/+|\/+$/g, '')
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter(Boolean)[0]
+}
+
+const toAttachmentFile = (
     file: RcFile,
     uploaded: Awaited<ReturnType<typeof objectStorageService.uploadFile>>,
     checksum: string,
-) {
+) => {
     const fileExt = uploaded.fileName.includes('.')
         ? uploaded.fileName.split('.').pop() ?? ''
         : ''
-
-    const relativePath = file.webkitRelativePath?.trim() ?? ''
-    const originalPath = relativePath
-        ? relativePath
-            .replace(/^\/+|\/+$/g, '')
-            .split('/')
-            .map((segment) => segment.trim())
-            .filter(Boolean)[0]
-        : undefined
 
     return {
         checksum,
         fileExt,
         name: uploaded.fileName,
-        originalPath,
+        originalPath: resolveOriginalPath(file),
         size: uploaded.fileSize,
         storageKey: uploaded.key,
         type: uploaded.fileType || file.type,
@@ -109,7 +141,52 @@ function toAttachmentFile(
     } satisfies AttachmentFile
 }
 
-function toRcFile(file: File): RcFile {
+const buildRegisteredOnlyAttachmentFile = ({
+    checksum,
+    file,
+    filePath,
+    fileUrl,
+    originalPath,
+    storageKey,
+}: {
+    checksum: string
+    file: RcFile
+    filePath: string
+    fileUrl?: string
+    originalPath?: string
+    storageKey?: string
+}) => {
+    const fileExt = file.name.includes('.') ? file.name.split('.').pop() ?? '' : ''
+
+    return {
+        checksum,
+        fileExt,
+        name: file.name,
+        originalPath,
+        size: file.size,
+        storageKey: storageKey || filePath,
+        type: file.type,
+        uid: `${file.uid}-registered`,
+        uploadedAt: new Date().toISOString(),
+        url: fileUrl || filePath,
+    } satisfies AttachmentFile
+}
+
+const shouldReplaceDisplayedFile = (
+    file: AttachmentFile,
+    target: NonNullable<Extract<BeforeUploadResult, { mode: 'upload' }>['replaceDisplay']>,
+) => {
+    if (target.fileRecordId && file.fileRecordId === target.fileRecordId) {
+        return true
+    }
+
+    const fileOriginalPath = file.originalPath?.trim() ?? ''
+    const targetOriginalPath = target.originalPath?.trim() ?? ''
+
+    return file.name === target.name && fileOriginalPath === targetOriginalPath
+}
+
+const toRcFile = (file: File): RcFile => {
     const existingUid = (file as RcFile).uid
 
     if (existingUid) {
@@ -125,6 +202,7 @@ export function ObjectStorageUploadField({
     value = [],
     onChange,
     onUploaded,
+    beforeUpload,
     onDelete,
     disabled,
     accept,
@@ -139,6 +217,9 @@ export function ObjectStorageUploadField({
     value?: AttachmentFile[]
     onChange?: (files: AttachmentFile[]) => void
     onUploaded?: (file: AttachmentFile) => Promise<AttachmentFile | void> | AttachmentFile | void
+    beforeUpload?: (
+        payload: BeforeUploadPayload,
+    ) => Promise<BeforeUploadResult> | BeforeUploadResult
     onDelete?: (file: AttachmentFile) => Promise<void> | void
     disabled?: boolean
     accept?: string
@@ -252,31 +333,69 @@ export function ObjectStorageUploadField({
                 },
             ])
 
-            const uploaded = await objectStorageService.uploadFile(uploadFile, {
-                onProgress: (progress) => {
-                    const percent = typeof progress.percent === 'number' ? progress.percent : 0
-                    updateUploadingFile(uploadFile.uid, {
-                        percent,
-                        status: 'uploading',
-                    })
-                    handlers?.onProgress?.({ percent })
-                },
-                taskId,
-                prefix: uploadPrefix,
-            })
             const checksum = await buildFileChecksum(uploadFile)
+            const originalPath = resolveOriginalPath(uploadFile)
+            const uploadAction = beforeUpload
+                ? await beforeUpload({
+                    checksum,
+                    file: uploadFile,
+                    originalPath,
+                })
+                : { mode: 'upload' as const }
 
-            const uploadedFile = toAttachmentFile(uploadFile, uploaded, checksum)
+            if (uploadAction.mode === 'abort') {
+                removeUploadingFile(uploadFile.uid)
+                return
+            }
+
+            const uploadedFile =
+                uploadAction.mode === 'register_only'
+                    ? buildRegisteredOnlyAttachmentFile({
+                        checksum,
+                        file: uploadFile,
+                        filePath: uploadAction.file.filePath,
+                        fileUrl: uploadAction.file.fileUrl,
+                        originalPath,
+                        storageKey: uploadAction.file.storageKey,
+                    })
+                    : toAttachmentFile(
+                        uploadFile,
+                        await objectStorageService.uploadFile(uploadFile, {
+                            onProgress: (progress) => {
+                                const percent = typeof progress.percent === 'number' ? progress.percent : 0
+                                updateUploadingFile(uploadFile.uid, {
+                                    percent,
+                                    status: 'uploading',
+                                })
+                                handlers?.onProgress?.({ percent })
+                            },
+                            taskId,
+                            prefix: uploadPrefix,
+                        }),
+                        checksum,
+                    )
 
             const registeredFile = onUploaded
                 ? (await onUploaded(uploadedFile)) ?? uploadedFile
                 : uploadedFile
 
             removeUploadingFile(uploadFile.uid)
-            const nextFiles = [...latestValueRef.current, registeredFile]
+            const filteredFiles =
+                uploadAction.mode === 'upload' && uploadAction.replaceDisplay
+                    ? latestValueRef.current.filter(
+                        (file) => !shouldReplaceDisplayedFile(file, uploadAction.replaceDisplay!),
+                    )
+                    : latestValueRef.current
+            const nextFiles = [...filteredFiles, registeredFile]
             latestValueRef.current = nextFiles
             onChange?.(nextFiles)
-            handlers?.onSuccess?.(uploaded)
+            handlers?.onSuccess?.({
+                fileName: uploadedFile.name,
+                fileSize: uploadedFile.size ?? 0,
+                fileType: uploadedFile.type ?? '',
+                key: uploadedFile.storageKey ?? '',
+                url: uploadedFile.url ?? '',
+            })
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : '上传失败'
             updateUploadingFile(

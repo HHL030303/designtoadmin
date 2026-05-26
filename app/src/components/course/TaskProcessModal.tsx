@@ -50,6 +50,13 @@ type StageCompletionFormValues = {
   [key: string]: unknown
 }
 
+// 业务约定：创建任务时会把制作来源和制作人员写入 field_values。
+// 当 productionSource 为“内部”且 menbers 有值时，表示下一阶段人员已在创建任务时预指派。
+const INTERNAL_PRODUCTION_SOURCE_FIELD_KEY = 'productionSource'
+const PREASSIGNED_MEMBERS_FIELD_KEY = 'menbers'
+const INTERNAL_PRODUCTION_SOURCE_VALUE = '内部'
+const EXTERNAL_PRODUCTION_SOURCE_VALUE = '外部'
+
 // const taskStatusMeta: Record<string, { color: string; label: string }> = {
 //   archived: { color: 'green', label: '已归档' },
 //   assigned: { color: 'blue', label: '已指派' },
@@ -137,6 +144,54 @@ function buildDefaultNextStageAssignees() {
       userId: undefined,
     },
   ]
+}
+
+function hasPreassignedInternalNextStageAssignee(detail: TaskDetailRecord | null) {
+  if (!detail) {
+    return false
+  }
+
+  const productionSource = detail.fieldValues[INTERNAL_PRODUCTION_SOURCE_FIELD_KEY]
+  const members = detail.fieldValues[PREASSIGNED_MEMBERS_FIELD_KEY]
+
+  if (String(productionSource ?? '').trim() !== INTERNAL_PRODUCTION_SOURCE_VALUE) {
+    return false
+  }
+
+  if (Array.isArray(members)) {
+    return members.some((item) => String(item).trim() !== '')
+  }
+
+  return String(members ?? '').trim() !== ''
+}
+
+function isExternalProductionSource(detail: TaskDetailRecord | null) {
+  if (!detail) {
+    return false
+  }
+
+  return String(detail.fieldValues[INTERNAL_PRODUCTION_SOURCE_FIELD_KEY] ?? '').trim() === EXTERNAL_PRODUCTION_SOURCE_VALUE
+}
+
+function buildFirstStageAssignees(detail: TaskDetailRecord | null) {
+  if (!detail || detail.workflowStages.length === 0) {
+    return []
+  }
+
+  const firstStage = detail.workflowStages
+    .slice()
+    .sort((left, right) => left.sortValue - right.sortValue)[0]
+
+  if (!firstStage) {
+    return []
+  }
+
+  return firstStage.stageAssignees.map((assignee) => ({
+    assigned_page_count: assignee.assignedPageCount,
+    assignee_role: 'operator' as const,
+    is_primary: assignee.isPrimary,
+    user_id: Number(assignee.userId),
+  }))
 }
 
 const OTHER_FILES_RULE_ID = '__other_files__'
@@ -424,10 +479,22 @@ function flattenFilesByRuleId(filesByRuleId: Record<string, AttachmentFile[]>) {
   return flattenedFiles
 }
 
+function replaceStageFiles(
+  allFiles: AttachmentFile[],
+  workflowStageId: string,
+  nextStageFiles: AttachmentFile[],
+) {
+  return [
+    ...allFiles.filter((file) => file.workflowStageId !== workflowStageId),
+    ...nextStageFiles,
+  ]
+}
+
 function DynamicFileRuleSection({
   disabled,
   fileRules,
   filesByRuleId,
+  beforeUpload,
   onFilesChange,
   onFileUploaded,
   onFileDeleted,
@@ -436,6 +503,7 @@ function DynamicFileRuleSection({
   disabled?: boolean
   fileRules: TaskWorkflowFileRuleRecord[]
   filesByRuleId: Record<string, AttachmentFile[]>
+  beforeUpload: Parameters<typeof ObjectStorageUploadField>[0]['beforeUpload']
   onFilesChange: (ruleId: string, files: AttachmentFile[]) => void
   onFileUploaded: (file: AttachmentFile) => Promise<AttachmentFile>
   onFileDeleted: (file: AttachmentFile) => Promise<void>
@@ -468,6 +536,7 @@ function DynamicFileRuleSection({
           </Space>
           <ObjectStorageUploadField
             value={flattenFilesByRuleId(filesByRuleId)}
+            beforeUpload={beforeUpload}
             onChange={(files) => onFilesChange(OTHER_FILES_RULE_ID, files)}
             onUploaded={onFileUploaded}
             onDelete={onFileDeleted}
@@ -565,6 +634,7 @@ export function TaskProcessModal({
   )
   const canEditHistoricalStage = role === 'admin' || role === 'planner'
   const isLastStage = Boolean(currentStage && !nextStage)
+  const shouldShowHistoryFilesUpload = Boolean(isLastStage && detail && detail.files.length > 0)
   const canProcessCurrentStage = Boolean(
     currentStage &&
       (isHistoricalStageEdit ? canEditHistoricalStage : currentStageBelongsToUser),
@@ -574,6 +644,14 @@ export function TaskProcessModal({
       !isHistoricalStageEdit &&
       currentStage?.canAssign &&
       nextStage,
+  )
+  const hasPreassignedNextStageAssignee = useMemo(
+    () => hasPreassignedInternalNextStageAssignee(detail),
+    [detail],
+  )
+  const isExternalProduction = useMemo(
+    () => isExternalProductionSource(detail),
+    [detail],
   )
   const allowPageAssignment = Boolean(
     shouldSelectNextStageAssignee &&
@@ -702,10 +780,82 @@ export function TaskProcessModal({
     allowPageAssignment,
     currentProject?.id,
     form,
+    hasPreassignedNextStageAssignee,
     nextStage?.operatorRoleCode,
     shouldCollectTotalPageCount,
     shouldSelectNextStageAssignee,
   ])
+
+  const handleBeforeFileUpload = async ({
+    checksum,
+    file,
+    originalPath,
+  }: {
+    checksum: string
+    file: File
+    originalPath?: string
+  }) => {
+    if (!detail || !currentStage) {
+      throw new Error('任务阶段信息缺失，暂时无法校验重复文件')
+    }
+
+    const duplicateResult = await fileService.checkFileDuplicate({
+      checksum,
+      original_name: file.name,
+      original_path: originalPath,
+      task_id: Number(detail.task.id),
+      version_id: Number(detail.currentVersion.id),
+    })
+
+    if (duplicateResult.checksum_exists) {
+      const existingFile = duplicateResult.checksum_file
+
+      if (!existingFile?.file_path) {
+        throw new Error('查重命中已上传文件，但接口未返回可复用的文件路径')
+      }
+
+      // 命中相同 checksum 时直接复用已上传文件，避免重复占用对象存储空间。
+      message.info(`文件“${file.name}”已上传过，本次将直接登记，不再重复上传`)
+
+      return {
+        file: {
+          filePath: existingFile.file_path,
+          fileUrl: existingFile.file_url ?? existingFile.file_path,
+          storageKey: existingFile.file_path,
+        },
+        mode: 'register_only' as const,
+      }
+    }
+
+    if (!duplicateResult.same_name_exists) {
+      return { mode: 'upload' as const }
+    }
+
+    const shouldContinueUpload = await new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        cancelText: '取消',
+        content: `当前已存在重名文件“${file.name}”，继续上传将会覆盖，是否继续？`,
+        okText: '继续上传',
+        onCancel: () => resolve(false),
+        onOk: () => resolve(true),
+        title: '发现重名文件',
+      })
+    })
+
+    return shouldContinueUpload
+      ? {
+          mode: 'upload' as const,
+          replaceDisplay: {
+            fileRecordId:
+              duplicateResult.same_name_file?.id !== undefined && duplicateResult.same_name_file?.id !== null
+                ? String(duplicateResult.same_name_file.id)
+                : undefined,
+            name: duplicateResult.same_name_file?.original_name ?? file.name,
+            originalPath: duplicateResult.same_name_file?.original_path ?? originalPath,
+          },
+        }
+      : { mode: 'abort' as const }
+  }
 
   async function handleFileUploaded(file: AttachmentFile) {
     if (!detail || !currentStage || !file.checksum) {
@@ -715,7 +865,7 @@ export function TaskProcessModal({
     const created = await fileService.createFileRecord({
       checksum: file.checksum,
       file_ext: file.fileExt || '',
-      file_path: file.url || '',
+      file_path: file.storageKey || file.url || '',
       original_name: file.name,
       original_path: file.originalPath,
       size_bytes: file.size ?? 0,
@@ -727,16 +877,46 @@ export function TaskProcessModal({
     return {
       ...file,
       fileRecordId: created?.file?.id !== undefined && created?.file?.id !== null ? String(created?.file?.id) : undefined,
+      versionId: detail.currentVersion.id,
       workflowStageId: currentStage.id,
     }
   }
 
   async function handleFileDeleted(file: AttachmentFile) {
-    if (!file.fileRecordId) {
+    if (!detail || !file.fileRecordId) {
       return
     }
 
-    await fileService.deleteFileRecord(file.fileRecordId)
+    await fileService.deleteFileRecord(
+      file.fileRecordId,
+      Number(file.versionId ?? detail.currentVersion.id),
+    )
+  }
+
+  function syncTaskFiles(nextFiles: AttachmentFile[]) {
+    setDetail((current) => {
+      if (!current) {
+        return current
+      }
+
+      return {
+        ...current,
+        files: nextFiles,
+      }
+    })
+  }
+
+  function syncCurrentStageFiles(nextStageFiles: AttachmentFile[]) {
+    console.error(nextStageFiles,'nextStageFiles')
+    if (!detail || !currentStage) {
+      return
+    }
+
+    // 当前阶段上传区和最后一步的历史整理区都需要共享同一份 files 状态，
+    // 否则用户删除重复文件后，弹窗里其它文件视图还会残留旧数据。
+    const nextFiles = replaceStageFiles(detail.files, currentStage.id, nextStageFiles)
+    syncTaskFiles(nextFiles)
+    setFilesByRuleId(buildInitialFilesByRuleId(currentStage.fileRules, nextFiles, currentStage.id))
   }
 
   async function handleSubmit(values: StageCompletionFormValues) {
@@ -756,46 +936,67 @@ export function TaskProcessModal({
     //   message.warning(`请先按要求上传 ${invalidRule.itemName}`)
     //   return
     // }
+    
+    let nextStageAssignments:
+      Array<{
+        assigned_page_count?: number
+        assignee_role: 'operator'
+        is_primary: boolean
+        user_id: number
+      }> = []
 
-    const nextStageAssignments = nextStage
-      ? currentStage.canAssign
-        ? isHistoricalStageEdit
-          ? nextStage.stageAssignees.map((assignee) => ({
-              assigned_page_count: assignee.assignedPageCount,
+    if (nextStage) {
+      if (hasPreassignedNextStageAssignee) {
+        // 业务约定：productionSource 为“内部”且 menbers 有值时，
+        // 相关阶段责任人已在创建任务时预指派，这一步提交时显式传空数组即可。
+        nextStageAssignments = []
+      } else if (currentStage.canAssign) {
+        if (isHistoricalStageEdit) {
+          nextStageAssignments = nextStage.stageAssignees.map((assignee) => ({
+            assigned_page_count: assignee.assignedPageCount,
+            assignee_role: 'operator' as const,
+            is_primary: assignee.isPrimary,
+            user_id: Number(assignee.userId),
+          }))
+        } else if (allowPageAssignment) {
+          nextStageAssignments = (values.nextStageAssignees ?? [])
+            .filter((item) => item?.userId)
+            .map((item, index) => ({
+              assigned_page_count: Number(item.assignedPageCount ?? 0),
               assignee_role: 'operator' as const,
-              is_primary: assignee.isPrimary,
-              user_id: Number(assignee.userId),
+              is_primary: index === 0,
+              user_id: Number(item.userId),
             }))
-          : allowPageAssignment
-          ? (values.nextStageAssignees ?? [])
-              .filter((item) => item?.userId)
-              .map((item, index) => ({
-                assigned_page_count: Number(item.assignedPageCount ?? 0),
-                assignee_role: 'operator' as const,
-                is_primary: index === 0,
-                user_id: Number(item.userId),
-              }))
-          : values.nextStageUserId
-            ? [
-                {
-                  assignee_role: 'operator' as const,
-                  is_primary: true,
-                  user_id: Number(values.nextStageUserId),
-                },
-              ]
-            : []
-        : detail.task.ownerId
-          ? [
-              {
-                assignee_role: 'operator' as const,
-                is_primary: true,
-                user_id: Number(detail.task.ownerId),
-              },
-            ]
-          : []
-      : []
+        } else if (values.nextStageUserId) {
+          nextStageAssignments = [
+            {
+              assignee_role: 'operator' as const,
+              is_primary: true,
+              user_id: Number(values.nextStageUserId),
+            },
+          ]
+        }
+      } else if (isExternalProduction) {
+        // 业务约定：productionSource 为“外部”时，默认回退到流程首节点人员，
+        // 不再沿用“任务所有者接手下一阶段”的旧默认值。
+        nextStageAssignments = buildFirstStageAssignees(detail)
+      } else if (detail.task.ownerId) {
+        nextStageAssignments = [
+          {
+            assignee_role: 'operator' as const,
+            is_primary: true,
+            user_id: Number(detail.task.ownerId),
+          },
+        ]
+      }
+    }
 
-    if (!isHistoricalStageEdit && nextStage && nextStageAssignments.length === 0) {
+    if (
+      !isHistoricalStageEdit &&
+      nextStage &&
+      !hasPreassignedNextStageAssignee &&
+      nextStageAssignments.length === 0
+    ) {
       message.warning(
         currentStage.canAssign
           ? '请选择下一节点人员'
@@ -981,14 +1182,13 @@ export function TaskProcessModal({
               </div> */}
             
               <DynamicFileRuleSection
+                beforeUpload={handleBeforeFileUpload}
                 fileRules={currentStage.fileRules}
                 filesByRuleId={filesByRuleId}
                 onFileUploaded={handleFileUploaded}
                 onFileDeleted={handleFileDeleted}
                 taskId={detail.currentVersion.id ? String(detail.currentVersion.id) : undefined}
-                onFilesChange={(_, files) =>
-                  setFilesByRuleId(buildInitialFilesByRuleId(currentStage.fileRules, files, currentStage.id))
-                }
+                onFilesChange={(_, files) => syncCurrentStageFiles(files)}
                 disabled={submitting}
               />
             </div>
@@ -1003,6 +1203,44 @@ export function TaskProcessModal({
                 compact
                 emptyText="暂无阶段文件"
                 groupFolders
+              />
+            </div>
+          ) : null}
+
+          {shouldShowHistoryFilesUpload ? (
+            <div className="task-detail-section task-process-modal__section">
+              <div className="task-process-modal__section-head">
+                <Typography.Text strong>历史文件整理</Typography.Text>
+                <Tag bordered={false}>{`${detail.files.length} 个文件`}</Tag>
+              </div>
+              <Typography.Paragraph type="secondary">
+                最后一步入库前，可在这里查看当前任务已上传的全部历史文件，并删除重复文件。
+              </Typography.Paragraph>
+              <ObjectStorageUploadField
+                value={detail.files}
+                beforeUpload={handleBeforeFileUpload}
+                onUploaded={async (file) => {
+                  const createdFile = await handleFileUploaded(file)
+                  syncTaskFiles([...detail.files, createdFile])
+                  setFilesByRuleId(
+                    buildInitialFilesByRuleId(
+                      currentStage.fileRules,
+                      [...detail.files, createdFile],
+                      currentStage.id,
+                    ),
+                  )
+                  return createdFile
+                }}
+                onDelete={handleFileDeleted}
+                onChange={(files) => {
+                  syncTaskFiles(files)
+                  setFilesByRuleId(
+                    buildInitialFilesByRuleId(currentStage.fileRules, files, currentStage.id),
+                  )
+                }}
+                taskId={detail.currentVersion.id ? String(detail.currentVersion.id) : undefined}
+                disabled={submitting}
+                compact
               />
             </div>
           ) : null}

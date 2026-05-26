@@ -25,14 +25,14 @@ type DynamicTaskFormPreviewProps = {
 
 function buildInitialValues(
   fieldConfigs: FieldConfig[],
-): Record<string, dayjs.Dayjs | string | number | boolean> {
-  return fieldConfigs.reduce<Record<string, dayjs.Dayjs | string | number | boolean>>(
+): Record<string, dayjs.Dayjs | string | number | boolean | string[]> {
+  return fieldConfigs.reduce<Record<string, dayjs.Dayjs | string | number | boolean | string[]>>(
     (accumulator, field) => {
     if (field.default_value === undefined || field.default_value === null || field.default_value === '') {
       return accumulator
     }
 
-    if (field.field_type === 'date' && typeof field.default_value === 'string') {
+    if ((field.field_type === 'date' || field.field_type === 'year') && typeof field.default_value === 'string') {
       accumulator[field.field_key] = dayjs(field.default_value)
       return accumulator
     }
@@ -55,6 +55,19 @@ function renderFieldControl(field: FieldConfig) {
   if (field.field_type === 'select') {
     return (
       <Select
+        placeholder={field.placeholder || `请选择${field.field_name}`}
+        options={(field.option_config ?? []).map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))}
+      />
+    )
+  }
+
+  if (field.field_type === 'multi_select') {
+    return (
+      <Select
+        mode="multiple"
         placeholder={field.placeholder || `请选择${field.field_name}`}
         options={(field.option_config ?? []).map((option) => ({
           label: option.label,
@@ -89,6 +102,16 @@ function renderFieldControl(field: FieldConfig) {
 
   if (field.field_type === 'date') {
     return <DatePicker className="control-full-width" placeholder={field.placeholder} />
+  }
+
+  if (field.field_type === 'year') {
+    return (
+      <DatePicker
+        className="control-full-width"
+        picker="year"
+        placeholder={field.placeholder || `请选择${field.field_name}`}
+      />
+    )
   }
 
   return <Input placeholder={commonPlaceholder} />
@@ -148,7 +171,7 @@ export function DynamicTaskFormPreview(
                       {
                         required: true,
                         message:
-                          `${field.field_type === 'select' || field.field_type === 'boolean'
+                          `${field.field_type === 'select' || field.field_type === 'multi_select' || field.field_type === 'boolean'
                             ? '请选择'
                             : '请输入'}${field.field_name}`,
                       },

@@ -15,6 +15,7 @@ import {
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { TablePaginationConfig } from 'antd/es/table'
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -22,6 +23,7 @@ import {
   SearchOutlined,
   SnippetsOutlined,
 } from '@ant-design/icons'
+import { useSearchParams } from 'react-router-dom'
 import { taskService } from '../services/taskService'
 import type { TaskListRecord, TaskSubTaskRecord } from '../types'
 import './AllTicketsPage.css'
@@ -43,6 +45,12 @@ type TicketServiceFilter =
   | 'aftersales_or_iteration'
 
 const TASK_PAGE_SIZE = 100
+
+type TaskListPresetQuery = {
+  fieldFilters?: Record<string, unknown>
+  isOverdue?: boolean
+  templateStageId?: string
+}
 
 function normalizeBooleanLike(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') {
@@ -149,8 +157,50 @@ function getStageTagTone(record: TaskListRecord): string {
   return 'info'
 }
 
-async function fetchAllTasks(): Promise<TaskListRecord[]> {
-  const firstPage = await taskService.listTasks({ page: 1, pageSize: TASK_PAGE_SIZE })
+function parseRequestUrlValue(requestUrl: string | null): TaskListPresetQuery {
+  if (!requestUrl) {
+    return {}
+  }
+
+  try {
+    const url = new URL(requestUrl, window.location.origin)
+
+    if (url.pathname !== '/api/tasks') {
+      return {}
+    }
+
+    const fieldFiltersRaw = url.searchParams.get('field_filters')
+    let fieldFilters: Record<string, unknown> | undefined
+
+    if (fieldFiltersRaw) {
+      const parsed = JSON.parse(fieldFiltersRaw) as unknown
+
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        fieldFilters = parsed as Record<string, unknown>
+      }
+    }
+
+    const isOverdue = normalizeBooleanLike(url.searchParams.get('is_overdue')) === true
+      ? true
+      : undefined
+    const templateStageId = url.searchParams.get('template_stage_id')?.trim() || undefined
+
+    return {
+      fieldFilters,
+      isOverdue,
+      templateStageId,
+    }
+  } catch {
+    return {}
+  }
+}
+
+async function fetchAllTasks(presetQuery: TaskListPresetQuery = {}): Promise<TaskListRecord[]> {
+  const firstPage = await taskService.listTasks({
+    ...presetQuery,
+    page: 1,
+    pageSize: TASK_PAGE_SIZE,
+  })
   const totalPages = Math.max(1, Math.ceil(firstPage.total / firstPage.pageSize))
 
   if (totalPages === 1) {
@@ -160,6 +210,7 @@ async function fetchAllTasks(): Promise<TaskListRecord[]> {
   const restPages = await Promise.all(
     Array.from({ length: totalPages - 1 }, (_, index) => (
       taskService.listTasks({
+        ...presetQuery,
         page: index + 2,
         pageSize: firstPage.pageSize,
       })
@@ -186,15 +237,28 @@ function resetAllFilters(
 }
 
 export function AllTicketsPage() {
+  const [searchParams] = useSearchParams()
   const [tickets, setTickets] = useState<TaskListRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPageSize, setCurrentPageSize] = useState(10)
   const [keyword, setKeyword] = useState('')
   const [stageFilter, setStageFilter] = useState('all')
   const [bizLineFilter, setBizLineFilter] = useState<TicketBizLineFilter>('all')
   const [copyrightFilter, setCopyrightFilter] = useState<TicketCopyrightFilter>('all')
   const [completionFilter, setCompletionFilter] = useState<TicketCompletionFilter>('all')
   const [serviceFilter, setServiceFilter] = useState<TicketServiceFilter>('all')
+  const [customMenuTotal, setCustomMenuTotal] = useState(0)
   const deferredKeyword = useDeferredValue(keyword)
+  const requestUrl = searchParams.get('request_url')
+  const pageTitle = searchParams.get('menu_name')?.trim() || '全部工单'
+  const isCustomMenuPage = pageTitle !== '全部工单' && Boolean(requestUrl)
+  const presetQuery = useMemo(() => parseRequestUrlValue(requestUrl), [requestUrl])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setCurrentPageSize(10)
+  }, [requestUrl])
 
   useEffect(() => {
     let mounted = true
@@ -202,14 +266,30 @@ export function AllTicketsPage() {
     async function loadTickets(): Promise<void> {
       try {
         setLoading(true)
-        const items = await fetchAllTasks()
+        if (isCustomMenuPage) {
+          const response = await taskService.listTasks({
+            ...presetQuery,
+            page: currentPage,
+            pageSize: currentPageSize,
+          })
+
+          if (mounted) {
+            setTickets(response.items)
+            setCustomMenuTotal(response.total)
+          }
+
+          return
+        }
+
+        const items = await fetchAllTasks(presetQuery)
 
         if (mounted) {
           setTickets(items)
+          setCustomMenuTotal(items.length)
         }
       } catch (error) {
         if (mounted) {
-          message.error(error instanceof Error ? error.message : '全部工单加载失败')
+          message.error(error instanceof Error ? error.message : `${pageTitle}加载失败`)
         }
       } finally {
         if (mounted) {
@@ -223,7 +303,7 @@ export function AllTicketsPage() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [currentPage, currentPageSize, isCustomMenuPage, pageTitle, presetQuery])
 
   const stageOptions = useMemo(() => {
     const stageNames = Array.from(
@@ -244,6 +324,10 @@ export function AllTicketsPage() {
   }, [tickets])
 
   const filteredTickets = useMemo(() => {
+    if (isCustomMenuPage) {
+      return tickets
+    }
+
     const normalizedKeyword = deferredKeyword.trim().toLowerCase()
 
     return tickets.filter((ticket) => {
@@ -326,17 +410,18 @@ export function AllTicketsPage() {
     completionFilter,
     copyrightFilter,
     deferredKeyword,
+    isCustomMenuPage,
     serviceFilter,
     stageFilter,
     tickets,
   ])
 
   const summary = useMemo(() => ({
-    total: filteredTickets.length,
+    total: isCustomMenuPage ? customMenuTotal : filteredTickets.length,
     completed: filteredTickets.filter((ticket) => ticket.status === 'completed').length,
     bEnd: filteredTickets.filter((ticket) => getBooleanFieldValue(ticket, 'isBEnd') === true).length,
     inService: filteredTickets.filter((ticket) => getServiceStateText(ticket) !== '无').length,
-  }), [filteredTickets])
+  }), [customMenuTotal, filteredTickets, isCustomMenuPage])
 
   const summaryCards = useMemo(() => {
     const total = summary.total || 1
@@ -477,8 +562,28 @@ export function AllTicketsPage() {
     },
   ]
 
+  const pagination = useMemo<TablePaginationConfig>(() => {
+    if (isCustomMenuPage) {
+      return {
+        current: currentPage,
+        pageSize: currentPageSize,
+        showSizeChanger: true,
+        total: customMenuTotal,
+      }
+    }
+
+    return {
+      pageSize: 10,
+      showSizeChanger: true,
+    }
+  }, [currentPage, currentPageSize, customMenuTotal, isCustomMenuPage])
+
   return (
-    <Card className="panel-card all-tickets-page-card" bordered={false}>
+    <Card
+      title={pageTitle}
+      className="panel-card all-tickets-page-card"
+      bordered={false}
+    >
       <Row gutter={[18, 18]} className="all-tickets-page__stats">
         {summaryCards.map((item) => (
           <Col key={item.label} xs={24} sm={12} xl={6}>
@@ -498,92 +603,94 @@ export function AllTicketsPage() {
         ))}
       </Row>
 
-      <div className="all-tickets-page__filters-card">
-        <div className="workspace-filter-bar all-tickets-page__filters">
-        <Input
-          value={keyword}
-          allowClear
-          prefix={<SearchOutlined />}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="搜索工单名称 / 编号 / 系列 / 学科 / 负责人"
-          className="workspace-filter-input"
-        />
-        <Select
-          value={stageFilter}
-          allowClear
-          className="workspace-filter-select"
-          onClear={() => setStageFilter('all')}
-          onChange={setStageFilter}
-          options={stageOptions}
-        />
-        <Select
-          value={bizLineFilter}
-          allowClear
-          className="workspace-filter-select"
-          onClear={() => setBizLineFilter('all')}
-          onChange={setBizLineFilter}
-          options={[
-            { label: '全部端口', value: 'all' },
-            { label: 'B端', value: 'b_end' },
-            { label: 'C端', value: 'c_end' },
-          ]}
-        />
-        <Select
-          value={copyrightFilter}
-          allowClear
-          className="workspace-filter-select"
-          onClear={() => setCopyrightFilter('all')}
-          onChange={setCopyrightFilter}
-          options={[
-            { label: '全部版权状态', value: 'all' },
-            { label: '有任一版权登记', value: 'registered_any' },
-            { label: '仅美术已登记', value: 'registered_art' },
-            { label: '仅文字已登记', value: 'registered_text' },
-            { label: '双版权已登记', value: 'registered_both' },
-            { label: '未登记', value: 'unregistered' },
-          ]}
-        />
-        <Select
-          value={completionFilter}
-          allowClear
-          className="workspace-filter-select"
-          onClear={() => setCompletionFilter('all')}
-          onChange={setCompletionFilter}
-          options={[
-            { label: '全部完成状态', value: 'all' },
-            { label: '已完成', value: 'completed' },
-            { label: '进行中', value: 'processing' },
-          ]}
-        />
-        <Select
-          value={serviceFilter}
-          allowClear
-          className="workspace-filter-select"
-          onClear={() => setServiceFilter('all')}
-          onChange={setServiceFilter}
-          options={[
-            { label: '全部售后迭代状态', value: 'all' },
-            { label: '无售后 / 迭代', value: 'none' },
-            { label: '售后中', value: 'aftersales' },
-            { label: '迭代中', value: 'iteration' },
-            { label: '售后或迭代中', value: 'aftersales_or_iteration' },
-          ]}
-        />
-        <Button
-          className="all-tickets-page__reset-button"
-          onClick={() => resetAllFilters(
-            setKeyword,
-            setStageFilter,
-            setBizLineFilter,
-            setCopyrightFilter,
-            setCompletionFilter,
-            setServiceFilter,
-          )}
-        >
-          重置
-        </Button>
+      {!isCustomMenuPage ? (
+        <div className="all-tickets-page__filters-card">
+          <div className="workspace-filter-bar all-tickets-page__filters">
+            <Input
+              value={keyword}
+              allowClear
+              prefix={<SearchOutlined />}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder="搜索工单名称 / 编号 / 系列 / 学科 / 负责人"
+              className="workspace-filter-input"
+            />
+            <Select
+              value={stageFilter}
+              allowClear
+              className="workspace-filter-select"
+              onClear={() => setStageFilter('all')}
+              onChange={setStageFilter}
+              options={stageOptions}
+            />
+            <Select
+              value={bizLineFilter}
+              allowClear
+              className="workspace-filter-select"
+              onClear={() => setBizLineFilter('all')}
+              onChange={setBizLineFilter}
+              options={[
+                { label: '全部端口', value: 'all' },
+                { label: 'B端', value: 'b_end' },
+                { label: 'C端', value: 'c_end' },
+              ]}
+            />
+            <Select
+              value={copyrightFilter}
+              allowClear
+              className="workspace-filter-select"
+              onClear={() => setCopyrightFilter('all')}
+              onChange={setCopyrightFilter}
+              options={[
+                { label: '全部版权状态', value: 'all' },
+                { label: '有任一版权登记', value: 'registered_any' },
+                { label: '仅美术已登记', value: 'registered_art' },
+                { label: '仅文字已登记', value: 'registered_text' },
+                { label: '双版权已登记', value: 'registered_both' },
+                { label: '未登记', value: 'unregistered' },
+              ]}
+            />
+            <Select
+              value={completionFilter}
+              allowClear
+              className="workspace-filter-select"
+              onClear={() => setCompletionFilter('all')}
+              onChange={setCompletionFilter}
+              options={[
+                { label: '全部完成状态', value: 'all' },
+                { label: '已完成', value: 'completed' },
+                { label: '进行中', value: 'processing' },
+              ]}
+            />
+            <Select
+              value={serviceFilter}
+              allowClear
+              className="workspace-filter-select"
+              onClear={() => setServiceFilter('all')}
+              onChange={setServiceFilter}
+              options={[
+                { label: '全部售后迭代状态', value: 'all' },
+                { label: '无售后 / 迭代', value: 'none' },
+                { label: '售后中', value: 'aftersales' },
+                { label: '迭代中', value: 'iteration' },
+                { label: '售后或迭代中', value: 'aftersales_or_iteration' },
+              ]}
+            />
+            <Button
+              className="all-tickets-page__reset-button"
+              onClick={() => resetAllFilters(
+                setKeyword,
+                setStageFilter,
+                setBizLineFilter,
+                setCopyrightFilter,
+                setCompletionFilter,
+                setServiceFilter,
+              )}
+            >
+              重置
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="all-tickets-page__table-shell">
         <Spin spinning={loading}>
@@ -591,7 +698,24 @@ export function AllTicketsPage() {
           rowKey="id"
           columns={columns}
           dataSource={filteredTickets}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
+          pagination={pagination}
+          onChange={(nextPagination) => {
+            if (!isCustomMenuPage) {
+              return
+            }
+
+            const nextPage = nextPagination.current ?? 1
+            const nextPageSize = nextPagination.pageSize ?? currentPageSize
+
+            if (nextPage !== currentPage) {
+              setCurrentPage(nextPage)
+            }
+
+            if (nextPageSize !== currentPageSize) {
+              setCurrentPage(1)
+              setCurrentPageSize(nextPageSize)
+            }
+          }}
           scroll={{ x: 1480 }}
           className="all-tickets-page__table"
           locale={{

@@ -517,10 +517,25 @@
   overflow: hidden;
 }
 
+.courses-page-card .task-table__title-button {
+  display: inline-flex;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.courses-page-card .task-table__title-button:hover .task-table__title,
+.courses-page-card .task-table__title-button:focus .task-table__title {
+  color: #1d4ed8;
+}
+
 .courses-page-card .task-table__title {
   display: -webkit-box;
-  color: #0f172a;
-  font-size: 14px;
+  color: #2563eb;
+  font-size: 12px;
   font-weight: 700;
   line-height: 22px;
   overflow: hidden;

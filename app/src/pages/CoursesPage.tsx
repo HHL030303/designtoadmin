@@ -63,10 +63,17 @@ type TaskFormValues = Record<string, TaskFormValue>
 type TaskSearchFieldValue = string | number | boolean | string[] | null | undefined
 type TaskSearchFormValues = Record<string, TaskSearchFieldValue>
 
+const TASK_MEMBERS_FIELD_KEY = 'menbers'
+const TASK_MEMBERS_FIELD_LABEL = '制作人员'
+const PRODUCTION_SOURCE_FIELD_KEY = 'productionSource'
+const PRODUCTION_COST_FIELD_NAME = '制作方费用'
+// 这几个 key/name 都来自后端字段配置或既有接口约定。
+// 新建任务弹窗里所有“内部/外部”的联动展示和提交流程都围绕它们展开。
+
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
   archived: { color: 'green', label: '已归档' },
   completed: { color: 'green', label: '已完成' },
-  in_progress: { color: 'processing', label: '进行中' },
+  processing: { color: 'processing', label: '进行中' },
   page_in_progress: { color: 'cyan', label: '内页制作中' },
   pending: { color: 'default', label: '待开始' },
 }
@@ -201,12 +208,14 @@ function buildFormInitialValues(
       return accumulator
     }
 
-    if (field.field_type === 'date') {
+    if (field.field_type === 'date' || field.field_type === 'year') {
       if (typeof rawValue === 'number') {
         accumulator[field.field_key] = dayjs.unix(rawValue)
         return accumulator
       }
 
+      // 编辑任务时，DatePicker / YearPicker 都必须收到 dayjs 实例；
+      // 否则字符串原值会在 antd 内部触发 isValid is not a function。
       const parsedDate = dayjs(String(rawValue))
       if (parsedDate.isValid()) {
         accumulator[field.field_key] = parsedDate
@@ -230,6 +239,18 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
         return undefined
     }
 
+    if (field.field_type === 'multi_select' && Array.isArray(value)) {
+      const normalizedValues = value
+        .map((item) => String(item).trim())
+        .filter((item) => item !== '')
+
+      return normalizedValues.length > 0 ? normalizedValues : undefined
+    }
+
+    if (field.field_type === 'year' && dayjs.isDayjs(value)) {
+      return value.format('YYYY')
+    }
+
     if (field.field_type === 'date' && dayjs.isDayjs(value)) {
         if (field.type === 'year') {
             return value.format('YYYY')
@@ -251,7 +272,11 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
 
 function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
   return [...fieldConfigs]
-    .filter((field) => field.status === 'enabled')
+    .filter((field) => (
+      field.status === 'enabled' &&
+      // menbers 由弹窗里的联动逻辑单独渲染，避免和接口返回的原始字段重复出现。
+      field.field_key !== TASK_MEMBERS_FIELD_KEY
+    ))
     .sort((left, right) => left.sort_value - right.sort_value)
 }
 
@@ -337,6 +362,24 @@ function parsePositiveInteger(value: string | null, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function buildTaskDetailSearchParams(options: {
+  listPage: number
+  listPageSize: number
+  versionId?: string
+}): string {
+  const nextQuery = new URLSearchParams()
+
+  if (options.versionId) {
+    nextQuery.set('versionId', options.versionId)
+  }
+
+  nextQuery.set('listPage', String(options.listPage))
+  nextQuery.set('listPageSize', String(options.listPageSize))
+
+  const nextSearch = nextQuery.toString()
+  return nextSearch ? `?${nextSearch}` : ''
+}
+
 function renderFieldControl(field: FieldConfig) {
   const textPlaceholder = field.placeholder || `请输入${field.field_name}`
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
@@ -349,6 +392,19 @@ function renderFieldControl(field: FieldConfig) {
   if (field.field_type === 'select') {
     return (
       <Select
+        placeholder={selectPlaceholder}
+        options={(field.option_config ?? []).map((option) => ({
+          label: option.label,
+          value: option.value,
+        }))}
+      />
+    )
+  }
+
+  if (field.field_type === 'multi_select') {
+    return (
+      <Select
+        mode="multiple"
         placeholder={selectPlaceholder}
         options={(field.option_config ?? []).map((option) => ({
           label: option.label,
@@ -389,6 +445,17 @@ function renderFieldControl(field: FieldConfig) {
         format={field.type === 'year' ? 'YYYY' : 'YYYY-MM-DD'}
         placeholder={field.type === 'year' ? `请选择${field.field_name}年份` : selectPlaceholder}
         disabledDate={isNotBeforeTodayField(field) ? getDisabledPastDate : undefined}
+      />
+    )
+  }
+
+  if (field.field_type === 'year') {
+    return (
+      <DatePicker
+        className="control-full-width"
+        picker="year"
+        format="YYYY"
+        placeholder={`请选择${field.field_name}年份`}
       />
     )
   }
@@ -438,6 +505,45 @@ function renderSearchFieldControl(field: FieldConfig) {
   return <Input placeholder={textPlaceholder} allowClear />
 }
 
+function getRelateShowFieldValue(
+  fieldConfigs: FieldConfig[],
+  values: TaskFormValues | undefined,
+): { fieldKey: string; type: '内部' | '外部' } | null {
+  if (!values) {
+    return null
+  }
+
+  for (const field of fieldConfigs) {
+    const selectedValue = values[field.field_key]
+
+    if (selectedValue === undefined || selectedValue === null || selectedValue === '') {
+      continue
+    }
+
+    const matchedOption = field.option_config?.find(
+      (option) => option.value === String(selectedValue),
+    )
+    const relateShowFieldKey = matchedOption?.relate_show_field_key
+
+    // 后端通过 option_config.relate_show_field_key 告诉前端：
+    // 当前选项会触发“制作人员”的额外联动字段。
+    if (relateShowFieldKey === '内部' || relateShowFieldKey === '外部') {
+      return {
+        fieldKey: field.field_key,
+        type: relateShowFieldKey,
+      }
+    }
+  }
+
+  return null
+}
+
+function isInternalProductionSource(
+  values: TaskFormValues | undefined,
+) {
+  return String(values?.[PRODUCTION_SOURCE_FIELD_KEY] ?? '').trim() === '内部'
+}
+
 function mapOrderTypeToApi(value: unknown): 'new' | 'aftersales' | 'iteration' {
   if (value === '售后订单') {
     return 'aftersales'
@@ -453,8 +559,14 @@ function mapOrderTypeToApi(value: unknown): 'new' | 'aftersales' | 'iteration' {
 function buildTaskPayload(
   fieldConfigs: FieldConfig[],
   values: TaskFormValues,
-  secondStage?: { id?: string },
+  options?: {
+    firstStage?: { id?: string }
+    isInternalMembersField?: boolean
+    secondStage?: { id?: string }
+  },
 ) {
+  // 常规字段仍然统一从动态字段配置里序列化；
+  // “制作人员 menbers” 和首/次阶段指派属于额外业务规则，在后面单独补进去。
   const fieldValues = getEnabledFieldConfigs(fieldConfigs).reduce<Record<string, unknown>>(
     (accumulator, field) => {
       const serialized = serializeFieldValue(field, values[field.field_key])
@@ -474,16 +586,31 @@ function buildTaskPayload(
     ? finalDueDateValue.format('YYYY-MM-DD')
     : undefined
   const ownerId = normalizeTaskOwnerId(values.taskOwnerUserId)
+  const membersValue = values[TASK_MEMBERS_FIELD_KEY]
+  // 第一阶段仍然沿用原来的执行人选择；
+  // 只有“内部”场景才会把 menbers 继续写入第二阶段的 stage_assignments。
+  const firstStageAssignments = buildStageAssignment(
+    options?.firstStage,
+    values.secondStageAssigneeUserId,
+  )
+  const secondStageAssignments = options?.isInternalMembersField
+    ? buildStageAssignment(options.secondStage, membersValue)
+    : undefined
+  const stageAssignments = [
+    ...(firstStageAssignments ?? []),
+    ...(secondStageAssignments ?? []),
+  ]
+
+  if (membersValue !== undefined && membersValue !== null && membersValue !== '') {
+    fieldValues[TASK_MEMBERS_FIELD_KEY] = membersValue
+  }
 
   return {
     expect_complete_at: expectCompleteAt,
     field_values: fieldValues,
     owner_id: ownerId,
     order_type: mapOrderTypeToApi(values.orderType),
-    stage_assignments: buildSecondStageAssignment(
-      secondStage,
-      values.secondStageAssigneeUserId,
-    ),
+    stage_assignments: stageAssignments.length > 0 ? stageAssignments : undefined,
     title: typeof titleValue === 'string' && titleValue.trim().length > 0
       ? titleValue.trim()
       : '未命名任务',
@@ -584,7 +711,7 @@ function resolveTaskStatusQuery(
   return undefined
 }
 
-function buildSecondStageAssignment(
+function buildStageAssignment(
   stage: { id?: string } | undefined,
   userIdValue: TaskFormValue,
 ) {
@@ -870,6 +997,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [taskOwnerLoading, setTaskOwnerLoading] = useState(false)
   const [secondStageMembers, setSecondStageMembers] = useState<ProjectMemberRecord[]>([])
   const [secondStageLoading, setSecondStageLoading] = useState(false)
+  const [designerMembers, setDesignerMembers] = useState<ProjectMemberRecord[]>([])
+  const [designerMembersLoading, setDesignerMembersLoading] = useState(false)
   const [serviceOwnerOptions, setServiceOwnerOptions] = useState<FieldOptionConfig[]>([])
   const [serviceParticipantOptions, setServiceParticipantOptions] = useState<FieldOptionConfig[]>([])
   const [serviceFirstStageAssigneeLabel, setServiceFirstStageAssigneeLabel] = useState('')
@@ -880,8 +1009,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   }>({})
   // const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
+  const taskMembersRelationTypeRef = useRef<'内部' | '外部' | null>(null)
   const [form] = Form.useForm<TaskFormValues>()
   const [searchForm] = Form.useForm<TaskSearchFormValues>()
+  const watchedTaskFormValues = Form.useWatch([], form) as TaskFormValues | undefined
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
   const shouldShowTaskTabs = !canManageTaskActions
@@ -1032,7 +1163,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const selectedWorkflowTemplate = workflowTemplates.find(
     (template) => template.id === selectedWorkflowTemplateId,
   )
-  const firstWorkflowStage = selectedWorkflowTemplate?.stages[0]
+  const sortedWorkflowStages = useMemo(
+    () => (selectedWorkflowTemplate?.stages ?? [])
+      .slice()
+      .sort((left, right) => left.sortValue - right.sortValue),
+    [selectedWorkflowTemplate?.stages],
+  )
+  const firstWorkflowStage = sortedWorkflowStages[0]
+  const secondWorkflowStage = sortedWorkflowStages[1]
   const firstWorkflowRoleCode = firstWorkflowStage?.operatorRoleCode
   const firstWorkflowRoleName = firstWorkflowStage?.operatorRoleName ?? firstWorkflowStage?.stageName
   const shouldShowTaskOwnerField = Boolean(
@@ -1118,6 +1256,18 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     () => getEnabledFieldConfigs(taskFieldConfigs),
     [taskFieldConfigs],
   )
+  // taskMembersRelation 只负责判断“当前选中的哪个字段触发了联动”，
+  // 真正要不要显示额外字段，再由下面的布尔值继续收敛。
+  const taskMembersRelation = useMemo(
+    () => getRelateShowFieldValue(enabledFieldConfigs, watchedTaskFormValues),
+    [enabledFieldConfigs, watchedTaskFormValues],
+  )
+  const isInternalProduction = useMemo(
+    () => isInternalProductionSource(watchedTaskFormValues),
+    [watchedTaskFormValues],
+  )
+  const shouldShowMembersField = taskMembersRelation?.type === '内部'
+  const isInternalMembersField = taskMembersRelation?.type === '内部'
   const searchableTaskFieldConfigs = useMemo(
     () => getSearchableTaskFieldConfigs(taskFieldConfigs),
     [taskFieldConfigs],
@@ -1131,6 +1281,75 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   )
   const taskColumnStorageKey = buildTaskColumnStorageKey(currentProject?.id ?? 'global', mode)
 
+  useEffect(() => {
+    const projectId = currentProject?.id ?? ''
+
+    if (!drawerOpen || !projectId || !isInternalMembersField) {
+      setDesignerMembers([])
+      return
+    }
+
+    // “制作人员”只在内部场景出现，所以设计师候选人也只在这里按需加载。
+    async function loadDesignerMembers() {
+      try {
+        setDesignerMembersLoading(true)
+        const response = await adminService.listProjectRoleUsers({
+          page: 1,
+          pageSize: 100,
+          projectId,
+          roleCode: 'design',
+        })
+        setDesignerMembers(response.items)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '内部设计师加载失败')
+        setDesignerMembers([])
+      } finally {
+        setDesignerMembersLoading(false)
+      }
+    }
+
+    void loadDesignerMembers()
+  }, [currentProject?.id, drawerOpen, isInternalMembersField])
+
+  useEffect(() => {
+    if (!shouldShowMembersField) {
+      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
+      taskMembersRelationTypeRef.current = null
+      return
+    }
+
+    // 在“内部 / 外部”之间切换时，主动清掉旧值，避免把上一次场景的值带进来提交。
+    if (
+      taskMembersRelationTypeRef.current &&
+      taskMembersRelationTypeRef.current !== taskMembersRelation?.type
+    ) {
+      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
+    }
+
+    taskMembersRelationTypeRef.current = taskMembersRelation?.type ?? null
+
+    const currentValue = form.getFieldValue(TASK_MEMBERS_FIELD_KEY)
+
+    if (isInternalMembersField && typeof currentValue !== 'string') {
+      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
+    }
+  }, [form, isInternalMembersField, shouldShowMembersField, taskMembersRelation?.type])
+
+  useEffect(() => {
+    if (!isInternalProduction) {
+      return
+    }
+
+    // “制作方归属 = 内部” 时，制作方费用不展示，也要顺手把旧值清掉。
+    const productionCostField = enabledFieldConfigs.find(
+      (field) => field.field_name === PRODUCTION_COST_FIELD_NAME,
+    )
+
+    if (productionCostField) {
+      form.setFieldValue(productionCostField.field_key, undefined)
+    }
+  }, [enabledFieldConfigs, form, isInternalProduction])
+
   // const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
   //   label: getTaskStatusMeta(status).label,
   //   value: status,
@@ -1143,11 +1362,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
 
     setEditingTaskId(null)
+    setDesignerMembers([])
     setTaskOwnerMembers([])
     setSecondStageMembers([])
+    taskMembersRelationTypeRef.current = null
     form.resetFields()
     form.setFieldsValue({
       ...buildFormInitialValues(enabledFieldConfigs),
+      [TASK_MEMBERS_FIELD_KEY]: undefined,
       workflowTemplateId: undefined,
     })
     setDrawerOpen(true)
@@ -1222,9 +1444,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       const firstStageAssigneeUserId = resolveFirstStageAssigneeUserId(detail)
 
       setEditingTaskId(task.id)
+      setDesignerMembers([])
+      taskMembersRelationTypeRef.current = null
       form.resetFields()
       form.setFieldsValue({
         ...buildFormInitialValues(enabledFieldConfigs, detail.fieldValues),
+        [TASK_MEMBERS_FIELD_KEY]: detail.fieldValues[TASK_MEMBERS_FIELD_KEY] as TaskFormValue,
         secondStageAssigneeUserId: firstStageAssigneeUserId,
         taskOwnerUserId: detail.task.ownerId,
         workflowTemplateId,
@@ -1239,8 +1464,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   function handleCloseDrawer() {
     setDrawerOpen(false)
     setEditingTaskId(null)
+    setDesignerMembers([])
     setTaskOwnerMembers([])
     setSecondStageMembers([])
+    taskMembersRelationTypeRef.current = null
     form.resetFields()
   }
 
@@ -1440,7 +1667,11 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   }
 
   async function handleFinish(values: TaskFormValues) {
-    const payload = buildTaskPayload(enabledFieldConfigs, values, firstWorkflowStage)
+    const payload = buildTaskPayload(enabledFieldConfigs, values, {
+      firstStage: firstWorkflowStage,
+      isInternalMembersField,
+      secondStage: secondWorkflowStage,
+    })
 
     try {
       setMutating(true)
@@ -1516,6 +1747,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       width:200,
       dataIndex: 'title',
       render: (_, record) => {
+        const selectedVersionId = selectedVersionIds[record.id]
+
         // 子任务类型按名称去重，只展示售后/迭代这类业务标识，不重复堆叠相同标签。
         // const activeSubTaskTypes = Array.from(
         //   new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
@@ -1524,7 +1757,22 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         return (
           <div className="task-table__title-cell">
             <div className="task-table__title-row">
-              <span className="task-table__title">{record.title}</span>
+              <button
+                type="button"
+                className="task-table__title-button"
+                onClick={() => {
+                  navigate({
+                    pathname: `/courses/${record.id}`,
+                    search: buildTaskDetailSearchParams({
+                      listPage: currentPage,
+                      listPageSize: pageSize,
+                      versionId: selectedVersionId,
+                    }),
+                  })
+                }}
+              >
+                <span className="task-table__title">{record.title}</span>
+              </button>
               {/* {activeSubTaskTypes.map((subTaskType) => {
                 const meta = getActiveSubTaskTypeMeta(subTaskType)
 
@@ -1750,19 +1998,13 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 type='primary'
                 size="small"
                 onClick={() => {
-                  const nextQuery = new URLSearchParams()
-                  const selectedVersionId = selectedVersionIds[record.id]
-
-                  if (selectedVersionId) {
-                    nextQuery.set('versionId', selectedVersionId)
-                  }
-
-                  nextQuery.set('listPage', String(currentPage))
-                  nextQuery.set('listPageSize', String(pageSize))
-
                   navigate({
                     pathname: `/courses/${record.id}`,
-                    search: nextQuery.toString() ? `?${nextQuery.toString()}` : '',
+                    search: buildTaskDetailSearchParams({
+                      listPage: currentPage,
+                      listPageSize: pageSize,
+                      versionId: selectedVersionIds[record.id],
+                    }),
                   })
                 }}
               >
@@ -1861,6 +2103,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         defaultVisible: true,
         key: 'actions',
         title: '操作',
+        required: true,
       },
     ]
 
@@ -2260,7 +2503,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   placeholder="请选择当前项目下的工作流模板"
                   loading={workflowLoading}
                   disabled={Boolean(editingTaskId)}
-                  options={workflowTemplates.filter((ele)=>{return ele.order_type=='new'}).map((template) => ({
+                  options={(editingTaskId
+                    ? workflowTemplates
+                    : workflowTemplates.filter((template) => template.order_type === 'new')
+                  ).map((template) => ({
                     label: template.isDefault ? `${template.name}（默认）` : template.name,
                     value: template.id,
                   }))}
@@ -2315,30 +2561,71 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 </Form.Item>
             </Col>
             {/* {JSON.stringify(enabledFieldConfigs)} */}
-            {enabledFieldConfigs.map((field) => (
-              <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>
-                <Form.Item
-                  label={field.field_name}
-                  name={field.field_key}
-                  rules={[
-                    ...(field.required
-                      ? [
-                          {
-                            required: true,
-                            message:
-                              `${field.field_type === 'select' ? '请选择' : '请输入'}${field.field_name}`,
-                          },
-                        ]
-                      : []),
-                    ...(isNotBeforeTodayField(field)
-                      ? [{ validator: validateNotBeforeToday }]
-                      : []),
-                  ]}
-                >
-                  {renderFieldControl(field)}
-                </Form.Item>
-              </Col>
-            ))}
+            {enabledFieldConfigs.flatMap((field) => {
+              if (isInternalProduction && field.field_name === PRODUCTION_COST_FIELD_NAME) {
+                return []
+              }
+
+              const items = [
+                (
+                  <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>
+                    <Form.Item
+                      label={field.field_name}
+                      name={field.field_key}
+                      rules={[
+                        ...(field.required
+                          ? [
+                              {
+                                required: true,
+                                message:
+                                  `${field.field_type === 'select' || field.field_type === 'multi_select' ? '请选择' : '请输入'}${field.field_name}`,
+                              },
+                            ]
+                          : []),
+                        ...(isNotBeforeTodayField(field)
+                          ? [{ validator: validateNotBeforeToday }]
+                          : []),
+                      ]}
+                    >
+                      {renderFieldControl(field)}
+                    </Form.Item>
+                  </Col>
+                ),
+              ]
+
+              if (taskMembersRelation?.fieldKey !== field.field_key) {
+                return items
+              }
+
+              if (shouldShowMembersField) {
+                // 联动字段插在触发字段后面渲染，用户能直接看出“谁导致了这个额外输入项出现”。
+                items.push(
+                  <Col span={24} key={TASK_MEMBERS_FIELD_KEY}>
+                    <Form.Item
+                      label={TASK_MEMBERS_FIELD_LABEL}
+                      name={TASK_MEMBERS_FIELD_KEY}
+                      rules={[
+                        {
+                          required: true,
+                          message: `请选择${TASK_MEMBERS_FIELD_LABEL}`,
+                        },
+                      ]}
+                    >
+                      <Select
+                        placeholder={`请选择${TASK_MEMBERS_FIELD_LABEL}`}
+                        loading={designerMembersLoading}
+                        options={designerMembers.map((member) => ({
+                          label: `${member.userName} · ${member.userEmail}`,
+                          value: member.userId,
+                        }))}
+                      />
+                    </Form.Item>
+                  </Col>,
+                )
+              }
+
+              return items
+            })}
           </Row>
 
           <div className="form-footer-actions">

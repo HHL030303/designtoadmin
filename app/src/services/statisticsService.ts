@@ -3,11 +3,16 @@ import { apiRequest } from './apiClient'
 export interface UserWorkloadFilters {
   dateFrom?: string
   dateTo?: string
+  page?: number
+  pageSize?: number
   roleCode?: string
 }
 
 export interface UserWorkloadResponse {
   items: Record<string, unknown>[]
+  page: number
+  pageSize: number
+  total: number
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -29,9 +34,11 @@ function normalizeItems(data: unknown): Record<string, unknown>[] {
 export const statisticsService = {
   async getUserWorkload(filters: UserWorkloadFilters): Promise<UserWorkloadResponse> {
     const roleCode = filters.roleCode?.trim()
-    const query: Record<string, string> = {
+    const query: Record<string, string | number> = {
       ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
       ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+      page: filters.page ?? 1,
+      page_size: filters.pageSize ?? 20,
       ...(roleCode
         ? {
           role: roleCode,
@@ -45,6 +52,18 @@ export const statisticsService = {
 
     return {
       items: normalizeItems(data),
+      page:
+        isRecord(data) && typeof data.page === 'number' && Number.isFinite(data.page)
+          ? data.page
+          : filters.page ?? 1,
+      pageSize:
+        isRecord(data) && typeof data.page_size === 'number' && Number.isFinite(data.page_size)
+          ? data.page_size
+          : filters.pageSize ?? 20,
+      total:
+        isRecord(data) && typeof data.total === 'number' && Number.isFinite(data.total)
+          ? data.total
+          : normalizeItems(data).length,
     }
   },
 }

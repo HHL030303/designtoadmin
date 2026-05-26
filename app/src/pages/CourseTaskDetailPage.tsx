@@ -18,7 +18,7 @@ function canProcessCurrentTask(detail: TaskDetailRecord | null, currentUserId?: 
 
 export function CourseTaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { currentUser } = useAppState()
   const [detail, setDetail] = useState<TaskDetailRecord | null>(null)
   const [loading, setLoading] = useState(false)
@@ -52,12 +52,25 @@ export function CourseTaskDetailPage() {
     void loadDetail()
   }, [taskId, versionId])
 
+  function handleSelectVersion(nextVersionId: string) {
+    const nextParams = new URLSearchParams(searchParams)
+
+    // 历史版本切换直接写回 URL，这样刷新、分享链接、返回上一页时都能保留当前查看版本。
+    if (nextVersionId === detail?.currentVersion.id && !versionId) {
+      nextParams.delete('versionId')
+    } else {
+      nextParams.set('versionId', nextVersionId)
+    }
+
+    setSearchParams(nextParams)
+  }
+
   return (
     <div className="course-task-detail-page">
       <div className="course-task-detail-page__header">
         <div>
           <Typography.Title level={3} className="course-task-detail-page__title">
-          {detail?.task?.title||'任务详情'}   
+          {detail?.task?.title||'任务详情'} 
           </Typography.Title>
           <Typography.Paragraph
             type="secondary"
@@ -87,6 +100,8 @@ export function CourseTaskDetailPage() {
       ) : detail ? (
         <TaskHistoryDetailPanel
           detail={detail}
+          selectedVersionId={versionId}
+          onSelectVersion={handleSelectVersion}
           onUpdated={async () => {
             await loadDetail()
           }}

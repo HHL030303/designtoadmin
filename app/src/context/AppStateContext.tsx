@@ -137,6 +137,12 @@ function setStoredLoginRedirectPath(pathname?: string | null): void {
   window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, normalizedPath)
 }
 
+function shouldResetPathOnProjectSwitch(pathname: string): boolean {
+  // 详情页地址通常带着旧项目下的实体 ID，切项目后继续停留大概率会落到不存在的数据。
+  // 目前先把任务详情页收敛到列表页，避免新项目打开旧项目任务详情。
+  return pathname.startsWith('/courses/') && pathname !== '/courses'
+}
+
 type AppStateContextValue = {
   view: ViewKey
   role: UserRole
@@ -283,12 +289,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [currentProject],
   )
   const role = useMemo(() => {
-    if (availableRoles.some((item) => item.role === storedProjectRole)) {
-      return storedProjectRole as UserRole
-    }
-
     if (availableRoles.some((item) => item.role === activeRole)) {
       return activeRole
+    }
+
+    if (availableRoles.some((item) => item.role === storedProjectRole)) {
+      return storedProjectRole as UserRole
     }
 
     return getProjectRole(currentProject, currentUser?.role ?? 'planner')
@@ -361,9 +367,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     const storedRole = getStoredProjectRoleMap()[currentProject.id]
     const fallbackRole = getProjectRole(currentProject, currentUser?.role ?? 'planner')
-    const nextRole = availableRoles.some((item) => item.role === storedRole)
-      ? storedRole
-      : fallbackRole
+    // 角色切换后要优先相信当前内存里的 activeRole，这样顶部角色选择器和左侧菜单
+    // 才能立即跟着更新；localStorage 只作为项目切换/刷新后的兜底恢复值。
+    const nextRole = availableRoles.some((item) => item.role === activeRole)
+      ? activeRole
+      : availableRoles.some((item) => item.role === storedRole)
+        ? storedRole
+        : fallbackRole
 
     if (nextRole !== activeRole) {
       setActiveRole(nextRole)
@@ -494,6 +504,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(matched))
 
     if (location.pathname === '/project-select') {
+      return
+    }
+
+    if (shouldResetPathOnProjectSwitch(location.pathname)) {
+      navigate('/courses', { replace: true })
       return
     }
 

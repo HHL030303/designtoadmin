@@ -60,6 +60,12 @@ type TaskVersionResponse = {
   expect_complete_at?: number | string | null
   completed_at?: number | string | null
   archived_at?: number | string | null
+  description?:string
+  workflow_template?:{
+    id:string
+    name:string
+    order_type?:string
+  }
 }
 
 type TaskSubTaskResponse = {
@@ -95,6 +101,7 @@ type TaskDetailResponse = {
     archived_at: string | null
   }
   current_version: TaskVersionResponse
+  version_history?: TaskVersionResponse[] | null
   current_stage?: TaskWorkflowStageResponse | null
   next_stage?: {
     id: number | string
@@ -301,6 +308,8 @@ function mapVersion(version?: TaskVersionResponse | null): TaskVersionRecord {
     status: version?.status ?? 'unknown',
     totalPageCount: version?.total_page_count ?? 0,
     versionNo: version?.version_no ?? '-',
+    description:version?.description,
+    workflow_template:version?.workflow_template
   }
 }
 
@@ -468,14 +477,17 @@ export const taskService = {
   async listTasks(query: {
     assigneeId?: string
     fieldFilters?: Record<string, unknown>
+    isOverdue?: boolean
     keyword?: string
     mineScope?: string
     page?: number
     pageSize?: number
     status?: string
+    templateStageId?: string
   } = {}) {
     const data = await apiRequest<TaskListResponse>('/api/tasks', {
       query: {
+        is_overdue: query.isOverdue ? 1 : undefined,
         field_filters:
           query.fieldFilters && Object.keys(query.fieldFilters).length > 0
             ? JSON.stringify(query.fieldFilters)
@@ -486,6 +498,7 @@ export const taskService = {
         page_size: query.pageSize ?? 100,
         assignee_id: query.assigneeId || undefined,
         status: query.status || undefined,
+        template_stage_id: query.templateStageId || undefined,
       },
     })
 
@@ -579,6 +592,9 @@ export const taskService = {
         status: data.task.status,
         title: data.task.title,
       },
+      // 详情页的版本切换直接复用详情接口返回的 version_history，
+      // 这样可以在展示箭头前先知道是否真的存在历史版本。
+      versionHistory: (data.version_history ?? []).map((version) => mapVersion(version)),
       workflowStages,
     }
   },

@@ -372,6 +372,7 @@ function buildInitialFilesByRuleId(
 function DynamicFileRuleSection({
     fileRules,
     filesByRuleId,
+    beforeUpload,
     onFilesChange,
     onFileUploaded,
     onFileDeleted,
@@ -380,6 +381,7 @@ function DynamicFileRuleSection({
 }: {
     fileRules: TaskWorkflowFileRuleRecord[]
     filesByRuleId: Record<string, AttachmentFile[]>
+    beforeUpload: Parameters<typeof ObjectStorageUploadField>[0]['beforeUpload']
     onFilesChange: (ruleId: string, files: AttachmentFile[]) => void
     onFileUploaded: (file: AttachmentFile) => Promise<AttachmentFile>
     onFileDeleted: (file: AttachmentFile) => Promise<void>
@@ -409,6 +411,7 @@ function DynamicFileRuleSection({
                         ) : (
                             <ObjectStorageUploadField
                                 value={filesByRuleId[rule.id] ?? []}
+                                beforeUpload={beforeUpload}
                                 onChange={(files) => onFilesChange(rule.id, files)}
                                 onUploaded={onFileUploaded}
                                 onDelete={onFileDeleted}
@@ -577,6 +580,78 @@ function RoleTaskCard({
         value: assignee.userId,
     }))
 
+    const handleBeforeFileUpload = async ({
+        checksum,
+        file,
+        originalPath,
+    }: {
+        checksum: string
+        file: File
+        originalPath?: string
+    }) => {
+        if (!currentStage) {
+            throw new Error('当前阶段信息缺失，暂时无法校验重复文件')
+        }
+
+        const duplicateResult = await fileService.checkFileDuplicate({
+            checksum,
+            original_name: file.name,
+            original_path: originalPath,
+            task_id: Number(detail.task.id),
+            version_id: Number(detail.currentVersion.id),
+        })
+
+        if (duplicateResult.checksum_exists) {
+            const existingFile = duplicateResult.checksum_file
+
+            if (!existingFile?.file_path) {
+                throw new Error('查重命中已上传文件，但接口未返回可复用的文件路径')
+            }
+
+            // 命中相同 checksum 时直接复用已上传文件，避免重复占用对象存储空间。
+            message.info(`文件“${file.name}”已上传过，本次将直接登记，不再重复上传`)
+
+            return {
+                file: {
+                    filePath: existingFile.file_path,
+                    fileUrl: existingFile.file_url ?? existingFile.file_path,
+                    storageKey: existingFile.file_path,
+                },
+                mode: 'register_only' as const,
+            }
+        }
+
+        if (!duplicateResult.same_name_exists) {
+            return { mode: 'upload' as const }
+        }
+
+        const shouldContinueUpload = await new Promise<boolean>((resolve) => {
+            Modal.confirm({
+                cancelText: '取消',
+                content: `当前已存在重名文件“${file.name}”，继续上传将会覆盖，是否继续？`,
+                okText: '继续上传',
+                onCancel: () => resolve(false),
+                onOk: () => resolve(true),
+                title: '发现重名文件',
+            })
+        })
+
+        return shouldContinueUpload
+            ? {
+                mode: 'upload' as const,
+                replaceDisplay: {
+                    fileRecordId:
+                        duplicateResult.same_name_file?.id !== undefined &&
+                        duplicateResult.same_name_file?.id !== null
+                            ? String(duplicateResult.same_name_file.id)
+                            : undefined,
+                    name: duplicateResult.same_name_file?.original_name ?? file.name,
+                    originalPath: duplicateResult.same_name_file?.original_path ?? originalPath,
+                },
+            }
+            : { mode: 'abort' as const }
+    }
+
     async function handleFileUploaded(file: AttachmentFile) {
         if (!currentStage || !file.checksum) {
             throw new Error(`文件 ${file.name} 缺少登记所需信息`)
@@ -585,7 +660,7 @@ function RoleTaskCard({
         const created = await fileService.createFileRecord({
             checksum: file.checksum,
             file_ext: file.fileExt || '',
-            file_path: file.url || '',
+            file_path: file.storageKey || file.url || '',
             original_name: file.name,
             original_path: file.originalPath,
             size_bytes: file.size ?? 0,
@@ -597,9 +672,10 @@ function RoleTaskCard({
         return {
             ...file,
             fileRecordId:
-                created?.id !== undefined && created?.id !== null
-                    ? String(created.id)
+                created?.file?.id !== undefined && created?.file?.id !== null
+                    ? String(created.file.id)
                     : undefined,
+            versionId: detail.currentVersion.id,
         }
     }
 
@@ -608,7 +684,10 @@ function RoleTaskCard({
             return
         }
 
-        await fileService.deleteFileRecord(file.fileRecordId)
+        await fileService.deleteFileRecord(
+            file.fileRecordId,
+            Number(file.versionId ?? detail.currentVersion.id),
+        )
     }
 
     async function handleOpenCurrentAssigneeModal() {
@@ -790,6 +869,7 @@ function RoleTaskCard({
                                 : '当前节点上传项来自工作流 `file_rules`，提交前会校验必传文件是否齐全。'}
                         </Typography.Text>
                         <DynamicFileRuleSection
+                            beforeUpload={handleBeforeFileUpload}
                             fileRules={displayStage.fileRules}
                             filesByRuleId={filesByRuleId}
                             onFileUploaded={handleFileUploaded}

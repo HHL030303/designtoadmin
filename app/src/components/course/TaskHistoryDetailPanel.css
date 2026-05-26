@@ -61,6 +61,26 @@
   gap: 6px;
 }
 
+.task-history-panel__version {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-history-panel__version-trigger.ant-btn {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  color: #64748b;
+}
+
+.task-history-panel__version-trigger.ant-btn:hover,
+.task-history-panel__version-trigger.ant-btn:focus {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
 .task-history-panel__workflow-grid {
   margin-top: 18px;
   width: 100%;

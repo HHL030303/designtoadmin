@@ -35,6 +35,22 @@ type ChecksumFileRecord = {
     version_id: number
     workflow_stage_id: number
     file_biz_type?: string | null
+    original_path?: string | null
+}
+
+export type FileDuplicateCheckPayload = {
+    checksum: string
+    original_name: string
+    original_path?: string
+    task_id: number
+    version_id: number
+}
+
+export type FileDuplicateCheckResponse = {
+    checksum_exists: boolean
+    checksum_file: ChecksumFileRecord | null
+    same_name_exists: boolean
+    same_name_file: ChecksumFileRecord | null
 }
 
 type ChecksumLookupResponse = {
@@ -51,6 +67,13 @@ export const fileService = {
         })
     },
 
+    async checkFileDuplicate(payload: FileDuplicateCheckPayload) {
+        return apiRequest<FileDuplicateCheckResponse>('/api/files/upload_check', {
+            body: payload,
+            method: 'POST',
+        })
+    },
+
     async createFileRecord(payload: CreateFileRecordPayload) {
         return apiRequest<CreateFileRecordResponse>('/api/files', {
             body: payload,
@@ -58,8 +81,11 @@ export const fileService = {
         })
     },
 
-    async deleteFileRecord(fileId: string) {
+    async deleteFileRecord(fileId: string, versionId: number) {
         await apiRequest<null>(`/api/files/${fileId}/delete`, {
+            body: {
+                version_id: versionId,
+            },
             method: 'POST',
         })
     },

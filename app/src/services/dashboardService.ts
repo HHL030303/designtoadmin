@@ -19,7 +19,13 @@ export type DashboardDatasetConfig = {
   paramsJson: Record<string, unknown>
 }
 
+export type DashboardCustomMenuItem = {
+  menuName: string
+  requestUrl: string
+}
+
 export type DashboardStatisticConfig = {
+  customMenuList: DashboardCustomMenuItem[]
   datasetList: DashboardDatasetConfig[]
   rawConfig: Record<string, unknown>
 }
@@ -54,6 +60,24 @@ function normalizeDatasetConfig(entry: unknown): DashboardDatasetConfig | null {
     apiPath,
     datasetName,
     paramsJson,
+  }
+}
+
+function normalizeCustomMenuItem(entry: unknown): DashboardCustomMenuItem | null {
+  if (!isRecord(entry)) {
+    return null
+  }
+
+  const menuName = typeof entry.menu_name === 'string' ? entry.menu_name.trim() : ''
+  const requestUrl = typeof entry.request_url === 'string' ? entry.request_url.trim() : ''
+
+  if (!menuName || !requestUrl) {
+    return null
+  }
+
+  return {
+    menuName,
+    requestUrl,
   }
 }
 
@@ -131,6 +155,11 @@ export const dashboardService = {
 
   async getStatisticConfig(): Promise<DashboardStatisticConfig> {
     const data = await apiRequest<Record<string, unknown>>('/api/project_statistic_config')
+    const customMenuList = Array.isArray(data.custom_menu_list)
+      ? data.custom_menu_list
+        .map((entry) => normalizeCustomMenuItem(entry))
+        .filter((entry): entry is DashboardCustomMenuItem => entry !== null)
+      : []
     const datasetList = Array.isArray(data.dataset_list)
       ? data.dataset_list
         .map((entry) => normalizeDatasetConfig(entry))
@@ -138,6 +167,7 @@ export const dashboardService = {
       : []
 
     return {
+      customMenuList,
       datasetList,
       rawConfig: data,
     }

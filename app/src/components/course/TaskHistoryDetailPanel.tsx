@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import dayjs from 'dayjs'
 import {
   Button,
   Card,
   Descriptions,
+  Dropdown,
   Empty,
   Form,
   InputNumber,
@@ -14,7 +15,8 @@ import {
   Typography,
   message,
 } from 'antd'
-import { EditOutlined } from '@ant-design/icons'
+import type { MenuProps } from 'antd'
+import { DownOutlined, EditOutlined } from '@ant-design/icons'
 import { AttachmentList } from '../common/AttachmentList'
 import { useAppState } from '../../context/AppStateContext'
 import { adminService } from '../../services/adminService'
@@ -88,11 +90,15 @@ export function TaskHistoryDetailPanel({
   detail,
   loading,
   onCollapse,
+  onSelectVersion,
+  selectedVersionId,
   onUpdated,
 }: {
   detail?: TaskDetailRecord
   loading?: boolean
   onCollapse?: () => void
+  onSelectVersion?: (versionId: string) => void
+  selectedVersionId?: string
   onUpdated?: () => Promise<void>
 }) {
   const { currentProject, currentUser, role } = useAppState()
@@ -103,6 +109,8 @@ export function TaskHistoryDetailPanel({
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [candidateMembers, setCandidateMembers] = useState<ProjectMemberRecord[]>([])
+  const [versionMenuOpen, setVersionMenuOpen] = useState(false)
+  const versionMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   if (loading) {
     return (
@@ -120,11 +128,13 @@ export function TaskHistoryDetailPanel({
     )
   }
 
-  const completedStageCount = detail.workflowStages.filter(
+  const resolvedDetail = detail
+
+  const completedStageCount = resolvedDetail.workflowStages.filter(
     (stage) => stage.status === 'completed' || stage.status === 'archived',
   ).length
-  const currentWorkflowStage = resolveCurrentWorkflowStage(detail)
-  const currentWorkflowStageIndex = detail.workflowStages.findIndex(
+  const currentWorkflowStage = resolveCurrentWorkflowStage(resolvedDetail)
+  const currentWorkflowStageIndex = resolvedDetail.workflowStages.findIndex(
     (stage) => stage.id === currentWorkflowStage?.id,
   )
   const currentRoleCode = currentWorkflowStage?.operatorRoleCode ?? ''
@@ -145,9 +155,79 @@ export function TaskHistoryDetailPanel({
       currentProject?.id &&
       currentWorkflowStage?.id &&
       currentRoleCode &&
-      detail?.task?.ownerId == currentUser?.id,
+      resolvedDetail.task.ownerId == currentUser?.id,
   )
   const canEditCompletedStage = role === 'admin' || role === 'planner'
+  const selectedHistoryVersionId = selectedVersionId ?? resolvedDetail.currentVersion.id
+  const versionHistory = useMemo(() => {
+    const versions = resolvedDetail.versionHistory.length > 0
+      ? resolvedDetail.versionHistory
+      : [resolvedDetail.currentVersion]
+
+    const uniqueVersions = new Map<string, typeof versions[number]>()
+
+    versions.forEach((version) => {
+      if (!uniqueVersions.has(version.id)) {
+        uniqueVersions.set(version.id, version)
+      }
+    })
+
+    if (!uniqueVersions.has(resolvedDetail.currentVersion.id)) {
+      uniqueVersions.set(resolvedDetail.currentVersion.id, resolvedDetail.currentVersion)
+    }
+
+    return Array.from(uniqueVersions.values())
+  }, [resolvedDetail.currentVersion, resolvedDetail.versionHistory])
+  const hasVersionHistory = versionHistory.length > 1
+  const versionMenuItems = useMemo<MenuProps['items']>(
+    () =>
+      versionHistory.map((version) => ({
+        key: version.id,
+        label: version.versionNo,
+      })),
+    [versionHistory],
+  )
+
+  useEffect(() => {
+    if (!hasVersionHistory) {
+      setVersionMenuOpen(false)
+    }
+  }, [hasVersionHistory])
+
+  function renderVersionLabel() {
+    if (!hasVersionHistory || !onSelectVersion) {
+      return resolvedDetail.currentVersion.versionNo
+    }
+
+    return (
+      <span className="task-history-panel__version">
+        <span>{resolvedDetail.currentVersion.versionNo}</span>
+        <Dropdown
+          menu={{
+            items: versionMenuItems,
+            onClick: ({ key }) => {
+              setVersionMenuOpen(false)
+              onSelectVersion(String(key))
+            },
+            selectedKeys: selectedHistoryVersionId ? [selectedHistoryVersionId] : [],
+          }}
+          open={versionMenuOpen}
+          onOpenChange={setVersionMenuOpen}
+          trigger={['click']}
+          placement="bottomLeft"
+        >
+          <Button
+            ref={versionMenuTriggerRef}
+            type="text"
+            size="small"
+            className="task-history-panel__version-trigger"
+            aria-label="查看任务历史版本"
+            icon={<DownOutlined />}
+          />
+        </Dropdown>
+      </span>
+    )
+  }
 
   function handleOpenStageEdit(stageId: string) {
     setEditingStageId(stageId)
@@ -226,7 +306,7 @@ export function TaskHistoryDetailPanel({
       <Card className="task-history-panel">
         <div className="task-history-panel__header">
           <Tag bordered={false} color="processing" className="task-history-panel__count-tag">
-            {detail.files.length} 个文件
+            {resolvedDetail.files.length} 个文件
           </Tag>
           {onCollapse ? (
             <Button size="small" className="task-history-panel__collapse-button" onClick={onCollapse}>
@@ -235,12 +315,12 @@ export function TaskHistoryDetailPanel({
           ) : null}
         </div>
         <Descriptions column={4} size="small" className="panel-descriptions">
-          <Descriptions.Item label="任务标题">{detail.task.title}</Descriptions.Item>
+          <Descriptions.Item label="任务标题">{resolvedDetail.task.title}</Descriptions.Item>
           {/* <Descriptions.Item label="任务负责人">{detail?.task?.owner_id}</Descriptions.Item> */}
-          <Descriptions.Item label="当前版本">{detail.currentVersion.versionNo}</Descriptions.Item>
+          <Descriptions.Item label="当前版本">{renderVersionLabel()}</Descriptions.Item>
           
           <Descriptions.Item label="当前节点">
-            {detail.currentStage?.stageName ?? '暂无'}
+            {resolvedDetail.currentStage?.stageName ?? '暂无'}
           </Descriptions.Item>
           <Descriptions.Item label="当前责任人">
             <span className="task-history-panel__owner">
@@ -257,51 +337,62 @@ export function TaskHistoryDetailPanel({
               ) : null}
             </span>
           </Descriptions.Item>
-          <Descriptions.Item label="历史文件数">{detail.files.length}</Descriptions.Item>
+          <Descriptions.Item label="历史文件数">{resolvedDetail.files.length}</Descriptions.Item>
           <Descriptions.Item label="当前截止日期">
             {currentWorkflowStage?.dueDate ?? '未配置'}
           </Descriptions.Item>
           <Descriptions.Item label="已完成节点数">{completedStageCount}</Descriptions.Item>
           {
-            detail?.currentVersion?.totalPageCount &&   <Descriptions.Item label="总页数">{detail?.currentVersion?.totalPageCount}</Descriptions.Item>
+            resolvedDetail.currentVersion.totalPageCount && <Descriptions.Item label="总页数">{resolvedDetail.currentVersion.totalPageCount}</Descriptions.Item>
           }
         
-          <Descriptions.Item label="流程节点总数">{detail.workflowStages.length}</Descriptions.Item>
+          <Descriptions.Item label="流程节点总数">{resolvedDetail.workflowStages.length}</Descriptions.Item>
           <Descriptions.Item label="打包文件">
-            {detail.packageInfo?.outputFile?.name ? (
+            {resolvedDetail.packageInfo?.outputFile?.name ? (
               <Button
                 type="link"
                 size="small"
                 className="task-history-panel__package-link"
-                onClick={() => makeDemoDownload(detail.packageInfo!.outputFile!)}
+                onClick={() => makeDemoDownload(resolvedDetail.packageInfo!.outputFile!)}
               >
-                {detail.packageInfo.outputFile.name}
+                {resolvedDetail.packageInfo.outputFile.name}
               </Button>
             ) : '-'}
           </Descriptions.Item>
           <Descriptions.Item label="打包完成时间">
-            {detail.packageInfo?.completedAt ?? '-'}
+            {resolvedDetail.packageInfo?.completedAt ?? '-'}
           </Descriptions.Item>
-          {detail.packageInfo?.errorMessage ? (
+          {resolvedDetail.packageInfo?.errorMessage ? (
             <Descriptions.Item label="打包失败原因" span={2}>
               <span className="task-history-panel__package-error">
-                {detail.packageInfo.errorMessage}
+                {resolvedDetail.packageInfo.errorMessage}
               </span>
             </Descriptions.Item>
           ) : null}
+         {
+          resolvedDetail.currentVersion?.description &&   <Descriptions.Item label="售后原因">
+            {resolvedDetail.currentVersion?.description ?? '-'}
+          </Descriptions.Item>
+          }
+          {
+          resolvedDetail.currentVersion?.workflow_template &&   <Descriptions.Item label="关联流程">
+            {resolvedDetail.currentVersion?.workflow_template?.name ?? '-'}
+          </Descriptions.Item>
+          }
+       
         </Descriptions>
         <div
           className="task-history-panel__workflow-grid"
           style={{
-            gridTemplateColumns: `repeat(${Math.max(detail.workflowStages.length, 1)}, minmax(0, 1fr))`,
+            gridTemplateColumns: `repeat(${Math.max(resolvedDetail.workflowStages.length, 1)}, minmax(0, 1fr))`,
           }}
         >
-          {detail.workflowStages.map((stage, index) => {
+          {resolvedDetail.workflowStages.map((stage, index) => {
             const isActive = stage.id === currentWorkflowStage?.id
             const overdue = isStageOverdue(stage.completedAt, stage.dueDate)
             const canEditThisStage = Boolean(
               canEditCompletedStage &&
-                detail.task.status !== 'completed' &&
+                resolvedDetail.task.status !== 'completed' &&
                 currentWorkflowStageIndex > 0 &&
                 index < currentWorkflowStageIndex &&
                 (stage.status === 'completed' || stage.status === 'archived'),
@@ -352,14 +443,14 @@ export function TaskHistoryDetailPanel({
             )
           })}
         </div>
-        {detail.files.length === 0 ? (
+        {resolvedDetail.files.length === 0 ? (
           <Empty
             className="task-history-panel__empty"
             description="暂无历史文件"
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <AttachmentList files={detail.files} groupFolders />
+          <AttachmentList files={resolvedDetail.files} groupFolders />
         )}
       </Card>
       <Modal
@@ -407,7 +498,7 @@ export function TaskHistoryDetailPanel({
         open={stageEditOpen}
         onClose={handleCloseStageEdit}
         onProcessed={onUpdated}
-        taskId={detail.task.id}
+        taskId={resolvedDetail.task.id}
         targetStageId={editingStageId}
       />
     </div>

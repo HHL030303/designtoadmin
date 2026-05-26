@@ -44,11 +44,12 @@ export type VolumeOption =
 export type YesNoOption = '是' | '否'
 export type HasOption = '有' | '无'
 export type ResearchReviewStatus = '免审' | '待审核' | '审核通过'
-export type FormFieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'boolean'
+export type FormFieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'boolean'|'multi_select'|'year'
 export type FieldConfigStatus = 'enabled' | 'disabled'
 
 export interface FieldOptionConfig {
   label: string
+  relate_show_field_key?: string|any
   value: string
   sort_value?: number
   status?: FieldConfigStatus
@@ -79,6 +80,12 @@ export interface TaskVersionRecord {
   expectCompleteAt?: string
   completedAt?: string | null
   archivedAt?: string | null
+  description?:string
+  workflow_template?:{
+    id:string
+    name:string
+    order_type?:string
+  }
 }
 
 export interface TaskSubTaskRecord {
@@ -179,6 +186,7 @@ export interface TaskDetailRecord {
     'id' | 'title' | 'status' | 'readonly' | 'createdAt' | 'archivedAt' | 'ownerId'
   >
   currentVersion: TaskVersionRecord
+  versionHistory: TaskVersionRecord[]
   currentStage?: TaskWorkflowStageRecord | null
   nextState?: {
     id: string
@@ -203,6 +211,7 @@ export interface AttachmentFile {
   uploadedAt?: string
   url?: string
   storageKey?: string
+  versionId?: string
   workflowStageId?: string
 }
 

@@ -252,11 +252,23 @@ function normalizeTaskFieldOptions(rawValue: unknown): FieldOptionConfig[] | und
 
   return rawValue
     .filter(
-      (option): option is { label?: unknown; value?: unknown; sort_value?: unknown; status?: unknown } =>
+      (
+        option,
+      ): option is {
+        label?: unknown
+        relate_show_field_key?: unknown
+        value?: unknown
+        sort_value?: unknown
+        status?: unknown
+      } =>
         typeof option === 'object' && option !== null,
     )
     .map((option) => ({
       label: typeof option.label === 'string' ? option.label : String(option.value ?? ''),
+      relate_show_field_key:
+        typeof option.relate_show_field_key === 'string'
+          ? option.relate_show_field_key
+          : undefined,
       sort_value:
         typeof option.sort_value === 'number' && Number.isFinite(option.sort_value)
           ? option.sort_value
