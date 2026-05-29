@@ -515,7 +515,7 @@ export function validateFieldConfigJson(
     throw new Error('default_value 仅支持 string、number 或 boolean')
   }
 
-  if (fieldType === 'number' && value.default_value !== undefined && typeof value.default_value !== 'number') {
+  if (fieldType === 'number' && value.default_value !== undefined && typeof value.default_value !== 'number' && value.default_value!=='') {
     throw new Error('number 类型的 default_value 必须是数字')
   }
 

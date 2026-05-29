@@ -43,8 +43,15 @@ import { makeDemoDownload } from '../utils/attachments'
 import { TaskProcessModal } from '../components/course/TaskProcessModal'
 import { TaskHistoryDetailPanel } from '../components/course/TaskHistoryDetailPanel'
 import { ServiceTicketDrawer } from '../components/course/ServiceTicketDrawer'
+import { MedicalTaskComplaintModal } from '../components/course/MedicalTaskComplaintModal'
+import { MedicalTaskSubItemModal } from '../components/course/MedicalTaskSubItemModal'
+import { shouldEnableMedicalTaskSpecialActions } from '../constants/taskHardcodedRules'
+import { getTaskListActionPermission } from '../constants/taskListActionPermissions'
+import { shouldShowCompletedTaskTab } from '../constants/taskListTabPermissions'
 import './CoursesPage.css'
 import type {
+  CreateMedicalTaskComplaintPayload,
+  CreateMedicalTaskSubItemPayload,
   // CreateCoursePayload,
   FieldConfig,
   FieldOptionConfig,
@@ -62,13 +69,11 @@ type TaskFormValue = string | number | boolean | Dayjs | null | undefined
 type TaskFormValues = Record<string, TaskFormValue>
 type TaskSearchFieldValue = string | number | boolean | string[] | null | undefined
 type TaskSearchFormValues = Record<string, TaskSearchFieldValue>
-
-const TASK_MEMBERS_FIELD_KEY = 'menbers'
-const TASK_MEMBERS_FIELD_LABEL = '制作人员'
-const PRODUCTION_SOURCE_FIELD_KEY = 'productionSource'
-const PRODUCTION_COST_FIELD_NAME = '制作方费用'
-// 这几个 key/name 都来自后端字段配置或既有接口约定。
-// 新建任务弹窗里所有“内部/外部”的联动展示和提交流程都围绕它们展开。
+type SelectOption = {
+  label: string
+  userName?: string
+  value: string
+}
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
   archived: { color: 'green', label: '已归档' },
@@ -81,6 +86,8 @@ const taskStatusMeta: Record<string, { color: string; label: string }> = {
 const DEFAULT_TASK_STATUS_META = { color: 'blue', label: '未知状态' }
 const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
 const mandatoryTaskColumnKeys = ['task']
+const TASK_OWNER_MEMBER_PAGE_SIZE = 100
+const SECOND_STAGE_MEMBER_PAGE_SIZE = 100
 
 type TaskColumnDefinition = {
   column: ColumnsType<TaskListRecord>[number]
@@ -200,9 +207,21 @@ function areTaskColumnKeysEqual(left: string[], right: string[]): boolean {
 function buildFormInitialValues(
   fieldConfigs: FieldConfig[],
   rawValues?: Record<string, unknown>,
+  options?: {
+    useDefaultValue?: boolean
+  },
 ): TaskFormValues {
   return fieldConfigs.reduce<TaskFormValues>((accumulator, field) => {
-    const rawValue = rawValues?.[field.field_key] ?? field.default_value
+    const shouldUseDefaultValue = options?.useDefaultValue ?? true
+    const hasRawValue = Boolean(rawValues) && Object.prototype.hasOwnProperty.call(
+      rawValues,
+      field.field_key,
+    )
+    const rawValue = hasRawValue
+      ? rawValues?.[field.field_key]
+      : shouldUseDefaultValue
+        ? field.default_value
+        : undefined
 
     if (rawValue === undefined || rawValue === null || rawValue === '') {
       return accumulator
@@ -210,13 +229,44 @@ function buildFormInitialValues(
 
     if (field.field_type === 'date' || field.field_type === 'year') {
       if (typeof rawValue === 'number') {
-        accumulator[field.field_key] = dayjs.unix(rawValue)
+        const normalizedYearValue = String(rawValue).trim()
+
+        if (
+          field.field_type === 'year' ||
+          field.type === 'year' ||
+          /^\d{4}$/.test(normalizedYearValue)
+        ) {
+          const parsedYear = dayjs(`${normalizedYearValue}-01-01`)
+
+          if (parsedYear.isValid()) {
+            accumulator[field.field_key] = parsedYear
+          }
+
+          return accumulator
+        }
+
+        const parsedTimestamp = rawValue > 1_000_000_000_000
+          ? dayjs(rawValue)
+          : dayjs.unix(rawValue)
+
+        if (parsedTimestamp.isValid()) {
+          accumulator[field.field_key] = parsedTimestamp
+        }
+
         return accumulator
       }
 
       // 编辑任务时，DatePicker / YearPicker 都必须收到 dayjs 实例；
       // 否则字符串原值会在 antd 内部触发 isValid is not a function。
-      const parsedDate = dayjs(String(rawValue))
+      const normalizedRawValue = String(rawValue).trim()
+      const parsedDate = (
+        field.field_type === 'year' ||
+        field.type === 'year' ||
+        /^\d{4}$/.test(normalizedRawValue)
+      )
+        ? dayjs(`${normalizedRawValue}-01-01`)
+        : dayjs(normalizedRawValue)
+
       if (parsedDate.isValid()) {
         accumulator[field.field_key] = parsedDate
       }
@@ -272,11 +322,7 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
 
 function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
   return [...fieldConfigs]
-    .filter((field) => (
-      field.status === 'enabled' &&
-      // menbers 由弹窗里的联动逻辑单独渲染，避免和接口返回的原始字段重复出现。
-      field.field_key !== TASK_MEMBERS_FIELD_KEY
-    ))
+    .filter((field) => field.status === 'enabled')
     .sort((left, right) => left.sort_value - right.sort_value)
 }
 
@@ -289,6 +335,21 @@ function getSearchableTaskFieldConfigs(fieldConfigs: FieldConfig[]) {
         field.field_type !== 'date',
     )
     .sort((left, right) => left.sort_value - right.sort_value)
+}
+
+function mergeSelectOptions(
+  options: SelectOption[],
+  selectedOption?: SelectOption | null,
+): SelectOption[] {
+  if (!selectedOption) {
+    return options
+  }
+
+  if (options.some((option) => option.value === selectedOption.value)) {
+    return options
+  }
+
+  return [selectedOption, ...options]
 }
 
 function buildTaskFieldFilters(
@@ -380,6 +441,16 @@ function buildTaskDetailSearchParams(options: {
   return nextSearch ? `?${nextSearch}` : ''
 }
 
+function buildWorkflowStageFieldOptions(detail: TaskDetailRecord): FieldOptionConfig[] {
+  return detail.workflowStages
+    .slice()
+    .sort((left, right) => left.sortValue - right.sortValue)
+    .map((stage) => ({
+      label: stage.stageName,
+      value: stage.id,
+    }))
+}
+
 function renderFieldControl(field: FieldConfig) {
   const textPlaceholder = field.placeholder || `请输入${field.field_name}`
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
@@ -468,7 +539,7 @@ function renderSearchFieldControl(field: FieldConfig) {
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
 
   if (field.field_type === 'textarea' || field.field_type === 'text') {
-    return <Input placeholder={textPlaceholder} allowClear />
+    return <Input placeholder={textPlaceholder}  allowClear />
   }
 
   if (field.field_type === 'select') {
@@ -505,43 +576,84 @@ function renderSearchFieldControl(field: FieldConfig) {
   return <Input placeholder={textPlaceholder} allowClear />
 }
 
-function getRelateShowFieldValue(
-  fieldConfigs: FieldConfig[],
-  values: TaskFormValues | undefined,
-): { fieldKey: string; type: '内部' | '外部' } | null {
-  if (!values) {
-    return null
-  }
-
-  for (const field of fieldConfigs) {
-    const selectedValue = values[field.field_key]
-
-    if (selectedValue === undefined || selectedValue === null || selectedValue === '') {
-      continue
-    }
-
-    const matchedOption = field.option_config?.find(
-      (option) => option.value === String(selectedValue),
-    )
-    const relateShowFieldKey = matchedOption?.relate_show_field_key
-
-    // 后端通过 option_config.relate_show_field_key 告诉前端：
-    // 当前选项会触发“制作人员”的额外联动字段。
-    if (relateShowFieldKey === '内部' || relateShowFieldKey === '外部') {
-      return {
-        fieldKey: field.field_key,
-        type: relateShowFieldKey,
-      }
-    }
-  }
-
-  return null
+function buildTaskFieldFormItem(field: FieldConfig) {
+  return (
+    <Form.Item
+      label={field.field_name}
+      name={field.field_key}
+      rules={[
+        ...(field.required
+          ? [
+              {
+                required: true,
+                message:
+                  `${field.field_type === 'select' || field.field_type === 'multi_select' ? '请选择' : '请输入'}${field.field_name}`,
+              },
+            ]
+          : []),
+        ...(isNotBeforeTodayField(field)
+          ? [{ validator: validateNotBeforeToday }]
+          : []),
+      ]}
+    >
+      {renderFieldControl(field)}
+    </Form.Item>
+  )
 }
 
-function isInternalProductionSource(
+function getMatchedRelateShowFieldKey(
+  field: FieldConfig,
   values: TaskFormValues | undefined,
-) {
-  return String(values?.[PRODUCTION_SOURCE_FIELD_KEY] ?? '').trim() === '内部'
+): string | undefined {
+  const selectedValue = values?.[field.field_key]
+
+  if (selectedValue === undefined || selectedValue === null || selectedValue === '') {
+    return undefined
+  }
+
+  const matchedOption = field.option_config?.find(
+    (option) => option.value === String(selectedValue),
+  )
+
+  return typeof matchedOption?.relate_show_field_key === 'string'
+    ? matchedOption.relate_show_field_key
+    : undefined
+}
+
+function getRelatedTargetFieldKeys(fieldConfigs: FieldConfig[]): Set<string> {
+  const fieldKeySet = new Set(fieldConfigs.map((field) => field.field_key))
+  const targetFieldKeys = new Set<string>()
+
+  fieldConfigs.forEach((field) => {
+    field.option_config?.forEach((option) => {
+      if (
+        typeof option.relate_show_field_key === 'string' &&
+        fieldKeySet.has(option.relate_show_field_key)
+      ) {
+        targetFieldKeys.add(option.relate_show_field_key)
+      }
+    })
+  })
+
+  return targetFieldKeys
+}
+
+function getActiveRelatedFieldKeys(
+  fieldConfigs: FieldConfig[],
+  values: TaskFormValues | undefined,
+): Set<string> {
+  const fieldKeySet = new Set(fieldConfigs.map((field) => field.field_key))
+  const activeFieldKeys = new Set<string>()
+
+  fieldConfigs.forEach((field) => {
+    const relateShowFieldKey = getMatchedRelateShowFieldKey(field, values)
+
+    if (relateShowFieldKey && fieldKeySet.has(relateShowFieldKey)) {
+      activeFieldKeys.add(relateShowFieldKey)
+    }
+  })
+
+  return activeFieldKeys
 }
 
 function mapOrderTypeToApi(value: unknown): 'new' | 'aftersales' | 'iteration' {
@@ -561,12 +673,8 @@ function buildTaskPayload(
   values: TaskFormValues,
   options?: {
     firstStage?: { id?: string }
-    isInternalMembersField?: boolean
-    secondStage?: { id?: string }
   },
 ) {
-  // 常规字段仍然统一从动态字段配置里序列化；
-  // “制作人员 menbers” 和首/次阶段指派属于额外业务规则，在后面单独补进去。
   const fieldValues = getEnabledFieldConfigs(fieldConfigs).reduce<Record<string, unknown>>(
     (accumulator, field) => {
       const serialized = serializeFieldValue(field, values[field.field_key])
@@ -586,24 +694,13 @@ function buildTaskPayload(
     ? finalDueDateValue.format('YYYY-MM-DD')
     : undefined
   const ownerId = normalizeTaskOwnerId(values.taskOwnerUserId)
-  const membersValue = values[TASK_MEMBERS_FIELD_KEY]
-  // 第一阶段仍然沿用原来的执行人选择；
-  // 只有“内部”场景才会把 menbers 继续写入第二阶段的 stage_assignments。
   const firstStageAssignments = buildStageAssignment(
     options?.firstStage,
     values.secondStageAssigneeUserId,
   )
-  const secondStageAssignments = options?.isInternalMembersField
-    ? buildStageAssignment(options.secondStage, membersValue)
-    : undefined
   const stageAssignments = [
     ...(firstStageAssignments ?? []),
-    ...(secondStageAssignments ?? []),
   ]
-
-  if (membersValue !== undefined && membersValue !== null && membersValue !== '') {
-    fieldValues[TASK_MEMBERS_FIELD_KEY] = membersValue
-  }
 
   return {
     expect_complete_at: expectCompleteAt,
@@ -786,6 +883,25 @@ function resolveFirstStageAssigneeUserId(detail: TaskDetailRecord): string | und
 
   return firstStage.stageAssignees.find((assignee) => assignee.isPrimary)?.userId
     ?? firstStage.stageAssignees[0]?.userId
+}
+
+function resolveFirstStageAssigneeOption(detail: TaskDetailRecord): SelectOption | null {
+  const firstStage = detail.workflowStages[0]
+
+  if (!firstStage) {
+    return null
+  }
+
+  const assignee = firstStage.stageAssignees.find((item) => item.isPrimary) ?? firstStage.stageAssignees[0]
+
+  if (!assignee?.userId) {
+    return null
+  }
+
+  return {
+    label: assignee.userName,
+    value: assignee.userId,
+  }
 }
 
 function getTaskDetailCacheKey(taskId: string, versionId?: string): string {
@@ -983,6 +1099,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [serviceDrawerOpen, setServiceDrawerOpen] = useState(false)
   const [serviceDrawerTaskId, setServiceDrawerTaskId] = useState<string>('')
   const [serviceDrawerType, setServiceDrawerType] = useState<ServiceType>('售后')
+  const [medicalSubItemModalOpen, setMedicalSubItemModalOpen] = useState(false)
+  const [medicalComplaintModalOpen, setMedicalComplaintModalOpen] = useState(false)
+  const [medicalActionTaskId, setMedicalActionTaskId] = useState<string>('')
+  const [medicalComplaintStageOptions, setMedicalComplaintStageOptions] = useState<
+    FieldOptionConfig[]
+  >([])
+  const [medicalComplaintResponsibilityOptions, setMedicalComplaintResponsibilityOptions] =
+    useState<FieldOptionConfig[]>([])
+  const [medicalComplaintContextLoading, setMedicalComplaintContextLoading] = useState(false)
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([])
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null)
   const [taskDetails, setTaskDetails] = useState<Record<string, TaskDetailRecord>>({})
@@ -995,10 +1120,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [workflowLoading, setWorkflowLoading] = useState(false)
   const [taskOwnerMembers, setTaskOwnerMembers] = useState<ProjectMemberRecord[]>([])
   const [taskOwnerLoading, setTaskOwnerLoading] = useState(false)
+  const [taskOwnerMemberPage, setTaskOwnerMemberPage] = useState(1)
+  const [taskOwnerMemberHasMore, setTaskOwnerMemberHasMore] = useState(false)
+  const [taskOwnerSearchValue, setTaskOwnerSearchValue] = useState('')
+  const [editingTaskOwnerOption, setEditingTaskOwnerOption] = useState<SelectOption | null>(null)
   const [secondStageMembers, setSecondStageMembers] = useState<ProjectMemberRecord[]>([])
   const [secondStageLoading, setSecondStageLoading] = useState(false)
-  const [designerMembers, setDesignerMembers] = useState<ProjectMemberRecord[]>([])
-  const [designerMembersLoading, setDesignerMembersLoading] = useState(false)
+  const [secondStageMemberPage, setSecondStageMemberPage] = useState(1)
+  const [secondStageMemberHasMore, setSecondStageMemberHasMore] = useState(false)
+  const [secondStageSearchValue, setSecondStageSearchValue] = useState('')
+  const [editingSecondStageOption, setEditingSecondStageOption] = useState<SelectOption | null>(null)
   const [serviceOwnerOptions, setServiceOwnerOptions] = useState<FieldOptionConfig[]>([])
   const [serviceParticipantOptions, setServiceParticipantOptions] = useState<FieldOptionConfig[]>([])
   const [serviceFirstStageAssigneeLabel, setServiceFirstStageAssigneeLabel] = useState('')
@@ -1009,13 +1140,47 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   }>({})
   // const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
-  const taskMembersRelationTypeRef = useRef<'内部' | '外部' | null>(null)
+  const taskOwnerLoadingRef = useRef(false)
+  const taskOwnerRequestIdRef = useRef(0)
+  const taskOwnerSearchTimerRef = useRef<number | null>(null)
+  const secondStageLoadingRef = useRef(false)
+  const secondStageRequestIdRef = useRef(0)
+  const secondStageSearchTimerRef = useRef<number | null>(null)
   const [form] = Form.useForm<TaskFormValues>()
   const [searchForm] = Form.useForm<TaskSearchFormValues>()
   const watchedTaskFormValues = Form.useWatch([], form) as TaskFormValues | undefined
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
+  const taskListActionPermission = getTaskListActionPermission(currentProject)
+  const canManageTaskListButtons = taskListActionPermission
+    ? taskListActionPermission.allowedRoles.includes(role)
+    : true
   const shouldShowTaskTabs = !canManageTaskActions
+  const shouldShowCompletedTab = shouldShowCompletedTaskTab(role)
+  const shouldShowMedicalTaskActions =
+    !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject)
+  const taskOwnerOptions = useMemo(
+    () => mergeSelectOptions(
+      taskOwnerMembers.map((member) => ({
+        label: `${member.userName} · ${member.userEmail}`,
+        userName: member.userName,
+        value: member.userId,
+      })),
+      editingTaskOwnerOption,
+    ),
+    [editingTaskOwnerOption, taskOwnerMembers],
+  )
+  const secondStageOptions = useMemo(
+    () => mergeSelectOptions(
+      secondStageMembers.map((member) => ({
+        label: member.userName,
+        value: member.userId,
+        userName: member.userName,
+      })),
+      editingSecondStageOption,
+    ),
+    [editingSecondStageOption, secondStageMembers],
+  )
   // const activeTaskCount = tasks.filter((task) => task.status !== 'completed').length
 
   const loadTasks = useCallback(
@@ -1170,7 +1335,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     [selectedWorkflowTemplate?.stages],
   )
   const firstWorkflowStage = sortedWorkflowStages[0]
-  const secondWorkflowStage = sortedWorkflowStages[1]
   const firstWorkflowRoleCode = firstWorkflowStage?.operatorRoleCode
   const firstWorkflowRoleName = firstWorkflowStage?.operatorRoleName ?? firstWorkflowStage?.stageName
   const shouldShowTaskOwnerField = Boolean(
@@ -1181,74 +1345,177 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       firstWorkflowRoleCode,
   )
 
-  useEffect(() => {
-    const projectId = currentProject?.id ?? ''
+  const loadTaskOwnerMembers = useCallback(
+    async (targetPage: number, append: boolean, searchKeyword: string) => {
+      const projectId = currentProject?.id ?? ''
+      const requestId = taskOwnerRequestIdRef.current + 1
+      taskOwnerRequestIdRef.current = requestId
 
-    if (!projectId || !canManageTaskActions || !selectedWorkflowTemplate) {
+      if (
+        !projectId ||
+        !canManageTaskActions ||
+        !selectedWorkflowTemplate ||
+        (append && taskOwnerLoadingRef.current)
+      ) {
+        return
+      }
+
+      try {
+        taskOwnerLoadingRef.current = true
+        setTaskOwnerLoading(true)
+        const response = await adminService.listProjectMembers({
+          keyword: searchKeyword.trim() || undefined,
+          page: targetPage,
+          pageSize: TASK_OWNER_MEMBER_PAGE_SIZE,
+          projectId,
+        })
+
+        if (requestId !== taskOwnerRequestIdRef.current) {
+          return
+        }
+
+        setTaskOwnerMembers((current) => {
+          if (!append) {
+            return response.items
+          }
+
+          const existingMemberIds = new Set(current.map((member) => member.userId))
+          const nextItems = response.items.filter((member) => !existingMemberIds.has(member.userId))
+          return [...current, ...nextItems]
+        })
+        setTaskOwnerMemberPage(response.page)
+        setTaskOwnerMemberHasMore(response.page * response.pageSize < response.total)
+      } catch (error) {
+        if (requestId !== taskOwnerRequestIdRef.current) {
+          return
+        }
+
+        message.error(error instanceof Error ? error.message : '任务所有者成员加载失败')
+
+        if (!append) {
+          setTaskOwnerMembers([])
+          setTaskOwnerMemberPage(1)
+          setTaskOwnerMemberHasMore(false)
+        }
+      } finally {
+        if (requestId === taskOwnerRequestIdRef.current) {
+          taskOwnerLoadingRef.current = false
+          setTaskOwnerLoading(false)
+        }
+      }
+    },
+    [canManageTaskActions, currentProject?.id, selectedWorkflowTemplate],
+  )
+
+  useEffect(() => {
+    if (!currentProject?.id || !canManageTaskActions || !selectedWorkflowTemplate) {
       setTaskOwnerMembers([])
+      setTaskOwnerSearchValue('')
+      setTaskOwnerMemberPage(1)
+      setTaskOwnerMemberHasMore(false)
       return
     }
 
-    async function loadTaskOwnerMembers() {
-      try {
-        setTaskOwnerLoading(true)
-        const response = await adminService.listProjectMembers({
-          page: 1,
-          pageSize: 100,
-          projectId,
-        })
-        setTaskOwnerMembers(response.items)
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '任务所有者成员加载失败')
-        setTaskOwnerMembers([])
-      } finally {
-        setTaskOwnerLoading(false)
-      }
-    }
-
-    void loadTaskOwnerMembers()
+    void loadTaskOwnerMembers(1, false, '')
   }, [
     canManageTaskActions,
     currentProject?.id,
     editingTaskId,
-    form,
+    loadTaskOwnerMembers,
     selectedWorkflowTemplate,
   ])
 
-  useEffect(() => {
-    const projectId = currentProject?.id ?? ''
-    const roleCode = firstWorkflowRoleCode ?? ''
-
-    if (!projectId || !canManageTaskActions || !selectedWorkflowTemplate || !roleCode) {
-      setSecondStageMembers([])
-      return
+  useEffect(() => () => {
+    if (taskOwnerSearchTimerRef.current) {
+      window.clearTimeout(taskOwnerSearchTimerRef.current)
     }
 
-    async function loadSecondStageMembers() {
+    if (secondStageSearchTimerRef.current) {
+      window.clearTimeout(secondStageSearchTimerRef.current)
+    }
+  }, [])
+
+  const loadSecondStageMembers = useCallback(
+    async (targetPage: number, append: boolean, searchKeyword: string) => {
+      const projectId = currentProject?.id ?? ''
+      const roleCode = firstWorkflowRoleCode ?? ''
+      const requestId = secondStageRequestIdRef.current + 1
+      secondStageRequestIdRef.current = requestId
+
+      if (
+        !projectId ||
+        !canManageTaskActions ||
+        !selectedWorkflowTemplate ||
+        !roleCode ||
+        (append && secondStageLoadingRef.current)
+      ) {
+        return
+      }
+
       try {
+        secondStageLoadingRef.current = true
         setSecondStageLoading(true)
         const response = await adminService.listProjectRoleUsers({
-          page: 1,
-          pageSize: 100,
+          keyword: searchKeyword.trim() || undefined,
+          page: targetPage,
+          pageSize: SECOND_STAGE_MEMBER_PAGE_SIZE,
           roleCode,
           projectId,
         })
-        setSecondStageMembers(response.items)
+
+        if (requestId !== secondStageRequestIdRef.current) {
+          return
+        }
+
+        setSecondStageMembers((current) => {
+          if (!append) {
+            return response.items
+          }
+
+          const existingMemberIds = new Set(current.map((member) => member.userId))
+          const nextItems = response.items.filter((member) => !existingMemberIds.has(member.userId))
+          return [...current, ...nextItems]
+        })
+        setSecondStageMemberPage(response.page)
+        setSecondStageMemberHasMore(response.page * response.pageSize < response.total)
       } catch (error) {
+        if (requestId !== secondStageRequestIdRef.current) {
+          return
+        }
+
         message.error(error instanceof Error ? error.message : '第一阶段角色成员加载失败')
-        setSecondStageMembers([])
+
+        if (!append) {
+          setSecondStageMembers([])
+          setSecondStageMemberPage(1)
+          setSecondStageMemberHasMore(false)
+        }
       } finally {
-        setSecondStageLoading(false)
+        if (requestId === secondStageRequestIdRef.current) {
+          secondStageLoadingRef.current = false
+          setSecondStageLoading(false)
+        }
       }
+    },
+    [canManageTaskActions, currentProject?.id, firstWorkflowRoleCode, selectedWorkflowTemplate],
+  )
+
+  useEffect(() => {
+    if (!currentProject?.id || !canManageTaskActions || !selectedWorkflowTemplate || !firstWorkflowRoleCode) {
+      setSecondStageMembers([])
+      setSecondStageSearchValue('')
+      setSecondStageMemberPage(1)
+      setSecondStageMemberHasMore(false)
+      return
     }
 
-    void loadSecondStageMembers()
+    void loadSecondStageMembers(1, false, '')
   }, [
     canManageTaskActions,
     currentProject?.id,
     editingTaskId,
     firstWorkflowRoleCode,
-    form,
+    loadSecondStageMembers,
     selectedWorkflowTemplate,
   ])
 
@@ -1256,18 +1523,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     () => getEnabledFieldConfigs(taskFieldConfigs),
     [taskFieldConfigs],
   )
-  // taskMembersRelation 只负责判断“当前选中的哪个字段触发了联动”，
-  // 真正要不要显示额外字段，再由下面的布尔值继续收敛。
-  const taskMembersRelation = useMemo(
-    () => getRelateShowFieldValue(enabledFieldConfigs, watchedTaskFormValues),
+  const relatedTargetFieldKeys = useMemo(
+    () => getRelatedTargetFieldKeys(enabledFieldConfigs),
+    [enabledFieldConfigs],
+  )
+  const activeRelatedFieldKeys = useMemo(
+    () => getActiveRelatedFieldKeys(enabledFieldConfigs, watchedTaskFormValues),
     [enabledFieldConfigs, watchedTaskFormValues],
   )
-  const isInternalProduction = useMemo(
-    () => isInternalProductionSource(watchedTaskFormValues),
-    [watchedTaskFormValues],
-  )
-  const shouldShowMembersField = taskMembersRelation?.type === '内部'
-  const isInternalMembersField = taskMembersRelation?.type === '内部'
   const searchableTaskFieldConfigs = useMemo(
     () => getSearchableTaskFieldConfigs(taskFieldConfigs),
     [taskFieldConfigs],
@@ -1282,73 +1545,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const taskColumnStorageKey = buildTaskColumnStorageKey(currentProject?.id ?? 'global', mode)
 
   useEffect(() => {
-    const projectId = currentProject?.id ?? ''
-
-    if (!drawerOpen || !projectId || !isInternalMembersField) {
-      setDesignerMembers([])
-      return
-    }
-
-    // “制作人员”只在内部场景出现，所以设计师候选人也只在这里按需加载。
-    async function loadDesignerMembers() {
-      try {
-        setDesignerMembersLoading(true)
-        const response = await adminService.listProjectRoleUsers({
-          page: 1,
-          pageSize: 100,
-          projectId,
-          roleCode: 'design',
-        })
-        setDesignerMembers(response.items)
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '内部设计师加载失败')
-        setDesignerMembers([])
-      } finally {
-        setDesignerMembersLoading(false)
+    enabledFieldConfigs.forEach((field) => {
+      if (
+        relatedTargetFieldKeys.has(field.field_key) &&
+        !activeRelatedFieldKeys.has(field.field_key)
+      ) {
+        form.setFieldValue(field.field_key, undefined)
       }
-    }
-
-    void loadDesignerMembers()
-  }, [currentProject?.id, drawerOpen, isInternalMembersField])
-
-  useEffect(() => {
-    if (!shouldShowMembersField) {
-      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
-      taskMembersRelationTypeRef.current = null
-      return
-    }
-
-    // 在“内部 / 外部”之间切换时，主动清掉旧值，避免把上一次场景的值带进来提交。
-    if (
-      taskMembersRelationTypeRef.current &&
-      taskMembersRelationTypeRef.current !== taskMembersRelation?.type
-    ) {
-      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
-    }
-
-    taskMembersRelationTypeRef.current = taskMembersRelation?.type ?? null
-
-    const currentValue = form.getFieldValue(TASK_MEMBERS_FIELD_KEY)
-
-    if (isInternalMembersField && typeof currentValue !== 'string') {
-      form.setFieldValue(TASK_MEMBERS_FIELD_KEY, undefined)
-    }
-  }, [form, isInternalMembersField, shouldShowMembersField, taskMembersRelation?.type])
-
-  useEffect(() => {
-    if (!isInternalProduction) {
-      return
-    }
-
-    // “制作方归属 = 内部” 时，制作方费用不展示，也要顺手把旧值清掉。
-    const productionCostField = enabledFieldConfigs.find(
-      (field) => field.field_name === PRODUCTION_COST_FIELD_NAME,
-    )
-
-    if (productionCostField) {
-      form.setFieldValue(productionCostField.field_key, undefined)
-    }
-  }, [enabledFieldConfigs, form, isInternalProduction])
+    })
+  }, [activeRelatedFieldKeys, enabledFieldConfigs, form, relatedTargetFieldKeys])
 
   // const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
   //   label: getTaskStatusMeta(status).label,
@@ -1362,14 +1567,18 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
 
     setEditingTaskId(null)
-    setDesignerMembers([])
+    setTaskOwnerSearchValue('')
+    setTaskOwnerMembers([])
+    setTaskOwnerMemberPage(1)
+    setTaskOwnerMemberHasMore(false)
     setTaskOwnerMembers([])
     setSecondStageMembers([])
-    taskMembersRelationTypeRef.current = null
+    setSecondStageSearchValue('')
+    setSecondStageMemberPage(1)
+    setSecondStageMemberHasMore(false)
     form.resetFields()
     form.setFieldsValue({
       ...buildFormInitialValues(enabledFieldConfigs),
-      [TASK_MEMBERS_FIELD_KEY]: undefined,
       workflowTemplateId: undefined,
     })
     setDrawerOpen(true)
@@ -1442,14 +1651,23 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
       const workflowTemplateId = resolveWorkflowTemplateId(detail, availableWorkflowTemplates)
       const firstStageAssigneeUserId = resolveFirstStageAssigneeUserId(detail)
+      const firstStageAssigneeOption = resolveFirstStageAssigneeOption(detail)
 
       setEditingTaskId(task.id)
-      setDesignerMembers([])
-      taskMembersRelationTypeRef.current = null
+      setEditingTaskOwnerOption(
+        detail.task.ownerId && detail.task.ownerName
+          ? {
+              label: detail.task.ownerName,
+              value: detail.task.ownerId,
+            }
+          : null,
+      )
+      setEditingSecondStageOption(firstStageAssigneeOption)
       form.resetFields()
       form.setFieldsValue({
-        ...buildFormInitialValues(enabledFieldConfigs, detail.fieldValues),
-        [TASK_MEMBERS_FIELD_KEY]: detail.fieldValues[TASK_MEMBERS_FIELD_KEY] as TaskFormValue,
+        ...buildFormInitialValues(enabledFieldConfigs, detail.fieldValues, {
+          useDefaultValue: false,
+        }),
         secondStageAssigneeUserId: firstStageAssigneeUserId,
         taskOwnerUserId: detail.task.ownerId,
         workflowTemplateId,
@@ -1464,10 +1682,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   function handleCloseDrawer() {
     setDrawerOpen(false)
     setEditingTaskId(null)
-    setDesignerMembers([])
+    setTaskOwnerSearchValue('')
+    setEditingTaskOwnerOption(null)
+    setEditingSecondStageOption(null)
     setTaskOwnerMembers([])
     setSecondStageMembers([])
-    taskMembersRelationTypeRef.current = null
+    setSecondStageSearchValue('')
     form.resetFields()
   }
 
@@ -1482,6 +1702,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setServiceFirstStageAssigneeLabel('')
     setServiceFirstStageAssigneeOptions([])
     setServiceFirstStageAssignmentMeta({})
+  }
+
+  function handleCloseMedicalSubItemModal() {
+    setMedicalSubItemModalOpen(false)
+    setMedicalActionTaskId('')
+  }
+
+  function handleCloseMedicalComplaintModal() {
+    setMedicalComplaintModalOpen(false)
+    setMedicalActionTaskId('')
+    setMedicalComplaintStageOptions([])
+    setMedicalComplaintResponsibilityOptions([])
+    setMedicalComplaintContextLoading(false)
   }
 
   async function refreshTaskDetail(taskId: string, versionId?: string) {
@@ -1562,6 +1795,39 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       await loadServiceParticipantOptions(taskId)
     }
   }
+
+  async function openMedicalSubItemModal(taskId: string) {
+    setMedicalActionTaskId(taskId)
+    setMedicalSubItemModalOpen(true)
+  }
+
+  async function openMedicalComplaintModal(taskId: string) {
+    setMedicalActionTaskId(taskId)
+    setMedicalComplaintModalOpen(true)
+    setMedicalComplaintContextLoading(true)
+
+    try {
+      // 客诉弹窗依赖主任务的流程阶段和责任方候选项，统一在打开时准备好上下文。
+      const [detail, participants] = await Promise.all([
+        refreshTaskDetail(taskId),
+        taskService.listTaskParticipants(taskId),
+      ])
+
+      setMedicalComplaintStageOptions(buildWorkflowStageFieldOptions(detail))
+      setMedicalComplaintResponsibilityOptions(
+        participants.map((participant) => ({
+          label: participant.name,
+          value: participant.id,
+        })),
+      )
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '客诉信息加载失败')
+      handleCloseMedicalComplaintModal()
+    } finally {
+      setMedicalComplaintContextLoading(false)
+    }
+  }
+
   async function cancelOpeTask(task: TaskListRecord) {
     const targetSubTask = resolveCancelableSubTask(task)
 
@@ -1666,11 +1932,62 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
   }
 
+  async function handleCreateMedicalSubItem(payload: CreateMedicalTaskSubItemPayload) {
+    if (!medicalActionTaskId || !payload.subItemType) {
+      message.warning('缺少主任务或子项类型，暂时无法提交')
+      return
+    }
+
+    try {
+      setMutating(true)
+      await taskService.createMedicalSubItem(medicalActionTaskId, {
+        amount: payload.amount,
+        has_contract_change:
+          payload.hasContractChange !== undefined
+            ? payload.hasContractChange === '是'
+            : undefined,
+        sub_item_type: payload.subItemType,
+      })
+      message.success('子项已创建')
+      await Promise.all([loadTasks(), refreshTaskDetail(medicalActionTaskId)])
+      handleCloseMedicalSubItemModal()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '增加子项失败')
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  async function handleCreateMedicalComplaint(payload: CreateMedicalTaskComplaintPayload) {
+    if (!medicalActionTaskId || !payload.workflowStageId) {
+      message.warning('缺少主任务或发生阶段，暂时无法提交')
+      return
+    }
+
+    try {
+      setMutating(true)
+      await taskService.createMedicalComplaint(medicalActionTaskId, {
+        description: payload.description,
+        processing_method: payload.processingMethod?.trim() || undefined,
+        refund_amount: payload.refundAmount,
+        responsible_user_ids: (payload.responsibilityUserIds ?? [])
+          .map((userId) => Number(userId))
+          .filter((userId) => Number.isFinite(userId)),
+        workflow_stage_id: Number(payload.workflowStageId),
+      })
+      message.success('客诉已创建')
+      await Promise.all([loadTasks(), refreshTaskDetail(medicalActionTaskId)])
+      handleCloseMedicalComplaintModal()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '发起客诉失败')
+    } finally {
+      setMutating(false)
+    }
+  }
+
   async function handleFinish(values: TaskFormValues) {
     const payload = buildTaskPayload(enabledFieldConfigs, values, {
       firstStage: firstWorkflowStage,
-      isInternalMembersField,
-      secondStage: secondWorkflowStage,
     })
 
     try {
@@ -2011,24 +2328,48 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 详情
               </Button>
             ) : null}
-            {completedTask ? (
+            {shouldShowMedicalTaskActions ? (
               <>
                 <Button
                   size="small"
                   variant="solid"
-                  color='geekblue'
-                  onClick={() => void openServiceDrawer('售后', record.id)}
+                  color="geekblue"
+                  onClick={() => void openMedicalSubItemModal(record.id)}
                 >
-                  售后
+                  增加子项
                 </Button>
                 <Button
                   size="small"
-                   color='volcano'
-                   variant="solid"
-                  onClick={() => void openServiceDrawer('迭代', record.id)}
+                  variant="solid"
+                  color="magenta"
+                  onClick={() => void openMedicalComplaintModal(record.id)}
                 >
-                  迭代
+                  客诉
                 </Button>
+              </>
+            ) : null}
+            {completedTask ? (
+              <>
+                {canManageTaskListButtons ? (
+                  <>
+                    <Button
+                      size="small"
+                      variant="solid"
+                      color='geekblue'
+                      onClick={() => void openServiceDrawer('售后', record.id)}
+                    >
+                      售后
+                    </Button>
+                    <Button
+                      size="small"
+                       color='volcano'
+                       variant="solid"
+                      onClick={() => void openServiceDrawer('迭代', record.id)}
+                    >
+                      迭代
+                    </Button>
+                  </>
+                ) : null}
               </>
             ) : canProcessTask ? (
               <Button
@@ -2042,7 +2383,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 处理
               </Button>
             ) : null}
-            {/* {canManageTaskActions && !record.readonly  ? (
+            {canManageTaskListButtons ? (
               <Button
                 type="primary"
                 size="small"
@@ -2052,16 +2393,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               >
                 编辑
               </Button>
-            ) : null} */}
-              <Button
-                type="primary"
-                size="small"
-                variant="solid"
-                color='green'
-                onClick={() => void openEditDrawer(record)}
-              >
-                编辑
-              </Button>
+            ) : null}
             {canManageTaskActions && canDeleteTask ? (
               <Button
                 danger
@@ -2415,10 +2747,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               key: 'joined',
               label: '我相关',
             },
-            {
-              key: 'completed',
-              label: '已完成',
-            },
+            ...(shouldShowCompletedTab
+              ? [
+                  {
+                    key: 'completed',
+                    label: '已完成',
+                  },
+                ]
+              : []),
           ]}
           className="workspace-tabs"
         />
@@ -2437,6 +2773,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           pageSize,
           pageSizeOptions: [10, 20, 50],
           showSizeChanger: true,
+          showTotal: (value) => `共 ${value} 条`,
           total,
         }}
         onChange={handleTableChange}
@@ -2521,13 +2858,45 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   rules={[{ required: true, message: '请选择任务所有者' }]}
                 >
                   <Select
+                    key={`task-owner-${editingTaskId ?? 'create'}-${editingTaskOwnerOption?.value ?? 'empty'}`}
+                    allowClear
+                    showSearch
                     placeholder="请选择任务所有者"
                     loading={taskOwnerLoading}
                     disabled={Boolean(editingTaskId)}
-                    options={taskOwnerMembers.map((member) => ({
-                      label: `${member.userName} · ${member.userEmail}`,
-                      value: member.userId,
-                    }))}
+                    options={taskOwnerOptions}
+                    filterOption={false}
+                    searchValue={taskOwnerSearchValue}
+                    onSearch={(value) => {
+                      setTaskOwnerSearchValue(value)
+
+                      if (taskOwnerSearchTimerRef.current) {
+                        window.clearTimeout(taskOwnerSearchTimerRef.current)
+                      }
+
+                      taskOwnerSearchTimerRef.current = window.setTimeout(() => {
+                        void loadTaskOwnerMembers(1, false, value)
+                      }, 300)
+                    }}
+                    onClear={() => {
+                      if (taskOwnerSearchTimerRef.current) {
+                        window.clearTimeout(taskOwnerSearchTimerRef.current)
+                      }
+
+                      setTaskOwnerSearchValue('')
+                      void loadTaskOwnerMembers(1, false, '')
+                    }}
+                    onPopupScroll={(event) => {
+                      const target = event.target as HTMLDivElement
+                      const reachedBottom =
+                        target.scrollTop + target.clientHeight >= target.scrollHeight - 8
+
+                      if (!reachedBottom || taskOwnerLoading || !taskOwnerMemberHasMore) {
+                        return
+                      }
+
+                      void loadTaskOwnerMembers(taskOwnerMemberPage + 1, true, taskOwnerSearchValue)
+                    }}
                   />
                 </Form.Item>
               </Col>
@@ -2540,13 +2909,45 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   rules={[{ required: true, message: '请选择第一阶段执行人' }]}
                 >
                   <Select
+                    key={`second-stage-${editingTaskId ?? 'create'}-${editingSecondStageOption?.value ?? 'empty'}`}
+                    allowClear
                     placeholder={`请选择${firstWorkflowRoleName || '第一阶段执行人'}`}
                     loading={secondStageLoading}
                     disabled={Boolean(editingTaskId)}
-                    options={secondStageMembers.map((member) => ({
-                      label: `${member.userName}`,
-                      value: member.userId,
-                    }))}
+                    showSearch
+                    filterOption={false}
+                    searchValue={secondStageSearchValue}
+                    options={secondStageOptions}
+                    onSearch={(value) => {
+                      setSecondStageSearchValue(value)
+
+                      if (secondStageSearchTimerRef.current) {
+                        window.clearTimeout(secondStageSearchTimerRef.current)
+                      }
+
+                      secondStageSearchTimerRef.current = window.setTimeout(() => {
+                        void loadSecondStageMembers(1, false, value)
+                      }, 300)
+                    }}
+                    onClear={() => {
+                      if (secondStageSearchTimerRef.current) {
+                        window.clearTimeout(secondStageSearchTimerRef.current)
+                      }
+
+                      setSecondStageSearchValue('')
+                      void loadSecondStageMembers(1, false, '')
+                    }}
+                    onPopupScroll={(event) => {
+                      const target = event.target as HTMLDivElement
+                      const reachedBottom =
+                        target.scrollTop + target.clientHeight >= target.scrollHeight - 8
+
+                      if (!reachedBottom || secondStageLoading || !secondStageMemberHasMore) {
+                        return
+                      }
+
+                      void loadSecondStageMembers(secondStageMemberPage + 1, true, secondStageSearchValue)
+                    }}
                   />
                 </Form.Item>
               </Col>
@@ -2562,64 +2963,30 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             </Col>
             {/* {JSON.stringify(enabledFieldConfigs)} */}
             {enabledFieldConfigs.flatMap((field) => {
-              if (isInternalProduction && field.field_name === PRODUCTION_COST_FIELD_NAME) {
+              if (relatedTargetFieldKeys.has(field.field_key)) {
                 return []
               }
 
               const items = [
                 (
                   <Col span={field.span === 24 ? 24 : 12} key={field.field_key}>
-                    <Form.Item
-                      label={field.field_name}
-                      name={field.field_key}
-                      rules={[
-                        ...(field.required
-                          ? [
-                              {
-                                required: true,
-                                message:
-                                  `${field.field_type === 'select' || field.field_type === 'multi_select' ? '请选择' : '请输入'}${field.field_name}`,
-                              },
-                            ]
-                          : []),
-                        ...(isNotBeforeTodayField(field)
-                          ? [{ validator: validateNotBeforeToday }]
-                          : []),
-                      ]}
-                    >
-                      {renderFieldControl(field)}
-                    </Form.Item>
+                    {buildTaskFieldFormItem(field)}
                   </Col>
                 ),
               ]
 
-              if (taskMembersRelation?.fieldKey !== field.field_key) {
-                return items
-              }
+              const relateShowFieldKey = getMatchedRelateShowFieldKey(field, watchedTaskFormValues)
+              const relatedField = enabledFieldConfigs.find(
+                (config) => config.field_key === relateShowFieldKey,
+              )
 
-              if (shouldShowMembersField) {
-                // 联动字段插在触发字段后面渲染，用户能直接看出“谁导致了这个额外输入项出现”。
+              if (relatedField) {
                 items.push(
-                  <Col span={24} key={TASK_MEMBERS_FIELD_KEY}>
-                    <Form.Item
-                      label={TASK_MEMBERS_FIELD_LABEL}
-                      name={TASK_MEMBERS_FIELD_KEY}
-                      rules={[
-                        {
-                          required: true,
-                          message: `请选择${TASK_MEMBERS_FIELD_LABEL}`,
-                        },
-                      ]}
-                    >
-                      <Select
-                        placeholder={`请选择${TASK_MEMBERS_FIELD_LABEL}`}
-                        loading={designerMembersLoading}
-                        options={designerMembers.map((member) => ({
-                          label: `${member.userName} · ${member.userEmail}`,
-                          value: member.userId,
-                        }))}
-                      />
-                    </Form.Item>
+                  <Col
+                    span={relatedField.span === 24 ? 24 : 12}
+                    key={relatedField.field_key}
+                  >
+                    {buildTaskFieldFormItem(relatedField)}
                   </Col>,
                 )
               }
@@ -2673,6 +3040,20 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             label: template.name,
             value: template.id,
           }))}
+      />
+      <MedicalTaskSubItemModal
+        open={medicalSubItemModalOpen}
+        loading={mutating}
+        onCancel={handleCloseMedicalSubItemModal}
+        onSubmit={handleCreateMedicalSubItem}
+      />
+      <MedicalTaskComplaintModal
+        open={medicalComplaintModalOpen}
+        loading={mutating || medicalComplaintContextLoading}
+        stageOptions={medicalComplaintStageOptions}
+        responsibilityOptions={medicalComplaintResponsibilityOptions}
+        onCancel={handleCloseMedicalComplaintModal}
+        onSubmit={handleCreateMedicalComplaint}
       />
     </div>
   )

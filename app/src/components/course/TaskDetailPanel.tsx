@@ -60,6 +60,11 @@ const roleLabelMap: Record<UserRole, string> = {
     researcher: '教研老师',
     sales: '售前人员',
     styleDesigner: '风格稿设计师',
+    designcooperation:"荆门商务（统筹）",
+    design:"设计师",
+    wuhan_design_cooperation:"武汉商务",
+    customer_planner:"商务",
+    presales:"售前"
 }
 
 const preferredSummaryFieldKeys = [

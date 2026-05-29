@@ -30,10 +30,17 @@ type ListProjectMembersOptions = {
 }
 
 type ListProjectRoleUsersOptions = {
+  keyword?: string
   page?: number
   pageSize?: number
   projectId: string
   roleCode: string
+}
+
+type ListUsersOptions = {
+  keyword?: string
+  page?: number
+  pageSize?: number
 }
 
 type UserListItem = {
@@ -300,23 +307,32 @@ function mapTaskFieldRecord(field: TaskFieldItem): FieldConfig {
 }
 
 export const adminService = {
-  async listProjects(keyword = '') {
-    const data = await apiRequest<PaginatedResponse<ProjectListItem>>('/admin_api/projects', {
+  async listProjects(options?: {
+    keyword?: string
+    page?: number
+    pageSize?: number
+  }) {
+    const data = await apiRequest<PaginatedResponse<ProjectListItem>>('/api/projects', {
       query: {
-        keyword: keyword.trim() || undefined,
-        page: 1,
-        page_size: 100,
+        keyword: options?.keyword?.trim() || undefined,
+        page: options?.page ?? 1,
+        page_size: options?.pageSize ?? 10,
       },
     })
 
-    return data.items.map<ProjectManagementRecord>((project) => ({
-      code: project.code,
-      createdAt: project.created_at,
-      id: String(project.id),
-      name: project.name,
-      status: project.status,
-      updatedAt: project.updated_at,
-    }))
+    return {
+      items: data.items.map<ProjectManagementRecord>((project) => ({
+        code: project.code,
+        createdAt: project.created_at,
+        id: String(project.id),
+        name: project.name,
+        status: project.status,
+        updatedAt: project.updated_at,
+      })),
+      page: data.page ?? options?.page ?? 1,
+      pageSize: data.page_size ?? options?.pageSize ?? 10,
+      total: data.total ?? data.items.length,
+    }
   },
 
   async createProject(payload: { name: string }) {
@@ -351,16 +367,21 @@ export const adminService = {
     })
   },
 
-  async listUsers(keyword = '') {
+  async listUsers(options?: ListUsersOptions) {
     const data = await apiRequest<PaginatedResponse<UserListItem>>('/admin_api/users', {
       query: {
-        keyword: keyword.trim() || undefined,
-        page: 1,
-        page_size: 100,
+        keyword: options?.keyword?.trim() || undefined,
+        page: options?.page ?? 1,
+        page_size: options?.pageSize ?? 10,
       },
     })
 
-    return data.items.map(mapUserRecord)
+    return {
+      items: data.items.map(mapUserRecord),
+      page: data.page ?? options?.page ?? 1,
+      pageSize: data.page_size ?? options?.pageSize ?? 10,
+      total: data.total ?? data.items.length,
+    }
   },
 
   async createUser(payload: SaveAdminAccountPayload) {
@@ -470,8 +491,8 @@ export const adminService = {
           member.roles.map((role) => [String(role.id), String(role.member_id)]),
         ),
         memberIds: member.roles.map((role) => String(role.member_id)),
-        projectId: String(member.project.id),
-        projectName: member.project.name,
+        projectId: String(member?.project?.id),
+        projectName: member?.project?.name,
         roleCodes: member.roles.map((item) => item.code),
         roleIds: member.roles.map((item) => String(item.id)),
         roleNames: member.roles.map((item) => item.name),
@@ -490,6 +511,7 @@ export const adminService = {
     const data = await apiRequest<PaginatedResponse<UserListItem>>('/api/project_role_users', {
       projectHeaderId: options.projectId,
       query: {
+        keyword: options.keyword?.trim() || undefined,
         page: options.page ?? 1,
         page_size: options.pageSize ?? 100,
         role_code: options.roleCode,

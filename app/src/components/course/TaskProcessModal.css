@@ -233,7 +233,7 @@
 
 .task-process-modal__task-fields-item {
   height: 100%;
-  padding: 12px 12px 2px;
+  padding: 12px 12px 12px;
   border: 1px solid #e5edf8;
   border-radius: 14px;
   background: #ffffff;
@@ -582,3 +582,4 @@
     padding-bottom: 12px;
   }
 }
+

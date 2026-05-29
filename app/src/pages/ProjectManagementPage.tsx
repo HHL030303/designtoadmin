@@ -175,9 +175,18 @@ function renderWorkflowStageCard(
 
 export function ProjectManagementPage() {
   const memberPageSize = 10
+  const projectPageSize = 10
+  const userOptionPageSize = 100
   const [projects, setProjects] = useState<ProjectManagementRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [keyword, setKeyword] = useState('')
+  const [projectPagination, setProjectPagination] = useState<Required<
+    Pick<TablePaginationConfig, 'current' | 'pageSize' | 'total'>
+  >>({
+    current: 1,
+    pageSize: projectPageSize,
+    total: 0,
+  })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [fieldConfigDrawerOpen, setFieldConfigDrawerOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -196,6 +205,11 @@ export function ProjectManagementPage() {
   const [workflowSubmitting, setWorkflowSubmitting] = useState(false)
   const [members, setMembers] = useState<ProjectMemberRecord[]>([])
   const [users, setUsers] = useState<AdminAccountRecord[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [userOptionPage, setUserOptionPage] = useState(1)
+  const [userOptionHasMore, setUserOptionHasMore] = useState(false)
+  const [userOptionKeyword, setUserOptionKeyword] = useState('')
+  const [userOptionSearchValue, setUserOptionSearchValue] = useState('')
   const [roles, setRoles] = useState<SystemRoleRecord[]>([])
   const [workflows, setWorkflows] = useState<WorkflowTemplateRecord[]>([])
   const [workflowPagination, setWorkflowPagination] = useState({
@@ -226,22 +240,95 @@ export function ProjectManagementPage() {
     null,
   )
   const workflowInspectorRef = useRef<HTMLElement | null>(null)
+  const usersLoadingRef = useRef(false)
+  const userOptionRequestIdRef = useRef(0)
+  const userOptionSearchTimerRef = useRef<number | null>(null)
   const [projectForm] = Form.useForm<ProjectFormValues>()
   const [memberForm] = Form.useForm<MemberFormValues>()
   const [roleForm] = Form.useForm<RoleFormValues>()
 
-  async function loadProjects(searchKeyword = '') {
+  async function loadProjects(options?: {
+    page?: number
+    pageSize?: number
+    keyword?: string
+  }) {
     setLoading(true)
 
     try {
-      const nextProjects = await adminService.listProjects(searchKeyword)
-      setProjects(nextProjects)
+      const response = await adminService.listProjects({
+        keyword: options?.keyword ?? keyword,
+        page: options?.page ?? projectPagination.current,
+        pageSize: options?.pageSize ?? projectPagination.pageSize,
+      })
+      setProjects(response.items)
+      setProjectPagination({
+        current: response.page,
+        pageSize: response.pageSize,
+        total: response.total,
+      })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载项目列表失败')
     } finally {
       setLoading(false)
     }
   }
+
+  async function loadUserOptions(page: number, append: boolean, searchKeyword = userOptionKeyword) {
+    const requestId = userOptionRequestIdRef.current + 1
+    userOptionRequestIdRef.current = requestId
+
+    if (usersLoadingRef.current && append) {
+      return
+    }
+
+    try {
+      usersLoadingRef.current = true
+      setUsersLoading(true)
+      const response = await adminService.listUsers({
+        keyword: searchKeyword,
+        page,
+        pageSize: userOptionPageSize,
+      })
+
+      if (requestId !== userOptionRequestIdRef.current) {
+        return
+      }
+
+      setUsers((current) => {
+        if (!append) {
+          return response.items
+        }
+
+        const existingUserIds = new Set(current.map((user) => user.id))
+        const nextItems = response.items.filter((user) => !existingUserIds.has(user.id))
+        return [...current, ...nextItems]
+      })
+      setUserOptionKeyword(searchKeyword)
+      setUserOptionPage(response.page)
+      setUserOptionHasMore(response.page * response.pageSize < response.total)
+    } catch (error) {
+      if (requestId === userOptionRequestIdRef.current) {
+        message.error(error instanceof Error ? error.message : '加载成员账号失败')
+
+        if (!append) {
+          setUsers([])
+          setUserOptionPage(1)
+          setUserOptionHasMore(false)
+        }
+      }
+    } finally {
+      if (requestId === userOptionRequestIdRef.current) {
+        usersLoadingRef.current = false
+        setUsersLoading(false)
+      }
+    }
+  }
+
+  useEffect(() => () => {
+    if (userOptionSearchTimerRef.current) {
+      window.clearTimeout(userOptionSearchTimerRef.current)
+    }
+  }, [])
 
   async function loadMemberContext(project: ProjectManagementRecord, page = 1) {
     setMembersLoading(true)
@@ -255,7 +342,10 @@ export function ProjectManagementPage() {
           projectId: project.id,
           roleId: memberRoleFilter === 'all' ? undefined : memberRoleFilter,
         }),
-        adminService.listUsers(),
+        adminService.listUsers({
+          page: 1,
+          pageSize: userOptionPageSize,
+        }),
         adminService.listRoles(project.id),
       ])
 
@@ -265,7 +355,10 @@ export function ProjectManagementPage() {
           : memberResponse.items.filter((member) => member.userStatus === memberStatusFilter)
 
       setMembers(nextMembers)
-      setUsers(nextUsers)
+      setUsers(nextUsers.items)
+      setUserOptionKeyword('')
+      setUserOptionPage(nextUsers.page)
+      setUserOptionHasMore(nextUsers.page * nextUsers.pageSize < nextUsers.total)
       setRoles(nextRoles)
       setSelectedMemberKeys([])
       setMemberPagination({
@@ -317,17 +410,6 @@ export function ProjectManagementPage() {
     void loadProjects()
   }, [])
 
-  const filteredProjects = useMemo(
-    () =>
-      projects.filter((project) =>
-        [project.name, project.code, project.status]
-          .join(' ')
-          .toLowerCase()
-          .includes(keyword.trim().toLowerCase()),
-      ),
-    [keyword, projects],
-  )
-
   const selectedMemberRecords = useMemo(
     () => members.filter((member) => selectedMemberKeys.includes(member.id)),
     [members, selectedMemberKeys],
@@ -354,8 +436,21 @@ export function ProjectManagementPage() {
     
   )
 
-  const handleReset = () =>{
+  async function handleQueryProjects() {
+    await loadProjects({
+      keyword,
+      page: 1,
+      pageSize: projectPagination.pageSize,
+    })
+  }
+
+  async function handleResetProjects() {
     setKeyword('')
+    await loadProjects({
+      keyword: '',
+      page: 1,
+      pageSize: projectPagination.pageSize,
+    })
   }
 
   const selectedWorkflowStage = useMemo(
@@ -498,6 +593,18 @@ export function ProjectManagementPage() {
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{record.userName}</Typography.Text>
           <Typography.Text type="secondary">{record.userEmail}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '角色编码',
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          {record.roleCodes.map((roleName) => (
+            <Tag key={`${record.id}-${roleName}`} color="blue">
+              {roleName}
+            </Tag>
+          ))}
         </Space>
       ),
     },
@@ -726,7 +833,13 @@ export function ProjectManagementPage() {
   function openCreateMemberDrawer() {
     setEditingMember(null)
     memberForm.resetFields()
+    setUserOptionKeyword('')
+    setUserOptionSearchValue('')
+    setUsers([])
+    setUserOptionPage(1)
+    setUserOptionHasMore(false)
     setMemberDrawerOpen(true)
+    void loadUserOptions(1, false, '')
   }
 
   function openCreateRoleDrawer() {
@@ -765,6 +878,11 @@ export function ProjectManagementPage() {
     setMembersModalOpen(false)
     setSelectedProject(null)
     setMembers([])
+    setUsers([])
+    setUserOptionKeyword('')
+    setUserOptionSearchValue('')
+    setUserOptionPage(1)
+    setUserOptionHasMore(false)
     setMemberKeyword('')
     setMemberStatusFilter('all')
     setMemberRoleFilter('all')
@@ -809,7 +927,11 @@ export function ProjectManagementPage() {
     try {
       await adminService.deleteProject(projectId)
       message.success('项目删除成功')
-      await loadProjects(keyword)
+      await loadProjects({
+        keyword,
+        page: projectPagination.current,
+        pageSize: projectPagination.pageSize,
+      })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '删除项目失败')
     }
@@ -865,7 +987,11 @@ export function ProjectManagementPage() {
       setDrawerOpen(false)
       setEditingProject(null)
       projectForm.resetFields()
-      await loadProjects(keyword)
+      await loadProjects({
+        keyword,
+        page: 1,
+        pageSize: projectPagination.pageSize,
+      })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '保存项目失败')
     } finally {
@@ -1198,10 +1324,10 @@ export function ProjectManagementPage() {
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="搜索项目名称 / 编码 / 状态"
         />
-         <Button type="primary" onClick={()=>{setKeyword(keyword)}}>
+          <Button type="primary" onClick={() => void handleQueryProjects()}>
             查询
           </Button>
-          <Button onClick={handleReset}>重置</Button>
+          <Button onClick={() => void handleResetProjects()}>重置</Button>
           </div>
           <div className="workspace-reset">
           <Button type="primary" onClick={openCreateDrawer}>
@@ -1213,9 +1339,22 @@ export function ProjectManagementPage() {
       <Table
         rowKey="id"
         columns={projectColumns}
-        dataSource={filteredProjects}
+        dataSource={projects}
         loading={loading}
-        pagination={{ pageSize: 8 }}
+        pagination={{
+          current: projectPagination.current,
+          pageSize: projectPagination.pageSize,
+          total: projectPagination.total,
+          showSizeChanger: true,
+          showTotal: (value) => `共 ${value} 条`,
+        }}
+        onChange={(pagination) => {
+          void loadProjects({
+            keyword,
+            page: pagination.current ?? 1,
+            pageSize: pagination.pageSize ?? projectPagination.pageSize,
+          })
+        }}
       />
 
       <Drawer
@@ -1358,6 +1497,7 @@ export function ProjectManagementPage() {
             current: memberPagination.current,
             pageSize: memberPageSize,
             total: memberPagination.total,
+            showTotal: (value) => `共 ${value} 条`,
           }}
           rowSelection={memberRowSelection}
           onChange={(pagination) => void handleMemberTableChange(pagination)}
@@ -1371,6 +1511,8 @@ export function ProjectManagementPage() {
           onClose={() => {
             setMemberDrawerOpen(false)
             setEditingMember(null)
+            setUserOptionKeyword('')
+            setUserOptionSearchValue('')
           }}
         >
           <Form
@@ -1386,12 +1528,46 @@ export function ProjectManagementPage() {
               >
                 <Select
                   mode="multiple"
+                  allowClear
                   options={users.map((user) => ({
                     label: `${user.name} · ${user.email}`,
                     value: user.id,
                   }))}
                   placeholder="请选择一个或多个成员账号"
                   showSearch
+                  filterOption={false}
+                  searchValue={userOptionSearchValue}
+                  loading={usersLoading}
+                  onSearch={(value) => {
+                    setUserOptionSearchValue(value)
+
+                    if (userOptionSearchTimerRef.current) {
+                      window.clearTimeout(userOptionSearchTimerRef.current)
+                    }
+
+                    userOptionSearchTimerRef.current = window.setTimeout(() => {
+                      void loadUserOptions(1, false, value)
+                    }, 300)
+                  }}
+                  onClear={() => {
+                    if (userOptionSearchTimerRef.current) {
+                      window.clearTimeout(userOptionSearchTimerRef.current)
+                    }
+
+                    setUserOptionSearchValue('')
+                    void loadUserOptions(1, false, '')
+                  }}
+                  onPopupScroll={(event) => {
+                    const target = event.target as HTMLDivElement
+                    const reachedBottom =
+                      target.scrollTop + target.clientHeight >= target.scrollHeight - 8
+
+                    if (!reachedBottom || usersLoading || !userOptionHasMore) {
+                      return
+                    }
+
+                    void loadUserOptions(userOptionPage + 1, true, userOptionSearchValue)
+                  }}
                 />
               </Form.Item>
             ) : null}
@@ -1455,7 +1631,9 @@ export function ProjectManagementPage() {
           columns={roleColumns}
           dataSource={filteredRoles}
           loading={roleLoading}
-          pagination={{ pageSize: 8 }}
+          pagination={{ pageSize: 8 ,
+            showTotal: (value) => `共 ${value} 条`,
+          }}
         />
 
         <Drawer

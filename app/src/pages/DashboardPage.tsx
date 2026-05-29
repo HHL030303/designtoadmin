@@ -1,5 +1,5 @@
 import { Card, Col, DatePicker, Empty, Row, Space, Tag, Typography, message } from 'antd'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import {
@@ -32,8 +32,13 @@ interface DashboardStaticTableCell {
   value: number | string
 }
 
+interface DashboardStaticTableColumn {
+  key: string
+  label: string
+}
+
 interface DashboardStaticTableData {
-  headers: string[]
+  columns: DashboardStaticTableColumn[]
   rows: DashboardStaticTableCell[][]
 }
 
@@ -99,14 +104,38 @@ function getLabelText(label: unknown): string {
   return ''
 }
 
-function extractLabels(data: unknown): string[] {
-  if (!isRecord(data) || !Array.isArray(data.labels)) {
+function extractLabelColumns(data: unknown): DashboardStaticTableColumn[] {
+  if (!isRecord(data) || !('labels' in data)) {
     return []
   }
 
-  return data.labels
-    .map((label) => getLabelText(label))
-    .filter((label) => label !== '')
+  if (Array.isArray(data.labels)) {
+    return data.labels
+      .map((label) => getLabelText(label))
+      .filter((label) => label !== '')
+      .map((label) => ({
+        key: label,
+        label,
+      }))
+  }
+
+  if (!isRecord(data.labels)) {
+    return []
+  }
+
+  return Object.entries(data.labels).reduce<DashboardStaticTableColumn[]>((result, [key, value]) => {
+    const label = getLabelText(value)
+
+    if (!label) {
+      return result
+    }
+
+    result.push({
+      key,
+      label,
+    })
+    return result
+  }, [])
 }
 
 function normalizeLabel(label: string): string {
@@ -141,37 +170,6 @@ function getCellTone(label: string): DashboardStaticTableCellTone | undefined {
   }
 
   return undefined
-}
-
-function getMetricValueByLabel(item: Record<string, unknown>, label: string): number | string {
-  const normalizedLabel = normalizeLabel(label)
-
-  if (normalizedLabel.includes('年级')) {
-    return getStringField(item, ['grade', 'grade_name']) || getGroupValue(item, 'grade') || '-'
-  }
-
-  if (normalizedLabel.includes('学科')) {
-    return getStringField(item, ['subject', 'subject_name']) || getGroupValue(item, 'subject') || '-'
-  }
-
-  if (normalizedLabel.includes('总数') || normalizedLabel.includes('总量')) {
-    return getNumberField(item, ['task_total', 'total'])
-  }
-
-  if (normalizedLabel === '已完成' || normalizedLabel.includes('完成数')) {
-    return getNumberField(item, ['task_completed', 'completed'])
-  }
-
-  if (
-    normalizedLabel === '待完成' ||
-    normalizedLabel === '未完成' ||
-    normalizedLabel.includes('处理中') ||
-    normalizedLabel.includes('进行中')
-  ) {
-    return getNumberField(item, ['task_processing', 'processing', 'pending'])
-  }
-
-  return '-'
 }
 
 function getDesignerValueByLabel(item: Record<string, unknown>, label: string): number | string {
@@ -210,21 +208,30 @@ function buildStaticTableData(
   fallbackHeaders: string[],
   resolveFallbackValue: (item: Record<string, unknown>, label: string) => number | string,
 ): DashboardStaticTableData {
-  const headers = extractLabels(data)
-  const effectiveHeaders = headers.length > 0 ? headers : fallbackHeaders
+  const columnsFromApi = extractLabelColumns(data)
+  const effectiveColumns =
+    columnsFromApi.length > 0
+      ? columnsFromApi
+      : fallbackHeaders.map((label) => ({
+          key: label,
+          label,
+        }))
 
   const rows = extractUnknownItems(data).reduce<DashboardStaticTableCell[][]>((result, item) => {
     let row: DashboardStaticTableCell[] | null = null
 
     if (Array.isArray(item)) {
-      row = effectiveHeaders.map((header, index) => ({
-        tone: getCellTone(header),
+      row = effectiveColumns.map((column, index) => ({
+        tone: getCellTone(column.label),
         value: toDisplayValue(item[index]),
       }))
     } else if (isRecord(item)) {
-      row = effectiveHeaders.map((header) => ({
-        tone: getCellTone(header),
-        value: resolveFallbackValue(item, header),
+      row = effectiveColumns.map((column) => ({
+        tone: getCellTone(column.label),
+        value:
+          column.key in item
+            ? toDisplayValue(item[column.key])
+            : resolveFallbackValue(item, column.label),
       }))
     }
 
@@ -236,7 +243,7 @@ function buildStaticTableData(
   }, [])
 
   return {
-    headers: effectiveHeaders,
+    columns: effectiveColumns,
     rows,
   }
 }
@@ -357,13 +364,29 @@ function getCompletedValueByHeader(label: string, value: number | string): numbe
 function summarizeStaticTableData(tableData: DashboardStaticTableData): DashboardProgressTotals {
   return tableData.rows.reduce<DashboardProgressTotals>((result, row) => {
     row.forEach((cell, index) => {
-      const header = tableData.headers[index] ?? ''
+      const header = tableData.columns[index]?.label ?? ''
       result.completed += getCompletedValueByHeader(header, cell.value)
       result.total += getTotalValueByHeader(header, cell.value)
     })
 
     return result
   }, { completed: 0, total: 0 })
+}
+
+function buildStaticTableGridStyle(columnCount: number): CSSProperties {
+  if (columnCount <= 1) {
+    return {
+      gridTemplateColumns: 'minmax(0, 1fr)',
+    }
+  }
+
+  const columnWidths = Array.from({ length: columnCount }, (_, index) => (
+    index === 0 ? 'minmax(80px, 1.2fr)' : 'minmax(72px, 0.8fr)'
+  ))
+
+  return {
+    gridTemplateColumns: columnWidths.join(' '),
+  }
 }
 
 function DashboardCardTitle({
@@ -601,74 +624,6 @@ function DashboardSummaryCard({
 //   )
 // }
 
-function ProgressSummaryCard({
-  data,
-  dateFilter,
-  title,
-  onDateRangeChange,
-}: {
-  data: unknown
-  dateFilter: DashboardDateFilter
-  title: string
-  onDateRangeChange: (dateFrom: string, dateTo: string) => void
-}) {
-  const tableData = buildStaticTableData(
-    data,
-    ['年级', '学科', '总数', '已完成', '待完成'],
-    getMetricValueByLabel,
-  )
-  const totals = summarizeStaticTableData(tableData)
-
-  return (
-    <Card
-      title={<DashboardCardTitle title={title} totals={totals} />}
-      extra={(
-        <TableDateFilter dateFilter={dateFilter} onDateRangeChange={onDateRangeChange} />
-      )}
-      className="dashboard-static-card dashboard-static-card-lg"
-    >
-      <Space orientation="vertical" size={16} className="dashboard-stack">
-        {tableData.rows.length === 0 ? (
-          <div className="dashboard-empty-state">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
-          </div>
-        ) : (
-          <div className="dashboard-static-table-scroll">
-            <div className="dashboard-static-table">
-              <div className="dashboard-static-table-head dashboard-static-table-metric">
-                {tableData.headers.map((header) => (
-                  <span key={`${title}-${header}`}>{header}</span>
-                ))}
-              </div>
-              {tableData.rows.map((row, rowIndex) => (
-                <div
-                  key={`${title}-${rowIndex}`}
-                  className="dashboard-static-table-row dashboard-static-table-metric"
-                >
-                  {row.map((cell, cellIndex) => (
-                    <span
-                      key={`${title}-${rowIndex}-${cellIndex}`}
-                      className={
-                        cell.tone === 'success'
-                          ? 'dashboard-static-text-success'
-                          : cell.tone === 'accent'
-                            ? 'dashboard-static-text-accent'
-                            : undefined
-                      }
-                    >
-                      {cell.value}
-                    </span>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Space>
-    </Card>
-  )
-}
-
 function DesignerWorkloadCard({
   data,
   dateFilter,
@@ -686,6 +641,7 @@ function DesignerWorkloadCard({
     getDesignerValueByLabel,
   )
   const totals = summarizeStaticTableData(tableData)
+  const tableGridStyle = buildStaticTableGridStyle(tableData.columns.length)
 
   return (
     <Card
@@ -703,15 +659,16 @@ function DesignerWorkloadCard({
         ) : (
           <div className="dashboard-static-table-scroll">
             <div className="dashboard-static-table">
-              <div className="dashboard-static-table-head dashboard-static-table-designer">
-                {tableData.headers.map((header) => (
-                  <span key={`${title}-${header}`}>{header}</span>
+              <div className="dashboard-static-table-head" style={tableGridStyle}>
+                {tableData.columns.map((column) => (
+                  <span key={`${title}-${column.key}`}>{column.label}</span>
                 ))}
               </div>
               {tableData.rows.map((row, rowIndex) => (
                 <div
                   key={`${title}-${rowIndex}`}
-                  className="dashboard-static-table-row dashboard-static-table-designer"
+                  className="dashboard-static-table-row"
+                  style={tableGridStyle}
                 >
                   {row.map((cell, cellIndex) => (
                     <span
@@ -818,48 +775,47 @@ export function DashboardPage() {
     datasets.map((dataset) => {
       const datasetKey = getDatasetKey(dataset)
       const dateFilter = dateFilters[datasetKey] ?? { dateFrom: '', dateTo: '' }
+      // if (dataset.apiPath.includes('/current_stage')) {
+      //   return (
+      //     <ProgressSummaryCard
+      //       key={`${dataset.datasetName}-${dataset.apiPath}`}
+      //       data={dataset.data}
+      //       dateFilter={dateFilter}
+      //       title={dataset.datasetName}
+      //       onDateRangeChange={(dateFrom, dateTo) => (
+      //         handleDateRangeChange(datasetKey, dateFrom, dateTo)
+      //       )}
+      //     />
+      //   )
+      // }
 
-      if (dataset.apiPath.includes('/current_stage')) {
-        return (
-          <ProgressSummaryCard
-            key={`${dataset.datasetName}-${dataset.apiPath}`}
-            data={dataset.data}
-            dateFilter={dateFilter}
-            title={dataset.datasetName}
-            onDateRangeChange={(dateFrom, dateTo) => (
-              handleDateRangeChange(datasetKey, dateFrom, dateTo)
-            )}
-          />
-        )
-      }
+      // if (dataset.datasetName.includes('B端交付进度')) {
+      //   return (
+      //     <ProgressSummaryCard
+      //       key={`${dataset.datasetName}-${dataset.apiPath}`}
+      //       data={dataset.data}
+      //       dateFilter={dateFilter}
+      //       title={dataset.datasetName}
+      //       onDateRangeChange={(dateFrom, dateTo) => (
+      //         handleDateRangeChange(datasetKey, dateFrom, dateTo)
+      //       )}
+      //     />
+      //   )
+      // }
 
-      if (dataset.datasetName.includes('B端交付进度')) {
-        return (
-          <ProgressSummaryCard
-            key={`${dataset.datasetName}-${dataset.apiPath}`}
-            data={dataset.data}
-            dateFilter={dateFilter}
-            title={dataset.datasetName}
-            onDateRangeChange={(dateFrom, dateTo) => (
-              handleDateRangeChange(datasetKey, dateFrom, dateTo)
-            )}
-          />
-        )
-      }
-
-      if (dataset.apiPath.includes('/user_workload')) {
-        return (
-          <DesignerWorkloadCard
-            key={`${dataset.datasetName}-${dataset.apiPath}`}
-            data={dataset.data}
-            dateFilter={dateFilter}
-            title={dataset.datasetName}
-            onDateRangeChange={(dateFrom, dateTo) => (
-              handleDateRangeChange(datasetKey, dateFrom, dateTo)
-            )}
-          />
-        )
-      }
+      // if (dataset.apiPath.includes('/user_workload')) {
+      //   return (
+      //     <DesignerWorkloadCard
+      //       key={`${dataset.datasetName}-${dataset.apiPath}`}
+      //       data={dataset.data}
+      //       dateFilter={dateFilter}
+      //       title={dataset.datasetName}
+      //       onDateRangeChange={(dateFrom, dateTo) => (
+      //         handleDateRangeChange(datasetKey, dateFrom, dateTo)
+      //       )}
+      //     />
+      //   )
+      // }
 
       if (dataset.datasetName === '学科分布') {
         const subjectRows = parseSubjectRows(dataset.data)
@@ -1023,7 +979,20 @@ export function DashboardPage() {
             </Space>
           </Card>
         )
+      } else{
+        return (
+          <DesignerWorkloadCard
+            key={`${dataset.datasetName}-${dataset.apiPath}`}
+            data={dataset.data}
+            dateFilter={dateFilter}
+            title={dataset.datasetName}
+            onDateRangeChange={(dateFrom, dateTo) => (
+              handleDateRangeChange(datasetKey, dateFrom, dateTo)
+            )}
+          />
+        )
       }
+
 
       return null
     })

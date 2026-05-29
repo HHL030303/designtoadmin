@@ -208,7 +208,7 @@
 
 .courses-page-card .task-search-form__item .ant-input,
 .courses-page-card .task-search-form__item .ant-select-selector {
-  min-height: 32px !important;
+  /* min-height: 32px !important; */
   border-radius: 8px;
 }
 

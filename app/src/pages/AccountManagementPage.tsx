@@ -16,6 +16,7 @@ import {
   SearchOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import type { TablePaginationConfig } from 'antd/es/table'
 import { adminService } from '../services/adminService'
 import type { AdminAccountRecord, SaveAdminAccountPayload } from '../types'
 
@@ -23,6 +24,9 @@ type AccountFormValues = SaveAdminAccountPayload
 
 export function AccountManagementPage() {
   const [accounts, setAccounts] = useState<AdminAccountRecord[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<AdminAccountRecord | null>(null)
   const [keyword, setKeyword] = useState('')
@@ -30,12 +34,23 @@ export function AccountManagementPage() {
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm<AccountFormValues>()
 
-  async function loadAccounts(searchKeyword = '') {
+  async function loadAccounts(options?: {
+    keyword?: string
+    page?: number
+    pageSize?: number
+  }) {
     setLoading(true)
 
     try {
-      const nextAccounts = await adminService.listUsers(searchKeyword)
-      setAccounts(nextAccounts)
+      const response = await adminService.listUsers({
+        keyword: options?.keyword ?? keyword,
+        page: options?.page ?? currentPage,
+        pageSize: options?.pageSize ?? pageSize,
+      })
+      setAccounts(response.items)
+      setCurrentPage(response.page)
+      setPageSize(response.pageSize)
+      setTotal(response.total)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '加载账号列表失败')
     } finally {
@@ -43,28 +58,26 @@ export function AccountManagementPage() {
     }
   }
 
-  const handleReset = () =>{
+  const handleReset = () => {
     setKeyword('')
+    void loadAccounts({
+      keyword: '',
+      page: 1,
+      pageSize,
+    })
   }
 
-  const handleQuery =()=>{
-    setKeyword(keyword)
+  const handleQuery = () => {
+    void loadAccounts({
+      keyword,
+      page: 1,
+      pageSize,
+    })
   }
 
   useEffect(() => {
     void loadAccounts()
   }, [])
-
-  const filteredAccounts = useMemo(
-    () =>
-      accounts.filter((account) =>
-        [account.name, account.email, account.status]
-          .join(' ')
-          .toLowerCase()
-          .includes(keyword.trim().toLowerCase()),
-      ),
-    [accounts, keyword],
-  )
 
   const columns: ColumnsType<AdminAccountRecord> = [
     {
@@ -143,13 +156,25 @@ export function AccountManagementPage() {
       setDrawerOpen(false)
       setEditingAccount(null)
       form.resetFields()
-      await loadAccounts(keyword)
+      await loadAccounts({
+        keyword,
+        page: currentPage,
+        pageSize,
+      })
     } catch (error) {
       message.error(error instanceof Error ? error.message : '保存账号失败')
     } finally {
       setSubmitting(false)
     }
   }
+
+  const pagination = useMemo<TablePaginationConfig>(() => ({
+    current: currentPage,
+    pageSize,
+    showSizeChanger: true,
+    total,
+    showTotal: (value) => `共 ${value} 条`,
+  }), [currentPage, pageSize, total])
 
   return (
     <Card className="panel-card">
@@ -195,9 +220,16 @@ export function AccountManagementPage() {
       <Table
         rowKey="id"
         columns={columns}
-        dataSource={filteredAccounts}
+        dataSource={accounts}
         loading={loading}
-        pagination={{ pageSize: 8 }}
+        pagination={pagination}
+        onChange={(nextPagination) => {
+          void loadAccounts({
+            keyword,
+            page: nextPagination.current ?? 1,
+            pageSize: nextPagination.pageSize ?? pageSize,
+          })
+        }}
       />
 
       <Drawer

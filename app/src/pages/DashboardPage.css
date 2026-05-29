@@ -405,7 +405,7 @@
 }
 
 .dashboard-static-table-row {
-  min-height: 50px;
+  min-height: 40px;
   padding: 0 14px;
   border-radius: 14px;
   background: #fbfdff;
@@ -414,14 +414,6 @@
   font-size: 13px;
   font-weight: 600;
   text-align: center;
-}
-
-.dashboard-static-table-metric {
-  grid-template-columns: 1fr 1fr 0.8fr 0.8fr 0.8fr;
-}
-
-.dashboard-static-table-designer {
-  grid-template-columns: 1fr 0.8fr 0.8fr 0.8fr;
 }
 
 .dashboard-static-text-success {

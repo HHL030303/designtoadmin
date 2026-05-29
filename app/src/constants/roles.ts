@@ -8,6 +8,11 @@ export const roleOptions: RoleOption[] = [
   { key: 'pageDesigner', label: '内页设计师', description: '上传内页成品' },
   { key: 'sales', label: '售前人员', description: '查看进度并发起售后' },
   { key: 'admin', label: '管理员', description: '拥有全部菜单与操作权限' },
+  { key: 'designcooperation', label: '荆门商务（统筹）', description: '拥有全部菜单与操作权限' },
+  { key: 'design', label: '设计师', description: '拥有全部菜单与操作权限' },
+  { key: 'wuhan_design_cooperation', label: '武汉商务', description: '拥有全部菜单与操作权限' },
+  { key: 'customer_planner', label: '商务', description: '拥有全部菜单与操作权限' },
+  
 ]
 
 const adminViewAccess: ViewKey[] = [
@@ -41,6 +46,11 @@ export const roleViewAccess: Record<UserRole, ViewKey[]> = {
   pageDesigner: taskOnlyViewAccess,
   sales: taskOnlyViewAccess,
   admin: adminViewAccess,
+  designcooperation:taskOnlyViewAccess,
+  design:taskOnlyViewAccess,
+  wuhan_design_cooperation:adminViewAccess,
+  customer_planner:adminViewAccess,
+  presales:adminViewAccess
 }
 
 export const roleLabelMap: Record<UserRole, string> = Object.fromEntries(
@@ -56,4 +66,8 @@ export const backendRoleMap: Record<string, UserRole> = {
   presales: 'sales',
   project_admin: 'admin',
   super_admin: 'admin',
+  design_cooperation:'designcooperation',
+  design:'design',
+  wuhan_design_cooperation:'wuhan_design_cooperation',
+  customer_planner:"customer_planner"
 }

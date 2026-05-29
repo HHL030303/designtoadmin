@@ -24,8 +24,16 @@ import {
   SnippetsOutlined,
 } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
+import { useAppState } from '../context/AppStateContext'
+import { adminService } from '../services/adminService'
 import { taskService } from '../services/taskService'
-import type { TaskListRecord, TaskSubTaskRecord } from '../types'
+import type {
+  FieldConfig,
+  FieldOptionConfig,
+  FormFieldType,
+  TaskListRecord,
+  TaskSubTaskRecord,
+} from '../types'
 import './AllTicketsPage.css'
 
 type TicketCompletionFilter = 'all' | 'completed' | 'processing'
@@ -84,6 +92,38 @@ function normalizeBooleanLike(value: unknown): boolean | undefined {
   return undefined
 }
 
+function formatTaskFieldValue(
+  fieldType: FormFieldType,
+  value: unknown,
+  optionConfig?: FieldOptionConfig[],
+): string {
+  if (value === undefined || value === null || value === '') {
+    return '-'
+  }
+
+  if (fieldType === 'boolean') {
+    const booleanValue = normalizeBooleanLike(value)
+    return booleanValue === undefined ? String(value) : booleanValue ? '是' : '否'
+  }
+
+  if (fieldType === 'select') {
+    const option = optionConfig?.find((item) => item.value === String(value))
+    return option?.label ?? String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map((item) => String(item)).join(' / ') : '-'
+  }
+
+  return String(value)
+}
+
+function getEnabledFieldConfigs(fieldConfigs: FieldConfig[]) {
+  return [...fieldConfigs]
+    .filter((field) => field.status === 'enabled')
+    .sort((left, right) => left.sort_value - right.sort_value)
+}
+
 function getTextFieldValue(record: TaskListRecord, fieldKey: string): string {
   const value = record.fieldValues[fieldKey]
   return typeof value === 'string' ? value.trim() : ''
@@ -120,24 +160,24 @@ function getCompletionText(record: TaskListRecord): string {
   return record.status === 'completed' ? '已完成' : '进行中'
 }
 
-function getCopyrightText(record: TaskListRecord): string {
-  const artRegistered = getBooleanFieldValue(record, 'artCopyright') === true
-  const textRegistered = getBooleanFieldValue(record, 'textCopyright') === true
+// function getCopyrightText(record: TaskListRecord): string {
+//   const artRegistered = getBooleanFieldValue(record, 'artCopyright') === true
+//   const textRegistered = getBooleanFieldValue(record, 'textCopyright') === true
 
-  if (artRegistered && textRegistered) {
-    return '美术 / 文字已登记'
-  }
+//   if (artRegistered && textRegistered) {
+//     return '美术 / 文字已登记'
+//   }
 
-  if (artRegistered) {
-    return '仅美术已登记'
-  }
+//   if (artRegistered) {
+//     return '仅美术已登记'
+//   }
 
-  if (textRegistered) {
-    return '仅文字已登记'
-  }
+//   if (textRegistered) {
+//     return '仅文字已登记'
+//   }
 
-  return '未登记'
-}
+//   return '未登记'
+// }
 
 function getTaskStageText(record: TaskListRecord): string {
   return record.currentStage?.stageName || (record.status === 'completed' ? '已完成' : '未开始')
@@ -237,9 +277,11 @@ function resetAllFilters(
 }
 
 export function AllTicketsPage() {
+  const { currentProject } = useAppState()
   const [searchParams] = useSearchParams()
   const [tickets, setTickets] = useState<TaskListRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [currentPageSize, setCurrentPageSize] = useState(10)
   const [keyword, setKeyword] = useState('')
@@ -254,11 +296,36 @@ export function AllTicketsPage() {
   const pageTitle = searchParams.get('menu_name')?.trim() || '全部工单'
   const isCustomMenuPage = pageTitle !== '全部工单' && Boolean(requestUrl)
   const presetQuery = useMemo(() => parseRequestUrlValue(requestUrl), [requestUrl])
+  const enabledFieldConfigs = useMemo(
+    () => getEnabledFieldConfigs(taskFieldConfigs),
+    [taskFieldConfigs],
+  )
 
   useEffect(() => {
     setCurrentPage(1)
     setCurrentPageSize(10)
   }, [requestUrl])
+
+  useEffect(() => {
+    const projectId = currentProject?.id ?? ''
+
+    if (!projectId) {
+      setTaskFieldConfigs([])
+      return
+    }
+
+    async function loadTaskFields() {
+      try {
+        const fields = await adminService.listTaskFields(projectId)
+        setTaskFieldConfigs(fields)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '任务字段配置加载失败')
+        setTaskFieldConfigs([])
+      }
+    }
+
+    void loadTaskFields()
+  }, [currentProject?.id])
 
   useEffect(() => {
     let mounted = true
@@ -351,6 +418,9 @@ export function AllTicketsPage() {
           getTextFieldValue(ticket, 'researchOwner'),
           ticket.currentVersion.versionNo,
           ticket.currentStage?.assignees.map((assignee) => assignee.userName).join(' '),
+          ...Object.values(ticket.fieldValues).map((value) => (
+            Array.isArray(value) ? value.join(' ') : String(value ?? '')
+          )),
         ]
           .join(' ')
           .toLowerCase()
@@ -410,6 +480,7 @@ export function AllTicketsPage() {
     completionFilter,
     copyrightFilter,
     deferredKeyword,
+    enabledFieldConfigs,
     isCustomMenuPage,
     serviceFilter,
     stageFilter,
@@ -466,7 +537,7 @@ export function AllTicketsPage() {
     ]
   }, [summary.completed, summary.inService, summary.total])
 
-  const columns: ColumnsType<TaskListRecord> = [
+  const columns = useMemo<ColumnsType<TaskListRecord>>(() => [
     {
       title: '工单信息',
       dataIndex: 'title',
@@ -500,20 +571,20 @@ export function AllTicketsPage() {
         return assigneeNames.length > 0 ? assigneeNames.join(' / ') : '-'
       },
     },
-    {
-      title: 'B端 / C端',
-      width: 110,
-      render: (_, record) => (
-        getBooleanFieldValue(record, 'isBEnd') === true
-          ? <Tag className="all-tickets-page__tag all-tickets-page__tag--brand">B端</Tag>
-          : <Tag className="all-tickets-page__tag all-tickets-page__tag--muted">C端</Tag>
-      ),
-    },
-    {
-      title: '版权登记状态',
-      width: 160,
-      render: (_, record) => getCopyrightText(record),
-    },
+    // {
+    //   title: 'B端 / C端',
+    //   width: 110,
+    //   render: (_, record) => (
+    //     getBooleanFieldValue(record, 'isBEnd') === true
+    //       ? <Tag className="all-tickets-page__tag all-tickets-page__tag--brand">B端</Tag>
+    //       : <Tag className="all-tickets-page__tag all-tickets-page__tag--muted">C端</Tag>
+    //   ),
+    // },
+    // {
+    //   title: '版权登记状态',
+    //   width: 160,
+    //   render: (_, record) => getCopyrightText(record),
+    // },
     {
       title: '完成状态',
       width: 110,
@@ -529,38 +600,36 @@ export function AllTicketsPage() {
         </Tag>
       ),
     },
-    {
-      title: '售后 / 迭代状态',
-      width: 150,
-      render: (_, record) => {
-        const serviceStateText = getServiceStateText(record)
-        const color = serviceStateText === '无'
-          ? 'muted'
-          : serviceStateText.includes('售后')
-            ? 'danger'
-            : 'warning'
+    // {
+    //   title: '售后 / 迭代状态',
+    //   width: 150,
+    //   render: (_, record) => {
+    //     const serviceStateText = getServiceStateText(record)
+    //     const color = serviceStateText === '无'
+    //       ? 'muted'
+    //       : serviceStateText.includes('售后')
+    //         ? 'danger'
+    //         : 'warning'
 
-        return <Tag className={`all-tickets-page__tag all-tickets-page__tag--${color}`}>{serviceStateText}</Tag>
-      },
-    },
-    {
-      title: '学科',
-      width: 100,
-      render: (_, record) => getTextFieldValue(record, 'subject') || '-',
-    },
-    {
-      title: '年级',
-      width: 100,
-      render: (_, record) => getTextFieldValue(record, 'grade') || '-',
-    },
+    //     return <Tag className={`all-tickets-page__tag all-tickets-page__tag--${color}`}>{serviceStateText}</Tag>
+    //   },
+    // },
+    ...enabledFieldConfigs.map((field) => ({
+      title: field.field_name,
+      width: field.field_type === 'textarea' ? 220 : 140,
+      render: (_: unknown, record: TaskListRecord) => formatTaskFieldValue(
+        field.field_type,
+        record.fieldValues[field.field_key],
+        field.option_config,
+      ),
+    })),
     {
       title: '创建时间',
       dataIndex: 'createdAt',
-      // 全部工单页保持和任务列表一致，最右一列固定，横向滚动时便于对照时间信息。
       fixed: 'right',
       width: 140,
     },
-  ]
+  ], [enabledFieldConfigs])
 
   const pagination = useMemo<TablePaginationConfig>(() => {
     if (isCustomMenuPage) {
@@ -569,14 +638,16 @@ export function AllTicketsPage() {
         pageSize: currentPageSize,
         showSizeChanger: true,
         total: customMenuTotal,
+        showTotal: (value) => `共 ${value} 条`,
       }
     }
 
     return {
       pageSize: 10,
       showSizeChanger: true,
+      total: filteredTickets.length,
     }
-  }, [currentPage, currentPageSize, customMenuTotal, isCustomMenuPage])
+  }, [currentPage, currentPageSize, customMenuTotal, filteredTickets.length, isCustomMenuPage])
 
   return (
     <Card

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs from 'dayjs'
 import {
   Button,
@@ -56,6 +56,7 @@ const INTERNAL_PRODUCTION_SOURCE_FIELD_KEY = 'productionSource'
 const PREASSIGNED_MEMBERS_FIELD_KEY = 'menbers'
 const INTERNAL_PRODUCTION_SOURCE_VALUE = '内部'
 const EXTERNAL_PRODUCTION_SOURCE_VALUE = '外部'
+const NEXT_STAGE_MEMBER_PAGE_SIZE = 20
 
 // const taskStatusMeta: Record<string, { color: string; label: string }> = {
 //   archived: { color: 'green', label: '已归档' },
@@ -348,8 +349,8 @@ const renderTaskFieldControl = (field: FieldConfig) => {
   const textPlaceholder = field.placeholder || `请输入${field.field_name}`
   const selectPlaceholder = field.placeholder || `请选择${field.field_name}`
 
-  if (field.field_type === 'textarea') {
-    return <Input.TextArea className="task-process-modal__field-control" placeholder={textPlaceholder} rows={3} />
+  if (field.field_type === 'textarea'||field.field_type === 'text') {
+    return <Input className="task-process-modal__field-control" placeholder={textPlaceholder} />
   }
 
   if (field.field_type === 'select') {
@@ -570,10 +571,13 @@ export function TaskProcessModal({
   const [submitting, setSubmitting] = useState(false)
   const [nextStageLoading, setNextStageLoading] = useState(false)
   const [nextStageMembers, setNextStageMembers] = useState<ProjectMemberRecord[]>([])
+  const [nextStageMemberPage, setNextStageMemberPage] = useState(1)
+  const [nextStageMemberHasMore, setNextStageMemberHasMore] = useState(false)
   const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
   const [selectedPackageNameTags, setSelectedPackageNameTags] = useState<string[]>([])
   const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [taskFieldLoading, setTaskFieldLoading] = useState(false)
+  const nextStageLoadingRef = useRef(false)
 
   useEffect(() => {
     if (!open || !taskId) {
@@ -674,6 +678,55 @@ export function TaskProcessModal({
   )
   const shouldShowPackageNameSection = Boolean(isLastStage && !currentStage?.canUpdateFields)
 
+  const loadNextStageMembers = useCallback(
+    async (targetPage: number, append: boolean) => {
+      const projectId = currentProject?.id ?? ''
+      const nextRoleCode = nextStage?.operatorRoleCode ?? ''
+
+      if (
+        !shouldSelectNextStageAssignee ||
+        !projectId ||
+        !nextRoleCode ||
+        nextStageLoadingRef.current
+      ) {
+        return
+      }
+
+      try {
+        nextStageLoadingRef.current = true
+        setNextStageLoading(true)
+        const response = await adminService.listProjectRoleUsers({
+          page: targetPage,
+          pageSize: NEXT_STAGE_MEMBER_PAGE_SIZE,
+          projectId,
+          roleCode: nextRoleCode,
+        })
+
+        setNextStageMembers((current) => {
+          if (!append) {
+            return response.items
+          }
+
+          const existingMemberIds = new Set(current.map((member) => member.userId))
+          const nextItems = response.items.filter((member) => !existingMemberIds.has(member.userId))
+          return [...current, ...nextItems]
+        })
+        setNextStageMemberPage(response.page)
+        setNextStageMemberHasMore(response.page * response.pageSize < response.total)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '下一节点成员加载失败')
+
+        if (!append) {
+          setNextStageMembers([])
+        }
+      } finally {
+        nextStageLoadingRef.current = false
+        setNextStageLoading(false)
+      }
+    },
+    [currentProject?.id, nextStage?.operatorRoleCode, shouldSelectNextStageAssignee],
+  )
+
   useEffect(() => {
     const projectId = currentProject?.id
 
@@ -749,6 +802,8 @@ export function TaskProcessModal({
 
     if (!shouldSelectNextStageAssignee || !projectId || !nextRoleCode) {
       setNextStageMembers([])
+      setNextStageMemberPage(1)
+      setNextStageMemberHasMore(false)
       return
     }
 
@@ -757,32 +812,13 @@ export function TaskProcessModal({
       form.setFieldValue('nextStageAssignees', buildDefaultNextStageAssignees())
     }
 
-    async function loadNextStageMembers() {
-      try {
-        setNextStageLoading(true)
-        const response = await adminService.listProjectRoleUsers({
-          page: 1,
-          pageSize: 100,
-          projectId,
-          roleCode: nextRoleCode,
-        })
-        setNextStageMembers(response.items)
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : '下一节点成员加载失败')
-        setNextStageMembers([])
-      } finally {
-        setNextStageLoading(false)
-      }
-    }
-
-    void loadNextStageMembers()
+    void loadNextStageMembers(1, false)
   }, [
     allowPageAssignment,
     currentProject?.id,
     form,
-    hasPreassignedNextStageAssignee,
+    loadNextStageMembers,
     nextStage?.operatorRoleCode,
-    shouldCollectTotalPageCount,
     shouldSelectNextStageAssignee,
   ])
 
@@ -1426,12 +1462,24 @@ export function TaskProcessModal({
                                       rules={[{ required: true, message: '请选择任务人员' }]}
                                     >
                                       <Select
+                                        showSearch
                                         placeholder={index === 0 ? '请选择主执行人' : '请选择执行人'}
                                         loading={nextStageLoading}
                                         options={nextStageMembers.map((member) => ({
                                           label: `${member.userName} · ${member.userEmail}`,
                                           value: member.userId,
                                         }))}
+                                        onPopupScroll={(event) => {
+                                          const target = event.target as HTMLDivElement
+                                          const reachedBottom =
+                                            target.scrollTop + target.clientHeight >= target.scrollHeight - 8
+
+                                          if (!reachedBottom || nextStageLoading || !nextStageMemberHasMore) {
+                                            return
+                                          }
+
+                                          void loadNextStageMembers(nextStageMemberPage + 1, true)
+                                        }}
                                       />
                                     </Form.Item>
                                   </Col>
@@ -1442,7 +1490,7 @@ export function TaskProcessModal({
                                       rules={[{ required: true, message: '请输入分配页数' }]}
                                     >
                                       <InputNumber
-                                        min={0}
+                                        min={1}
                                         precision={0}
                                         className="full-width-control"
                                         placeholder="请输入分配页数"
@@ -1492,6 +1540,17 @@ export function TaskProcessModal({
                                 label: `${member.userName} · ${member.userEmail}`,
                                 value: member.userId,
                               }))}
+                              onPopupScroll={(event) => {
+                                const target = event.target as HTMLDivElement
+                                const reachedBottom =
+                                  target.scrollTop + target.clientHeight >= target.scrollHeight - 8
+
+                                if (!reachedBottom || nextStageLoading || !nextStageMemberHasMore) {
+                                  return
+                                }
+
+                                void loadNextStageMembers(nextStageMemberPage + 1, true)
+                              }}
                             />
                           </Form.Item>
                     )

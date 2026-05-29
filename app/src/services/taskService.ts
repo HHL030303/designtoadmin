@@ -97,6 +97,10 @@ type TaskDetailResponse = {
     status: string
     readonly: boolean
     owner_id?: number | string | null
+    owner?: {
+      user_id?: number | string | null
+      user_name?: string | null
+    } | null
     created_at: string
     archived_at: string | null
   }
@@ -263,6 +267,20 @@ type CreateServiceTaskPayload = {
 
 type CreateAfterSalesTaskPayload = CreateServiceTaskPayload & {
   responsible_user_ids?: number[]
+}
+
+type CreateMedicalSubItemPayload = {
+  sub_item_type: string
+  has_contract_change?: boolean
+  amount?: number
+}
+
+type CreateMedicalComplaintPayload = {
+  workflow_stage_id: number
+  description: string
+  responsible_user_ids?: number[]
+  processing_method?: string
+  refund_amount?: number
 }
 
 type TaskParticipantResponse =
@@ -585,9 +603,12 @@ export const taskService = {
         createdAt: data.task.created_at,
         id: String(data.task.id),
         ownerId:
-          data.task.owner_id !== undefined && data.task.owner_id !== null
-            ? String(data.task.owner_id)
+          data.task.owner?.user_id !== undefined && data.task.owner?.user_id !== null
+            ? String(data.task.owner.user_id)
+            : data.task.owner_id !== undefined && data.task.owner_id !== null
+              ? String(data.task.owner_id)
             : undefined,
+        ownerName: data.task.owner?.user_name ?? undefined,
         readonly: data.task.readonly,
         status: data.task.status,
         title: data.task.title,
@@ -675,6 +696,20 @@ export const taskService = {
   async cancelSubTask(subTaskId: string) {
     await apiRequest<null>(`/api/sub_tasks/${subTaskId}/cancel`, {
       body: {},
+      method: 'POST',
+    })
+  },
+
+  async createMedicalSubItem(taskId: string, payload: CreateMedicalSubItemPayload) {
+    await apiRequest<null>(`/api/tasks/${taskId}/sub_items`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async createMedicalComplaint(taskId: string, payload: CreateMedicalComplaintPayload) {
+    await apiRequest<null>(`/api/tasks/${taskId}/complaints`, {
+      body: payload,
       method: 'POST',
     })
   },

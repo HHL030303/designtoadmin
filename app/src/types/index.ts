@@ -27,6 +27,11 @@ export type CourseStatus =
 
 export type OrderType = '全新订单' | '售后订单' | '迭代订单'
 export type ServiceType = '售后' | '迭代'
+export type MedicalTaskSubItemType =
+  | '客户增加页数'
+  | '客户推翻需求'
+  | '增加制作类型'
+  | '要求加急'
 export type TicketStatus = '待接单' | '处理中' | '待归档' | '已关闭'
 export type StageState = 'done' | 'active' | 'pending'
 export type QualityCheckStatus = '待生成' | '校验通过' | '打包成功'
@@ -184,7 +189,9 @@ export interface TaskDetailRecord {
   task: Pick<
     TaskListRecord,
     'id' | 'title' | 'status' | 'readonly' | 'createdAt' | 'archivedAt' | 'ownerId'
-  >
+  > & {
+    ownerName?: string
+  }
   currentVersion: TaskVersionRecord
   versionHistory: TaskVersionRecord[]
   currentStage?: TaskWorkflowStageRecord | null
@@ -258,6 +265,20 @@ export interface CreateServiceTicketPayload {
   assigneeUserIds?: string[]
   ownerUserId?: string
   firstStageAssigneeUserId?: string
+}
+
+export interface CreateMedicalTaskSubItemPayload {
+  subItemType?: MedicalTaskSubItemType
+  hasContractChange?: YesNoOption
+  amount?: number
+}
+
+export interface CreateMedicalTaskComplaintPayload {
+  workflowStageId?: string
+  description: string
+  responsibilityUserIds?: string[]
+  processingMethod?: string
+  refundAmount?: number
 }
 
 export interface CreateTicketResult {
@@ -384,6 +405,11 @@ export type UserRole =
   | 'pageDesigner'
   | 'sales'
   | 'admin'
+  |'designcooperation'
+  |'design'
+  |'wuhan_design_cooperation'
+  | 'customer_planner'
+  |'presales'
 
 export interface RoleOption {
   key: UserRole
