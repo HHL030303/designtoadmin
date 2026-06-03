@@ -1,6 +1,8 @@
 import dayjs from 'dayjs'
 import type {
   AttachmentFile,
+  MedicalTaskComplaintRecord,
+  MedicalTaskSubItemRecord,
   TaskDetailRecord,
   TaskListRecord,
   TaskSubTaskRecord,
@@ -32,6 +34,18 @@ type TaskListItemResponse = {
   archived_at: string | null
   current_version?: TaskVersionResponse | null
   active_sub_tasks?: TaskSubTaskResponse[] | null
+  additional_work_item_count?: number | null
+  additional_work_items?: MedicalSubItemResponse[] | null
+  complaint_count?: number | null
+  complaints?: MedicalComplaintResponse[] | null
+  extension_summary?: {
+    additional_work?: {
+      total_count?: number | null
+    } | null
+    complaint?: {
+      total_count?: number | null
+    } | null
+  } | null
   field_values?: Record<string, unknown> | null
   package_info?: {
     error_message?: string | null
@@ -49,6 +63,8 @@ type TaskListItemResponse = {
       file_url?: string | null
     } | null
   } | null
+  sub_items?: MedicalSubItemResponse[] | null
+  sub_item_count?: number | null
 }
 
 type TaskVersionResponse = {
@@ -270,17 +286,46 @@ type CreateAfterSalesTaskPayload = CreateServiceTaskPayload & {
 }
 
 type CreateMedicalSubItemPayload = {
-  sub_item_type: string
-  has_contract_change?: boolean
-  amount?: number
+  description?: string
+  extra_fee_amount?: number
+  item_type: string
+  owner_id?: number
+  remark?: string
+  title: string
 }
 
 type CreateMedicalComplaintPayload = {
-  workflow_stage_id: number
-  description: string
-  responsible_user_ids?: number[]
-  processing_method?: string
+  handling_method?: string
+  problem_description: string
   refund_amount?: number
+  remark?: string
+  responsibility_type?: string
+  responsible_user_ids?: number[]
+  stage_id: number
+}
+
+type ResolveMedicalComplaintPayload = {
+  handling_method?: string
+  refund_amount?: number
+  remark?: string
+}
+
+type ConfirmMedicalSubItemPayload = {
+  extra_fee_amount?: number
+  remark?: string
+}
+
+type CompleteMedicalSubItemPayload = {
+  remark?: string
+}
+
+type UpdateMedicalSubItemPayload = {
+  description: string
+  extra_fee_amount?: number
+  item_type: string
+  owner_id?: number
+  remark?: string
+  title: string
 }
 
 type TaskParticipantResponse =
@@ -298,6 +343,47 @@ type TaskParticipantResponse =
         user_name?: string
       }>
     }
+
+type MedicalSubItemResponse = {
+  created_at?: string | null
+  description?: string | null
+  extra_fee_amount?: number | null
+  has_contract_change?: boolean | null
+  id?: number | string | null
+  item_no?: string | null
+  item_type?: string | null
+  remark?: string | null
+  status?: string | null
+  sub_item_no?: string | null
+  sub_item_type?: string | null
+  title?: string | null
+}
+
+type MedicalComplaintResponse = {
+  complaint_no?: string | null
+  created_at?: string | null
+  description?: string | null
+  handling_method?: string | null
+  id?: number | string | null
+  problem_description?: string | null
+  processing_method?: string | null
+  remark?: string | null
+  refund_amount?: number | null
+  responsible_user_names?: string[] | null
+  responsible_users?: Array<{
+    user_name?: string | null
+    name?: string | null
+  }> | null
+  status?: string | null
+  workflow_stage_name?: string | null
+}
+
+type MedicalListResponse<T> = {
+  items?: T[] | null
+  page?: number | null
+  page_size?: number | null
+  total?: number | null
+}
 
 function normalizeDate(value?: number | string | null): string | undefined {
   if (value === null || value === undefined || value === '') {
@@ -338,6 +424,41 @@ function mapSubTask(subTask: TaskSubTaskResponse): TaskSubTaskRecord {
     status: subTask.status,
     subTaskType: subTask.sub_task_type,
     targetVersion: subTask.target_version ?? null,
+  }
+}
+
+function mapMedicalSubItem(item: MedicalSubItemResponse): MedicalTaskSubItemRecord {
+  return {
+    amount: item.extra_fee_amount ?? undefined,
+    createdAt: item.created_at ?? undefined,
+    description: item.description ?? undefined,
+    hasContractChange: item.has_contract_change ?? undefined,
+    id: item.id !== undefined && item.id !== null ? String(item.id) : '',
+    remark: item.remark ?? undefined,
+    status: item.status ?? 'unknown',
+    subItemNo: item.item_no ?? item.sub_item_no ?? undefined,
+    subItemType: item.item_type ?? item.sub_item_type ?? '-',
+    title: item.title ?? undefined,
+  }
+}
+
+function mapMedicalComplaint(item: MedicalComplaintResponse): MedicalTaskComplaintRecord {
+  const responsibilityUserNames = item.responsible_user_names ??
+    (item.responsible_users ?? [])
+      .map((user) => user.user_name ?? user.name ?? '')
+      .filter((name) => Boolean(name))
+
+  return {
+    complaintNo: item.complaint_no ?? undefined,
+    createdAt: item.created_at ?? undefined,
+    description: item.problem_description ?? item.description ?? '-',
+    id: item.id !== undefined && item.id !== null ? String(item.id) : '',
+    processingMethod: item.handling_method ?? item.processing_method ?? undefined,
+    remark: item.remark ?? undefined,
+    refundAmount: item.refund_amount ?? undefined,
+    responsibilityUserNames,
+    status: item.status ?? 'unknown',
+    workflowStageName: item.workflow_stage_name ?? undefined,
   }
 }
 
@@ -435,6 +556,18 @@ function mapWorkflowStage(stage: TaskWorkflowStageResponse): TaskWorkflowStageRe
 }
 
 function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
+  const medicalSubItems = (item.additional_work_items ?? item.sub_items ?? []).map(
+    mapMedicalSubItem,
+  )
+  const medicalComplaints = (item.complaints ?? []).map(mapMedicalComplaint)
+  const medicalSubItemCount = item.extension_summary?.additional_work?.total_count ??
+    item.additional_work_item_count ??
+    item.sub_item_count ??
+    medicalSubItems.length
+  const medicalComplaintCount = item.extension_summary?.complaint?.total_count ??
+    item.complaint_count ??
+    medicalComplaints.length
+
   return {
     activeSubTasks: (item.active_sub_tasks ?? []).map(mapSubTask),
     archivedAt: item.archived_at,
@@ -461,6 +594,10 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
     currentVersion: mapVersion(item.current_version),
     fieldValues: item.field_values ?? {},
     id: String(item.id),
+    medicalComplaintCount,
+    medicalComplaints,
+    medicalSubItemCount,
+    medicalSubItems,
     packageInfo: item.package_info
       ? {
           errorMessage: item.package_info.error_message ?? null,
@@ -701,7 +838,7 @@ export const taskService = {
   },
 
   async createMedicalSubItem(taskId: string, payload: CreateMedicalSubItemPayload) {
-    await apiRequest<null>(`/api/tasks/${taskId}/sub_items`, {
+    await apiRequest<null>(`/api/tasks/${taskId}/additional_work_items`, {
       body: payload,
       method: 'POST',
     })
@@ -710,6 +847,100 @@ export const taskService = {
   async createMedicalComplaint(taskId: string, payload: CreateMedicalComplaintPayload) {
     await apiRequest<null>(`/api/tasks/${taskId}/complaints`, {
       body: payload,
+      method: 'POST',
+    })
+  },
+
+  async listMedicalSubItems(query: {
+    page?: number
+    pageSize?: number
+    status?: string
+    taskId: string
+  }) {
+    const data = await apiRequest<MedicalListResponse<MedicalSubItemResponse>>(
+      '/api/additional_work_items',
+      {
+        query: {
+          page: query.page ?? 1,
+          page_size: query.pageSize ?? 20,
+          status: query.status || undefined,
+          task_id: query.taskId,
+        },
+      },
+    )
+
+    return {
+      items: (data.items ?? []).map(mapMedicalSubItem),
+      page: data.page ?? query.page ?? 1,
+      pageSize: data.page_size ?? query.pageSize ?? 20,
+      total: data.total ?? 0,
+    }
+  },
+
+  async confirmMedicalSubItem(subItemId: string, payload?: ConfirmMedicalSubItemPayload) {
+    await apiRequest<null>(`/api/additional_work_items/${subItemId}/confirm`, {
+      body: payload ?? {},
+      method: 'POST',
+    })
+  },
+
+  async updateMedicalSubItem(subItemId: string, payload: UpdateMedicalSubItemPayload) {
+    await apiRequest<null>(`/api/additional_work_items/${subItemId}/update`, {
+      body: payload,
+      method: 'POST',
+    })
+  },
+
+  async cancelMedicalSubItem(subItemId: string) {
+    await apiRequest<null>(`/api/additional_work_items/${subItemId}/cancel`, {
+      body: {},
+      method: 'POST',
+    })
+  },
+
+  async completeMedicalSubItem(subItemId: string, payload?: CompleteMedicalSubItemPayload) {
+    await apiRequest<null>(`/api/additional_work_items/${subItemId}/complete`, {
+      body: payload ?? {},
+      method: 'POST',
+    })
+  },
+
+  async listMedicalComplaints(query: {
+    page?: number
+    pageSize?: number
+    status?: string
+    taskId: string
+  }) {
+    const data = await apiRequest<MedicalListResponse<MedicalComplaintResponse>>(
+      '/api/complaints',
+      {
+        query: {
+          page: query.page ?? 1,
+          page_size: query.pageSize ?? 20,
+          status: query.status || undefined,
+          task_id: query.taskId,
+        },
+      },
+    )
+
+    return {
+      items: (data.items ?? []).map(mapMedicalComplaint),
+      page: data.page ?? query.page ?? 1,
+      pageSize: data.page_size ?? query.pageSize ?? 20,
+      total: data.total ?? 0,
+    }
+  },
+
+  async resolveMedicalComplaint(complaintId: string, payload?: ResolveMedicalComplaintPayload) {
+    await apiRequest<null>(`/api/complaints/${complaintId}/resolve`, {
+      body: payload ?? {},
+      method: 'POST',
+    })
+  },
+
+  async cancelMedicalComplaint(complaintId: string) {
+    await apiRequest<null>(`/api/complaints/${complaintId}/cancel`, {
+      body: {},
       method: 'POST',
     })
   },

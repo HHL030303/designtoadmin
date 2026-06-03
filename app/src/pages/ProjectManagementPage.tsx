@@ -29,6 +29,8 @@ import {
 } from '@ant-design/icons'
 import type { TablePaginationConfig } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { RolePermissionConfigModal } from '../components/settings/RolePermissionConfigModal'
+import { mergeRolePermissionRecords } from '../constants/rolePermissions'
 import { ProjectFieldConfigDrawer } from '../components/project/ProjectFieldConfigDrawer'
 import { adminService } from '../services/adminService'
 import './ProjectManagementPage.css'
@@ -36,6 +38,7 @@ import type {
   AdminAccountRecord,
   ProjectManagementRecord,
   ProjectMemberRecord,
+  RolePermissionRecord,
   SystemRoleRecord,
   WorkflowStageConfig,
   WorkflowStageFileRule,
@@ -197,11 +200,14 @@ export function ProjectManagementPage() {
   const [workflowEditorOpen, setWorkflowEditorOpen] = useState(false)
   const [memberDrawerOpen, setMemberDrawerOpen] = useState(false)
   const [roleDrawerOpen, setRoleDrawerOpen] = useState(false)
+  const [rolePermissionModalOpen, setRolePermissionModalOpen] = useState(false)
   const [membersLoading, setMembersLoading] = useState(false)
   const [roleLoading, setRoleLoading] = useState(false)
+  const [rolePermissionLoading, setRolePermissionLoading] = useState(false)
   const [workflowLoading, setWorkflowLoading] = useState(false)
   const [memberSubmitting, setMemberSubmitting] = useState(false)
   const [roleSubmitting, setRoleSubmitting] = useState(false)
+  const [rolePermissionSubmitting, setRolePermissionSubmitting] = useState(false)
   const [workflowSubmitting, setWorkflowSubmitting] = useState(false)
   const [members, setMembers] = useState<ProjectMemberRecord[]>([])
   const [users, setUsers] = useState<AdminAccountRecord[]>([])
@@ -219,6 +225,7 @@ export function ProjectManagementPage() {
   const [selectedProject, setSelectedProject] = useState<ProjectManagementRecord | null>(null)
   const [editingMember, setEditingMember] = useState<ProjectMemberRecord | null>(null)
   const [editingRole, setEditingRole] = useState<SystemRoleRecord | null>(null)
+  const [permissionEditingRole, setPermissionEditingRole] = useState<SystemRoleRecord | null>(null)
   const [editingWorkflow, setEditingWorkflow] = useState<WorkflowTemplateRecord | null>(null)
   const [memberKeyword, setMemberKeyword] = useState('')
   const [roleKeyword, setRoleKeyword] = useState('')
@@ -236,6 +243,7 @@ export function ProjectManagementPage() {
   const [workflowStages, setWorkflowStages] = useState<WorkflowStageConfig[]>(
     createDefaultWorkflowStages(),
   )
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionRecord[]>([])
   const [selectedWorkflowStageKey, setSelectedWorkflowStageKey] = useState<string | null>(
     null,
   )
@@ -382,6 +390,30 @@ export function ProjectManagementPage() {
       message.error(error instanceof Error ? error.message : '加载角色列表失败')
     } finally {
       setRoleLoading(false)
+    }
+  }
+
+  async function openRolePermissionModal(role: SystemRoleRecord) {
+    if (!selectedProject) {
+      return
+    }
+
+    setPermissionEditingRole(role)
+    setRolePermissions([])
+    setRolePermissionModalOpen(true)
+    setRolePermissionLoading(true)
+
+    try {
+      const permissions = await adminService.listRolePermissions(selectedProject.id, role.id)
+      const resources = await adminService.listPermissionResources(selectedProject.id)
+
+      // 先按角色已有权限回填，再用资源清单补齐未配置项，避免丢掉当前勾选状态。
+      setRolePermissions(mergeRolePermissionRecords(resources, permissions))
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载角色权限失败')
+      setRolePermissions([])
+    } finally {
+      setRolePermissionLoading(false)
     }
   }
 
@@ -682,9 +714,12 @@ export function ProjectManagementPage() {
     },
     {
       title: '操作',
-      width: 180,
+      width: 260,
       render: (_, record) => (
         <Space size={8}>
+          <Button size="small" onClick={() => void openRolePermissionModal(record)}>
+            权限配置
+          </Button>
           <Button
             size="small"
             onClick={() => {
@@ -899,12 +934,34 @@ export function ProjectManagementPage() {
 
   function resetRoleModalState() {
     setRolesModalOpen(false)
+    setRolePermissionModalOpen(false)
     setSelectedProject(null)
     setRoles([])
     setRoleKeyword('')
     setEditingRole(null)
+    setPermissionEditingRole(null)
+    setRolePermissions([])
     setRoleDrawerOpen(false)
     roleForm.resetFields()
+  }
+
+  function handleRolePermissionChange(
+    resourceCode: string,
+    actions: RolePermissionRecord['actions'],
+  ) {
+    setRolePermissions((currentPermissions) =>
+      currentPermissions.map((permission) =>
+        permission.resourceCode === resourceCode
+          ? { ...permission, actions }
+          : permission,
+      ),
+    )
+  }
+
+  function closeRolePermissionModal() {
+    setRolePermissionModalOpen(false)
+    setPermissionEditingRole(null)
+    setRolePermissions([])
   }
 
   function resetWorkflowState() {
@@ -948,6 +1005,28 @@ export function ProjectManagementPage() {
       await loadRoleContext(selectedProject)
     } catch (error) {
       message.error(error instanceof Error ? error.message : '删除角色失败')
+    }
+  }
+
+  async function handleSaveRolePermissions() {
+    if (!selectedProject || !permissionEditingRole) {
+      return
+    }
+
+    setRolePermissionSubmitting(true)
+
+    try {
+      await adminService.updateRolePermissions(
+        selectedProject.id,
+        permissionEditingRole.id,
+        rolePermissions,
+      )
+      message.success('角色权限保存成功')
+      closeRolePermissionModal()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '保存角色权限失败')
+    } finally {
+      setRolePermissionSubmitting(false)
     }
   }
 
@@ -1680,6 +1759,17 @@ export function ProjectManagementPage() {
             </Space>
           </Form>
         </Drawer>
+
+        <RolePermissionConfigModal
+          open={rolePermissionModalOpen}
+          roleName={permissionEditingRole?.name}
+          permissions={rolePermissions}
+          loading={rolePermissionLoading}
+          saving={rolePermissionSubmitting}
+          onCancel={closeRolePermissionModal}
+          onChange={handleRolePermissionChange}
+          onSubmit={() => void handleSaveRolePermissions()}
+        />
       </Modal>
 
       <Modal

@@ -108,7 +108,7 @@ export function LoginPage() {
                 <Form
                   form={form}
                   layout="vertical"
-                  initialValues={{ email: 'admin@example.com', password: '123456' }}
+                  // initialValues={{ email: 'admin@example.com', password: '123456' }}
                   onFinish={(values) => void handleFinish(values)}
                 >
                   <Form.Item

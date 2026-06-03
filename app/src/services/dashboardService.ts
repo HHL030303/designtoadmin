@@ -118,19 +118,19 @@ function resolveTemplateString(
 }
 
 function resolveQueryParams(
-  paramsJson: Record<string, unknown>,
+  paramsJson: Record<string, any>,
   context: Record<string, string | number>,
 ): Record<string, string | number> {
-  const resolved: Record<string, string | number> = {}
-
+  const resolved: Record<string, any> = {}
   Object.entries(paramsJson).forEach(([key, value]) => {
     if (typeof value === 'string') {
       const nextValue = resolveTemplateString(value, context)
-
       if (nextValue !== '') {
         resolved[key] = nextValue
       }
       return
+    } else {
+      resolved[key] = value
     }
 
     if (typeof value === 'number' && Number.isFinite(value)) {

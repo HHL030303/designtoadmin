@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import datePickerZhCN from 'antd/es/date-picker/locale/zh_CN'
 import {
   Button,
   Checkbox,
@@ -26,6 +27,7 @@ import type { ColumnsType } from 'antd/es/table'
 import type { TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 import paginationZhCN from '@rc-component/pagination/es/locale/zh_CN'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -44,9 +46,12 @@ import { TaskProcessModal } from '../components/course/TaskProcessModal'
 import { TaskHistoryDetailPanel } from '../components/course/TaskHistoryDetailPanel'
 import { ServiceTicketDrawer } from '../components/course/ServiceTicketDrawer'
 import { MedicalTaskComplaintModal } from '../components/course/MedicalTaskComplaintModal'
+import { MedicalTaskComplaintListModal } from '../components/course/MedicalTaskComplaintListModal'
 import { MedicalTaskSubItemModal } from '../components/course/MedicalTaskSubItemModal'
+import { MedicalTaskSubItemListModal } from '../components/course/MedicalTaskSubItemListModal'
 import { shouldEnableMedicalTaskSpecialActions } from '../constants/taskHardcodedRules'
 import { getTaskListActionPermission } from '../constants/taskListActionPermissions'
+import { shouldShowTaskListExtensionColumns } from '../constants/taskListExtensionColumnPermissions'
 import { shouldShowCompletedTaskTab } from '../constants/taskListTabPermissions'
 import './CoursesPage.css'
 import type {
@@ -61,9 +66,11 @@ import type {
   TaskDetailRecord,
   TaskListRecord,
   TaskVersionRecord,
-  UserRole,
+  // UserRole,
   WorkflowTemplateRecord,
 } from '../types'
+
+dayjs.locale('zh-cn')
 
 type TaskFormValue = string | number | boolean | Dayjs | null | undefined
 type TaskFormValues = Record<string, TaskFormValue>
@@ -88,6 +95,10 @@ const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
 const mandatoryTaskColumnKeys = ['task']
 const TASK_OWNER_MEMBER_PAGE_SIZE = 100
 const SECOND_STAGE_MEMBER_PAGE_SIZE = 100
+const TASK_STATUS_FILTER_OPTIONS: FieldOptionConfig[] = [
+  { label: '处理中', value: 'processing' },
+  { label: '已完成', value: 'completed' },
+]
 
 type TaskColumnDefinition = {
   column: ColumnsType<TaskListRecord>[number]
@@ -511,6 +522,7 @@ function renderFieldControl(field: FieldConfig) {
   if (field.field_type === 'date') {
     return (
       <DatePicker
+        locale={datePickerZhCN}
         className="control-full-width"
         picker={field.type === 'year' ? 'year' : 'date'}
         format={field.type === 'year' ? 'YYYY' : 'YYYY-MM-DD'}
@@ -523,6 +535,7 @@ function renderFieldControl(field: FieldConfig) {
   if (field.field_type === 'year') {
     return (
       <DatePicker
+        locale={datePickerZhCN}
         className="control-full-width"
         picker="year"
         format="YYYY"
@@ -747,21 +760,21 @@ function buildTaskPayload(
 //   }
 // }
 
-function canDeleteTaskRecord(
-  task: TaskListRecord,
-  currentUserId: string | undefined,
-  role: UserRole,
-) {
-  if (role === 'admin') {
-    return true
-  }
+// function canDeleteTaskRecord(
+//   task: TaskListRecord,
+//   currentUserId: string | undefined,
+//   role: UserRole,
+// ) {
+//   if (role === 'admin'||role==='planner') {
+//     return true
+//   }
 
-  if (task.creatorUserId && currentUserId) {
-    return task.creatorUserId === currentUserId
-  }
+//   if (task.creatorUserId && currentUserId) {
+//     return task.creatorUserId === currentUserId
+//   }
 
-  return !task.readonly
-}
+//   return !task.readonly
+// }
 
 function isCompletedTask(task: TaskListRecord) {
   return task.status === 'completed'
@@ -1091,7 +1104,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [mutating, setMutating] = useState(false)
   const [fieldFilters, setFieldFilters] = useState<Record<string, unknown>>({})
   const [searchExpanded, setSearchExpanded] = useState(false)
-  const [statusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [tabKey, setTabKey] = useState<'todo' | 'joined' | 'completed'>('todo')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
@@ -1102,6 +1115,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [medicalSubItemModalOpen, setMedicalSubItemModalOpen] = useState(false)
   const [medicalComplaintModalOpen, setMedicalComplaintModalOpen] = useState(false)
   const [medicalActionTaskId, setMedicalActionTaskId] = useState<string>('')
+  const [medicalSubItemListTaskId, setMedicalSubItemListTaskId] = useState<string>('')
+  const [medicalComplaintListTaskId, setMedicalComplaintListTaskId] = useState<string>('')
   const [medicalComplaintStageOptions, setMedicalComplaintStageOptions] = useState<
     FieldOptionConfig[]
   >([])
@@ -1150,15 +1165,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [searchForm] = Form.useForm<TaskSearchFormValues>()
   const watchedTaskFormValues = Form.useWatch([], form) as TaskFormValues | undefined
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
-  const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin')
+  const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin'||role==='wuhan_design_cooperation')
+  const previewAll = role==='operation'||role==='presales'
   const taskListActionPermission = getTaskListActionPermission(currentProject)
   const canManageTaskListButtons = taskListActionPermission
     ? taskListActionPermission.allowedRoles.includes(role)
-    : true
-  const shouldShowTaskTabs = !canManageTaskActions
+    : false
+  const shouldShowTaskTabs = (!canManageTaskActions &&!previewAll)
   const shouldShowCompletedTab = shouldShowCompletedTaskTab(role)
   const shouldShowMedicalTaskActions =
-    !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject)
+    !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject) && role==='design'
+    const shouldShowMedicalcomplaintActions =isMyTasksPage&& shouldEnableMedicalTaskSpecialActions(currentProject) && role==='wuhan_design_cooperation'
+  const shouldShowMedicalTaskColumns =
+    !isMyTasksPage && shouldShowTaskListExtensionColumns(currentProject)
   const taskOwnerOptions = useMemo(
     () => mergeSelectOptions(
       taskOwnerMembers.map((member) => ({
@@ -1539,7 +1558,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     () =>
       searchExpanded
         ? searchableTaskFieldConfigs
-        : searchableTaskFieldConfigs.slice(0, 4),
+        : searchableTaskFieldConfigs.slice(0, 3),
     [searchExpanded, searchableTaskFieldConfigs],
   )
   const taskColumnStorageKey = buildTaskColumnStorageKey(currentProject?.id ?? 'global', mode)
@@ -1709,12 +1728,24 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setMedicalActionTaskId('')
   }
 
+  function handleCloseMedicalSubItemListModal() {
+    setMedicalSubItemListTaskId('')
+  }
+
   function handleCloseMedicalComplaintModal() {
     setMedicalComplaintModalOpen(false)
     setMedicalActionTaskId('')
     setMedicalComplaintStageOptions([])
     setMedicalComplaintResponsibilityOptions([])
     setMedicalComplaintContextLoading(false)
+  }
+
+  function handleCloseMedicalComplaintListModal() {
+    setMedicalComplaintListTaskId('')
+  }
+
+  async function refreshMedicalTaskData(taskId: string) {
+    await Promise.all([loadTasks(), refreshTaskDetail(taskId)])
   }
 
   async function refreshTaskDetail(taskId: string, versionId?: string) {
@@ -1801,6 +1832,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setMedicalSubItemModalOpen(true)
   }
 
+  async function openMedicalSubItemListModal(taskId: string) {
+    setMedicalSubItemListTaskId(taskId)
+  }
+
   async function openMedicalComplaintModal(taskId: string) {
     setMedicalActionTaskId(taskId)
     setMedicalComplaintModalOpen(true)
@@ -1826,6 +1861,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     } finally {
       setMedicalComplaintContextLoading(false)
     }
+  }
+
+  async function openMedicalComplaintListModal(taskId: string) {
+    setMedicalComplaintListTaskId(taskId)
   }
 
   async function cancelOpeTask(task: TaskListRecord) {
@@ -1940,16 +1979,34 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
     try {
       setMutating(true)
+      const detailCacheKey = getTaskDetailCacheKey(medicalActionTaskId)
+      const cachedDetail = taskDetails[detailCacheKey]
+      const detail = cachedDetail ?? await refreshTaskDetail(medicalActionTaskId)
+      const ownerId = detail.task.ownerId ?? currentUser?.id
+      const descriptionParts: string[] = [payload.subItemType]
+
+      if (payload.amount !== undefined) {
+        descriptionParts.push(`涉及金额：${payload.amount}`)
+      }
+
+      if (payload.hasContractChange) {
+        descriptionParts.push(`合同变更：${payload.hasContractChange}`)
+      }
+
+      if (payload.remark?.trim()) {
+        descriptionParts.push(payload.remark.trim())
+      }
+
       await taskService.createMedicalSubItem(medicalActionTaskId, {
-        amount: payload.amount,
-        has_contract_change:
-          payload.hasContractChange !== undefined
-            ? payload.hasContractChange === '是'
-            : undefined,
-        sub_item_type: payload.subItemType,
+        description: descriptionParts.join('；'),
+        extra_fee_amount: payload.amount,
+        item_type: payload.subItemType,
+        owner_id: ownerId ? Number(ownerId) : undefined,
+        remark: payload.remark?.trim() || undefined,
+        title: `增项：${payload.subItemType}`,
       })
       message.success('子项已创建')
-      await Promise.all([loadTasks(), refreshTaskDetail(medicalActionTaskId)])
+      await refreshMedicalTaskData(medicalActionTaskId)
       handleCloseMedicalSubItemModal()
     } catch (error) {
       message.error(error instanceof Error ? error.message : '增加子项失败')
@@ -1967,16 +2024,18 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     try {
       setMutating(true)
       await taskService.createMedicalComplaint(medicalActionTaskId, {
-        description: payload.description,
-        processing_method: payload.processingMethod?.trim() || undefined,
+        handling_method: payload.processingMethod?.trim() || undefined,
+        problem_description: payload.description,
+        remark: payload.remark?.trim() || undefined,
+        responsibility_type: 'design',
         refund_amount: payload.refundAmount,
         responsible_user_ids: (payload.responsibilityUserIds ?? [])
           .map((userId) => Number(userId))
           .filter((userId) => Number.isFinite(userId)),
-        workflow_stage_id: Number(payload.workflowStageId),
+        stage_id: Number(payload.workflowStageId),
       })
       message.success('客诉已创建')
-      await Promise.all([loadTasks(), refreshTaskDetail(medicalActionTaskId)])
+      await refreshMedicalTaskData(medicalActionTaskId)
       handleCloseMedicalComplaintModal()
     } catch (error) {
       message.error(error instanceof Error ? error.message : '发起客诉失败')
@@ -2154,7 +2213,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </>
         )
       },
-      width: 190,
+      width: 110,
         },
         defaultVisible: true,
         key: 'status',
@@ -2172,7 +2231,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </span>
         )
       },
-      width: 160,
+      width: 90,
         },
         defaultVisible: true,
         key: 'currentAssignees',
@@ -2188,7 +2247,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             field.option_config,
           ),
           title: field.field_name,
-          width: field.field_type === 'textarea' ? 220 : 140,
+          width: field.field_type === 'textarea' ? 140 : 90,
         },
         defaultVisible: enabledFieldConfigs.findIndex(
           (config) => config.field_key === field.field_key,
@@ -2196,6 +2255,56 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         key: `field:${field.field_key}`,
         title: field.field_name,
       })),
+      ...(shouldShowMedicalTaskColumns
+        ? [
+            {
+              column: {
+                key: 'medicalSubItems',
+                title: '子项',
+                width: 120,
+                render: (_: unknown, record: TaskListRecord) => {
+                  const count = record.medicalSubItemCount
+
+                  return (
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => void openMedicalSubItemListModal(record.id)}
+                    >
+                      {count > 0 ? `${count} 条` : '0 条'}
+                    </Button>
+                  )
+                },
+              },
+              defaultVisible: true,
+              key: 'medicalSubItems',
+              title: '子项',
+            },
+            {
+              column: {
+                key: 'medicalComplaints',
+                title: '客诉',
+                width: 120,
+                render: (_: unknown, record: TaskListRecord) => {
+                  const count = record.medicalComplaintCount
+
+                  return (
+                    <Button
+                      type="link"
+                      size="small"
+                      onClick={() => void openMedicalComplaintListModal(record.id)}
+                    >
+                      {count > 0 ? `${count} 条` : '0 条'}
+                    </Button>
+                  )
+                },
+              },
+              defaultVisible: true,
+              key: 'medicalComplaints',
+              title: '客诉',
+            },
+          ] satisfies TaskColumnDefinition[]
+        : []),
       {
         column: {
           key: 'currentVersion',
@@ -2213,7 +2322,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               />
             )
           },
-          width: 140,
+          width: 90,
         },
         defaultVisible: true,
         key: 'currentVersion',
@@ -2249,7 +2358,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
             return ''
           },
-          width: 160,
+          width: 120,
         },
         defaultVisible: true,
         key: 'packageInfo',
@@ -2290,7 +2399,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       ),
       width: 240,
       render: (_, record) => {
-        const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
+        // const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
         const completedTask = isCompletedTask(record)
         const cancelableSubTask = resolveCancelableSubTask(record)
         const canCancelServiceTask = Boolean(
@@ -2336,18 +2445,22 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   color="geekblue"
                   onClick={() => void openMedicalSubItemModal(record.id)}
                 >
-                  增加子项
+                  需求变更
                 </Button>
-                <Button
-                  size="small"
-                  variant="solid"
-                  color="magenta"
-                  onClick={() => void openMedicalComplaintModal(record.id)}
-                >
-                  客诉
-                </Button>
+              
               </>
             ) : null}
+            {
+              shouldShowMedicalcomplaintActions &&  <Button
+              size="small"
+              variant="solid"
+              color="magenta"
+              onClick={() => void openMedicalComplaintModal(record.id)}
+            >
+              客诉
+            </Button>
+            }
+             
             {completedTask ? (
               <>
                 {canManageTaskListButtons ? (
@@ -2394,7 +2507,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 编辑
               </Button>
             ) : null}
-            {canManageTaskActions && canDeleteTask ? (
+            {canManageTaskActions 
+            // && canDeleteTask  删除目前只有计划员和管理员
+            ? (
               <Button
                 danger
                 size="small"
@@ -2639,32 +2754,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   function handleReset() {
     searchForm.resetFields()
     setFieldFilters({})
+    setStatusFilter('all')
     setCurrentPage(1)
   }
 
   function handleQuery(values: TaskSearchFormValues) {
     setFieldFilters(buildTaskFieldFilters(searchableTaskFieldConfigs, values))
+    setStatusFilter(typeof values.status === 'string' && values.status ? values.status : 'all')
     setCurrentPage(1)
   }
 
   return (
     <div className="courses-page-card">
-      {/* <div className="workspace-header"> */}
       <div className="workspace-filter-bar">
-        {/* <div className="workspace-header-info">
-          <div className="workspace-header-title-row">
-            <span className="workspace-header-icon">
-              <CalendarOutlined />
-            </span>
-            <Typography.Title level={3} className="workspace-header-title">
-              {isMyTasksPage ? '我的任务' : '任务管理'}
-            </Typography.Title>
-          </div>
-          <Typography.Text className="workspace-header-subtitle">
-            共 {total} 项任务，
-            <span className="workspace-header-subtitle-accent"> {activeTaskCount} 项进行中</span>
-          </Typography.Text>
-        </div> */}
         <div className="workspace-search">
           <Form
             form={searchForm}
@@ -2684,6 +2786,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   </Form.Item>
                 </Col>
               ))}
+                <Col xs={24} md={12} xl={6} >
+                  <Form.Item
+                    label='筛选状态'
+                    name='status'
+                    className="task-search-form__item"
+                  >
+                    <Select
+                      placeholder='请选择'
+                      allowClear
+                      options={TASK_STATUS_FILTER_OPTIONS}
+                    />
+                  </Form.Item>
+                </Col>
             </Row>
             <div className="task-search-form__actions" style={
                 searchExpanded && visibleSearchFieldConfigs.length % 4 !== 0
@@ -3054,6 +3169,30 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         responsibilityOptions={medicalComplaintResponsibilityOptions}
         onCancel={handleCloseMedicalComplaintModal}
         onSubmit={handleCreateMedicalComplaint}
+      />
+      <MedicalTaskSubItemListModal
+        open={Boolean(medicalSubItemListTaskId)}
+        taskId={medicalSubItemListTaskId}
+        onCancel={handleCloseMedicalSubItemListModal}
+        onChanged={async () => {
+          if (!medicalSubItemListTaskId) {
+            return
+          }
+
+          await refreshMedicalTaskData(medicalSubItemListTaskId)
+        }}
+      />
+      <MedicalTaskComplaintListModal
+        open={Boolean(medicalComplaintListTaskId)}
+        taskId={medicalComplaintListTaskId}
+        onCancel={handleCloseMedicalComplaintListModal}
+        onChanged={async () => {
+          if (!medicalComplaintListTaskId) {
+            return
+          }
+
+          await refreshMedicalTaskData(medicalComplaintListTaskId)
+        }}
       />
     </div>
   )

@@ -2,16 +2,13 @@ import { useEffect } from 'react'
 import {
   Button,
   Form,
-  InputNumber,
+  Input,
   Modal,
   Select,
   Space,
 } from 'antd'
-import {
-  MEDICAL_TASK_CONTRACT_CHANGE_OPTIONS,
-  MEDICAL_TASK_SUB_ITEM_TYPE_OPTIONS,
-} from '../../constants/taskHardcodedRules'
-import type { CreateMedicalTaskSubItemPayload, YesNoOption } from '../../types'
+import { MEDICAL_TASK_SUB_ITEM_TYPE_OPTIONS } from '../../constants/taskHardcodedRules'
+import type { CreateMedicalTaskSubItemPayload } from '../../types'
 
 type MedicalTaskSubItemFormValues = CreateMedicalTaskSubItemPayload
 
@@ -27,7 +24,6 @@ export function MedicalTaskSubItemModal({
   onSubmit: (payload: CreateMedicalTaskSubItemPayload) => Promise<void> | void
 }) {
   const [form] = Form.useForm<MedicalTaskSubItemFormValues>()
-  const contractChange = Form.useWatch('hasContractChange', form) as YesNoOption | undefined
 
   useEffect(() => {
     if (!open) {
@@ -36,8 +32,6 @@ export function MedicalTaskSubItemModal({
     }
 
     form.setFieldsValue({
-      amount: undefined,
-      hasContractChange: undefined,
       subItemType: undefined,
     })
   }, [form, open])
@@ -66,7 +60,7 @@ export function MedicalTaskSubItemModal({
             options={MEDICAL_TASK_SUB_ITEM_TYPE_OPTIONS}
           />
         </Form.Item>
-        <Form.Item label="是否涉及合同变更" name="hasContractChange">
+        {/* <Form.Item label="是否涉及合同变更" name="hasContractChange">
           <Select
             allowClear
             placeholder="请选择是否涉及合同变更"
@@ -91,6 +85,15 @@ export function MedicalTaskSubItemModal({
             min={0}
             precision={2}
             placeholder="请输入涉及金额"
+            style={{ width: '100%' }}
+          />
+        </Form.Item> */}
+        <Form.Item
+          label="备注"
+          name="remark"
+        >
+          <Input
+            placeholder="请输入备注"
             style={{ width: '100%' }}
           />
         </Form.Item>

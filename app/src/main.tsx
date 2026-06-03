@@ -2,11 +2,15 @@ import { createRoot } from 'react-dom/client'
 import { ConfigProvider, theme } from 'antd'
 import { BrowserRouter } from 'react-router-dom'
 import zhCN from 'antd/locale/zh_CN'
+import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 import 'antd/dist/reset.css'
 import '@xyflow/react/dist/style.css'
 import './index.css'
 import App from './App.tsx'
 import { AppStateProvider } from './context/AppStateContext'
+
+dayjs.locale('zh-cn')
 
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter>

@@ -101,6 +101,32 @@ export interface TaskSubTaskRecord {
   targetVersion?: string | null
 }
 
+export interface MedicalTaskSubItemRecord {
+  id: string
+  amount?: number
+  createdAt?: string
+  description?: string
+  hasContractChange?: boolean
+  remark?: string
+  status: string
+  subItemNo?: string
+  subItemType: string
+  title?: string
+}
+
+export interface MedicalTaskComplaintRecord {
+  createdAt?: string
+  description: string
+  id: string
+  processingMethod?: string
+  remark?: string
+  refundAmount?: number
+  responsibilityUserNames: string[]
+  status: string
+  complaintNo?: string
+  workflowStageName?: string
+}
+
 export interface TaskPackageInfoRecord {
   errorMessage?: string | null
   completedAt?:string
@@ -128,6 +154,10 @@ export interface TaskListRecord {
   archivedAt?: string | null
   currentVersion: TaskVersionRecord
   activeSubTasks: TaskSubTaskRecord[]
+  medicalComplaints: MedicalTaskComplaintRecord[]
+  medicalComplaintCount: number
+  medicalSubItems: MedicalTaskSubItemRecord[]
+  medicalSubItemCount: number
   fieldValues: Record<string, unknown>
   packageInfo?: TaskPackageInfoRecord | null
 }
@@ -268,14 +298,24 @@ export interface CreateServiceTicketPayload {
 }
 
 export interface CreateMedicalTaskSubItemPayload {
+  remark?: string
   subItemType?: MedicalTaskSubItemType
   hasContractChange?: YesNoOption
   amount?: number
 }
 
+export interface UpdateMedicalTaskSubItemPayload {
+  subItemType: string
+  title: string
+  description: string
+  amount?: number
+  remark?: string
+}
+
 export interface CreateMedicalTaskComplaintPayload {
   workflowStageId?: string
   description: string
+  remark?: string
   responsibilityUserIds?: string[]
   processingMethod?: string
   refundAmount?: number
@@ -410,6 +450,7 @@ export type UserRole =
   |'wuhan_design_cooperation'
   | 'customer_planner'
   |'presales'
+  |'operation'
 
 export interface RoleOption {
   key: UserRole
@@ -441,6 +482,22 @@ export interface ProjectPermission {
   resource: string
   resourceName: string
   action: string
+}
+
+export type RolePermissionAction =
+  | 'view'
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'all'
+
+export interface RolePermissionResourceRecord {
+  resourceCode: string
+  resourceName: string
+}
+
+export interface RolePermissionRecord extends RolePermissionResourceRecord {
+  actions: RolePermissionAction[]
 }
 
 export interface ProjectOption {

@@ -1,6 +1,8 @@
 import { Card, Col, DatePicker, Empty, Row, Space, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import datePickerZhCN from 'antd/es/date-picker/locale/zh_CN'
 import dayjs from 'dayjs'
+import 'dayjs/locale/zh-cn'
 import type { Dayjs } from 'dayjs'
 import {
   AlertOutlined,
@@ -24,6 +26,8 @@ import {
   type DashboardResolvedDataset,
 } from '../services/dashboardService'
 import './DashboardPage.css'
+
+dayjs.locale('zh-cn')
 
 type DashboardStaticTableCellTone = 'accent' | 'success'
 
@@ -381,7 +385,7 @@ function buildStaticTableGridStyle(columnCount: number): CSSProperties {
   }
 
   const columnWidths = Array.from({ length: columnCount }, (_, index) => (
-    index === 0 ? 'minmax(80px, 1.2fr)' : 'minmax(72px, 0.8fr)'
+    index === 0 ? 'minmax(60px, 1.2fr)' : 'minmax(52px, 0.8fr)'
   ))
 
   return {
@@ -470,14 +474,15 @@ function TableDateFilter({
   onDateRangeChange: (dateFrom: string, dateTo: string) => void
 }) {
   const value: [Dayjs | null, Dayjs | null] = [
-    dateFilter.dateFrom ? dayjs(dateFilter.dateFrom, 'YYYY-MM-DD') : null,
-    dateFilter.dateTo ? dayjs(dateFilter.dateTo, 'YYYY-MM-DD') : null,
+    dateFilter.dateFrom ? dayjs(dateFilter.dateFrom, 'YYYY-MM-DD').locale('zh-cn') : null,
+    dateFilter.dateTo ? dayjs(dateFilter.dateTo, 'YYYY-MM-DD').locale('zh-cn') : null,
   ]
 
   return (
     <div className="dashboard-table-filter">
       <DatePicker.RangePicker
         value={value}
+        locale={datePickerZhCN}
         format="YYYY-MM-DD"
         allowEmpty={[true, true]}
         className="dashboard-table-range-picker"

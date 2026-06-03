@@ -14,7 +14,7 @@ const advancePermissionMap: Partial<Record<CourseStatus, UserRole[]>> = {
   iteration: ['planner', 'admin'],
 }
 
-const createCourseRoles: UserRole[] = ['planner', 'admin']
+const createCourseRoles: UserRole[] = ['planner', 'admin','wuhan_design_cooperation']
 const serviceTicketRoles: Record<ServiceType, UserRole[]> = {
   售后: ['sales', 'planner', 'admin'],
   迭代: ['planner', 'admin'],

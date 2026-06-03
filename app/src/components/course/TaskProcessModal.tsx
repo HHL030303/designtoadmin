@@ -56,7 +56,7 @@ const INTERNAL_PRODUCTION_SOURCE_FIELD_KEY = 'productionSource'
 const PREASSIGNED_MEMBERS_FIELD_KEY = 'menbers'
 const INTERNAL_PRODUCTION_SOURCE_VALUE = '内部'
 const EXTERNAL_PRODUCTION_SOURCE_VALUE = '外部'
-const NEXT_STAGE_MEMBER_PAGE_SIZE = 20
+const NEXT_STAGE_MEMBER_PAGE_SIZE = 100
 
 // const taskStatusMeta: Record<string, { color: string; label: string }> = {
 //   archived: { color: 'green', label: '已归档' },
@@ -573,16 +573,23 @@ export function TaskProcessModal({
   const [nextStageMembers, setNextStageMembers] = useState<ProjectMemberRecord[]>([])
   const [nextStageMemberPage, setNextStageMemberPage] = useState(1)
   const [nextStageMemberHasMore, setNextStageMemberHasMore] = useState(false)
+  const [nextStageSearchValue, setNextStageSearchValue] = useState('')
   const [filesByRuleId, setFilesByRuleId] = useState<Record<string, AttachmentFile[]>>({})
   const [selectedPackageNameTags, setSelectedPackageNameTags] = useState<string[]>([])
   const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [taskFieldLoading, setTaskFieldLoading] = useState(false)
   const nextStageLoadingRef = useRef(false)
+  const nextStageRequestIdRef = useRef(0)
+  const nextStageSearchTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!open || !taskId) {
       setDetail(null)
       setFilesByRuleId({})
+      setNextStageMembers([])
+      setNextStageSearchValue('')
+      setNextStageMemberPage(1)
+      setNextStageMemberHasMore(false)
       setSelectedPackageNameTags([])
       form.resetFields()
       return
@@ -679,15 +686,17 @@ export function TaskProcessModal({
   const shouldShowPackageNameSection = Boolean(isLastStage && !currentStage?.canUpdateFields)
 
   const loadNextStageMembers = useCallback(
-    async (targetPage: number, append: boolean) => {
+    async (targetPage: number, append: boolean, searchKeyword: string) => {
       const projectId = currentProject?.id ?? ''
       const nextRoleCode = nextStage?.operatorRoleCode ?? ''
+      const requestId = nextStageRequestIdRef.current + 1
+      nextStageRequestIdRef.current = requestId
 
       if (
         !shouldSelectNextStageAssignee ||
         !projectId ||
         !nextRoleCode ||
-        nextStageLoadingRef.current
+        (append && nextStageLoadingRef.current)
       ) {
         return
       }
@@ -696,11 +705,16 @@ export function TaskProcessModal({
         nextStageLoadingRef.current = true
         setNextStageLoading(true)
         const response = await adminService.listProjectRoleUsers({
+          keyword: searchKeyword.trim() || undefined,
           page: targetPage,
           pageSize: NEXT_STAGE_MEMBER_PAGE_SIZE,
           projectId,
           roleCode: nextRoleCode,
         })
+
+        if (requestId !== nextStageRequestIdRef.current) {
+          return
+        }
 
         setNextStageMembers((current) => {
           if (!append) {
@@ -714,18 +728,32 @@ export function TaskProcessModal({
         setNextStageMemberPage(response.page)
         setNextStageMemberHasMore(response.page * response.pageSize < response.total)
       } catch (error) {
+        if (requestId !== nextStageRequestIdRef.current) {
+          return
+        }
+
         message.error(error instanceof Error ? error.message : '下一节点成员加载失败')
 
         if (!append) {
           setNextStageMembers([])
+          setNextStageMemberPage(1)
+          setNextStageMemberHasMore(false)
         }
       } finally {
-        nextStageLoadingRef.current = false
-        setNextStageLoading(false)
+        if (requestId === nextStageRequestIdRef.current) {
+          nextStageLoadingRef.current = false
+          setNextStageLoading(false)
+        }
       }
     },
     [currentProject?.id, nextStage?.operatorRoleCode, shouldSelectNextStageAssignee],
   )
+
+  useEffect(() => () => {
+    if (nextStageSearchTimerRef.current) {
+      window.clearTimeout(nextStageSearchTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const projectId = currentProject?.id
@@ -802,6 +830,7 @@ export function TaskProcessModal({
 
     if (!shouldSelectNextStageAssignee || !projectId || !nextRoleCode) {
       setNextStageMembers([])
+      setNextStageSearchValue('')
       setNextStageMemberPage(1)
       setNextStageMemberHasMore(false)
       return
@@ -812,7 +841,7 @@ export function TaskProcessModal({
       form.setFieldValue('nextStageAssignees', buildDefaultNextStageAssignees())
     }
 
-    void loadNextStageMembers(1, false)
+    void loadNextStageMembers(1, false, '')
   }, [
     allowPageAssignment,
     currentProject?.id,
@@ -1463,12 +1492,34 @@ export function TaskProcessModal({
                                     >
                                       <Select
                                         showSearch
+                                        allowClear
+                                        filterOption={false}
                                         placeholder={index === 0 ? '请选择主执行人' : '请选择执行人'}
                                         loading={nextStageLoading}
+                                        searchValue={nextStageSearchValue}
                                         options={nextStageMembers.map((member) => ({
                                           label: `${member.userName} · ${member.userEmail}`,
                                           value: member.userId,
                                         }))}
+                                        onSearch={(value) => {
+                                          setNextStageSearchValue(value)
+
+                                          if (nextStageSearchTimerRef.current) {
+                                            window.clearTimeout(nextStageSearchTimerRef.current)
+                                          }
+
+                                          nextStageSearchTimerRef.current = window.setTimeout(() => {
+                                            void loadNextStageMembers(1, false, value)
+                                          }, 300)
+                                        }}
+                                        onClear={() => {
+                                          if (nextStageSearchTimerRef.current) {
+                                            window.clearTimeout(nextStageSearchTimerRef.current)
+                                          }
+
+                                          setNextStageSearchValue('')
+                                          void loadNextStageMembers(1, false, '')
+                                        }}
                                         onPopupScroll={(event) => {
                                           const target = event.target as HTMLDivElement
                                           const reachedBottom =
@@ -1478,7 +1529,7 @@ export function TaskProcessModal({
                                             return
                                           }
 
-                                          void loadNextStageMembers(nextStageMemberPage + 1, true)
+                                          void loadNextStageMembers(nextStageMemberPage + 1, true, nextStageSearchValue)
                                         }}
                                       />
                                     </Form.Item>
@@ -1534,12 +1585,35 @@ export function TaskProcessModal({
                             rules={[{ required: true, message: '请选择下一阶段任务人员' }]}
                           >
                             <Select
+                              allowClear
+                              showSearch
+                              filterOption={false}
                               placeholder="请选择下一阶段任务人员"
                               loading={nextStageLoading}
+                              searchValue={nextStageSearchValue}
                               options={nextStageMembers.map((member) => ({
                                 label: `${member.userName} · ${member.userEmail}`,
                                 value: member.userId,
                               }))}
+                              onSearch={(value) => {
+                                setNextStageSearchValue(value)
+
+                                if (nextStageSearchTimerRef.current) {
+                                  window.clearTimeout(nextStageSearchTimerRef.current)
+                                }
+
+                                nextStageSearchTimerRef.current = window.setTimeout(() => {
+                                  void loadNextStageMembers(1, false, value)
+                                }, 300)
+                              }}
+                              onClear={() => {
+                                if (nextStageSearchTimerRef.current) {
+                                  window.clearTimeout(nextStageSearchTimerRef.current)
+                                }
+
+                                setNextStageSearchValue('')
+                                void loadNextStageMembers(1, false, '')
+                              }}
                               onPopupScroll={(event) => {
                                 const target = event.target as HTMLDivElement
                                 const reachedBottom =
@@ -1549,7 +1623,7 @@ export function TaskProcessModal({
                                   return
                                 }
 
-                                void loadNextStageMembers(nextStageMemberPage + 1, true)
+                                void loadNextStageMembers(nextStageMemberPage + 1, true, nextStageSearchValue)
                               }}
                             />
                           </Form.Item>

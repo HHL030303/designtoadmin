@@ -9,15 +9,7 @@ export const navItems: NavItem[] = [
     key: 'project-root',
     label: '项目管理',
     hint: '项目与成员维护',
-    children: [
-      {
-        key: 'projectManagement',
-        viewKey: 'projectManagement',
-        label: '项目列表',
-        hint: '维护项目与成员',
-        path: '/project-management/projects',
-      },
-    ],
+    children: [],
   },
   {
     key: 'settings-root',
@@ -30,6 +22,13 @@ export const navItems: NavItem[] = [
         label: '账号管理',
         hint: '维护登录账号',
         path: '/settings/users',
+      },
+      {
+        key: 'projectManagement',
+        viewKey: 'projectManagement',
+        label: '项目列表',
+        hint: '维护项目与成员',
+        path: '/project-management/projects',
       },
     ],
   },

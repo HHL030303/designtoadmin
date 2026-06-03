@@ -2,10 +2,12 @@ import type {
   FieldOptionConfig,
   MedicalTaskSubItemType,
   ProjectOption,
+  UserRole,
   YesNoOption,
 } from '../types'
 
 const MEDICAL_DESIGN_PROJECT_CODES = ['医护设计项目'] as const
+const MEDICAL_SUB_ITEM_OPERATOR_ROLES: UserRole[] = ['wuhan_design_cooperation']
 
 export const MEDICAL_TASK_SUB_ITEM_TYPE_OPTIONS: FieldOptionConfig[] = [
   { label: '客户增加页数', value: '客户增加页数' },
@@ -44,4 +46,8 @@ export function shouldEnableMedicalTaskSpecialActions(
   project: Pick<ProjectOption, 'name'> | null | undefined,
 ): boolean {
   return isMedicalDesignProject(project)
+}
+
+export function shouldShowMedicalSubItemActionColumn(role: UserRole): boolean {
+  return MEDICAL_SUB_ITEM_OPERATOR_ROLES.includes(role)
 }

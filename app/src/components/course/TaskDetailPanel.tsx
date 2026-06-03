@@ -64,7 +64,8 @@ const roleLabelMap: Record<UserRole, string> = {
     design:"设计师",
     wuhan_design_cooperation:"武汉商务",
     customer_planner:"商务",
-    presales:"售前"
+    presales:"售前",
+    operation:"运营"
 }
 
 const preferredSummaryFieldKeys = [

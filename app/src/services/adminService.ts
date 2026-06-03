@@ -5,6 +5,8 @@ import type {
   FieldOptionConfig,
   ProjectManagementRecord,
   ProjectMemberRecord,
+  RolePermissionRecord,
+  RolePermissionResourceRecord,
   SaveAdminAccountPayload,
   SystemRoleRecord,
   ViewKey,
@@ -57,6 +59,14 @@ type RoleListItem = {
   code: string
   name: string
   project_id: number | null
+}
+
+type RolePermissionItem = {
+  action?: unknown
+  actions?: unknown
+  resource?: unknown
+  resource_code?: unknown
+  resource_name?: unknown
 }
 
 type ProjectListItem = {
@@ -171,6 +181,68 @@ function mapUserRecord(user: UserListItem): AdminAccountRecord {
 function mapRoleViewAccess(code: string): ViewKey[] {
   const appRole = backendRoleMap[code]
   return appRole ? roleViewAccess[appRole] : ['dashboard']
+}
+
+function normalizePermissionActions(rawValue: unknown): string[] {
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim())
+  }
+
+  if (typeof rawValue === 'string' && rawValue.trim()) {
+    return [rawValue.trim()]
+  }
+
+  return []
+}
+
+function mapRolePermissionRecord(permission: RolePermissionItem): RolePermissionRecord | null {
+  const resourceCode =
+    typeof permission.resource_code === 'string' && permission.resource_code.trim()
+      ? permission.resource_code.trim()
+      : typeof permission.resource === 'string' && permission.resource.trim()
+        ? permission.resource.trim()
+        : ''
+  const resourceName =
+    typeof permission.resource_name === 'string' && permission.resource_name.trim()
+      ? permission.resource_name.trim()
+      : resourceCode
+  const actions = normalizePermissionActions(permission.actions ?? permission.action)
+
+  if (!resourceCode) {
+    return null
+  }
+
+  return {
+    actions: actions as RolePermissionRecord['actions'],
+    resourceCode,
+    resourceName,
+  }
+}
+
+function mapRolePermissionResourceRecord(
+  permission: RolePermissionItem,
+): RolePermissionResourceRecord | null {
+  const resourceCode =
+    typeof permission.resource_code === 'string' && permission.resource_code.trim()
+      ? permission.resource_code.trim()
+      : typeof permission.resource === 'string' && permission.resource.trim()
+        ? permission.resource.trim()
+        : ''
+  const resourceName =
+    typeof permission.resource_name === 'string' && permission.resource_name.trim()
+      ? permission.resource_name.trim()
+      : resourceCode
+
+  if (!resourceCode) {
+    return null
+  }
+
+  return {
+    resourceCode,
+    resourceName,
+  }
 }
 
 function mapWorkflowStage(stage: WorkflowStageItem): WorkflowStageConfig {
@@ -467,6 +539,53 @@ export const adminService = {
   async deleteRole(projectId: string, roleId: string) {
     await apiRequest<null>(`/admin_api/roles/${roleId}/delete`, {
       body: {},
+      method: 'POST',
+      projectHeaderId: projectId,
+    })
+  },
+
+  async listPermissionResources(projectId: string) {
+    const data = await apiRequest<{
+      items?: RolePermissionItem[]
+      permissions?: RolePermissionItem[]
+    } | RolePermissionItem[]>('/admin_api/permissions', {
+      projectHeaderId: projectId,
+    })
+
+    const permissions = Array.isArray(data) ? data : data.items ?? data.permissions ?? []
+
+    return permissions
+      .map(mapRolePermissionResourceRecord)
+      .filter((item): item is RolePermissionResourceRecord => item !== null)
+  },
+
+  async listRolePermissions(projectId: string, roleId: string) {
+    const data = await apiRequest<{
+      items?: RolePermissionItem[]
+      permissions?: RolePermissionItem[]
+    } | RolePermissionItem[]>(`/admin_api/roles/${roleId}/permissions`, {
+      projectHeaderId: projectId,
+    })
+
+    const permissions = Array.isArray(data) ? data : data.items ?? data.permissions ?? []
+
+    return permissions
+      .map(mapRolePermissionRecord)
+      .filter((item): item is RolePermissionRecord => item !== null)
+  },
+
+  async updateRolePermissions(
+    projectId: string,
+    roleId: string,
+    permissions: RolePermissionRecord[],
+  ) {
+    await apiRequest<null>(`/admin_api/roles/${roleId}/permissions`, {
+      body: {
+        permissions: permissions.map((item) => ({
+          actions: item.actions,
+          resource_code: item.resourceCode,
+        })),
+      },
       method: 'POST',
       projectHeaderId: projectId,
     })

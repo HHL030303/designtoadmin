@@ -555,7 +555,7 @@ export function AllTicketsPage() {
     {
       title: '工作流程阶段',
       fixed: 'left',
-      width: 150,
+      width: 120,
       render: (_, record) => (
         <Tag className={`all-tickets-page__tag all-tickets-page__tag--${getStageTagTone(record)}`}>
           {getTaskStageText(record)}
@@ -565,7 +565,7 @@ export function AllTicketsPage() {
     {
       title: '当前负责人',
       fixed: 'left',
-      width: 180,
+      width: 110,
       render: (_, record) => {
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
         return assigneeNames.length > 0 ? assigneeNames.join(' / ') : '-'
@@ -587,7 +587,7 @@ export function AllTicketsPage() {
     // },
     {
       title: '完成状态',
-      width: 110,
+      width: 90,
       render: (_, record) => (
         <Tag
           className={`all-tickets-page__tag ${
@@ -616,7 +616,7 @@ export function AllTicketsPage() {
     // },
     ...enabledFieldConfigs.map((field) => ({
       title: field.field_name,
-      width: field.field_type === 'textarea' ? 220 : 140,
+      width: field.field_type === 'textarea' ? 140 : 110,
       render: (_: unknown, record: TaskListRecord) => formatTaskFieldValue(
         field.field_type,
         record.fieldValues[field.field_key],
@@ -627,7 +627,7 @@ export function AllTicketsPage() {
       title: '创建时间',
       dataIndex: 'createdAt',
       fixed: 'right',
-      width: 140,
+      width: 110,
     },
   ], [enabledFieldConfigs])
 
