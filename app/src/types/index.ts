@@ -49,7 +49,7 @@ export type VolumeOption =
 export type YesNoOption = '是' | '否'
 export type HasOption = '有' | '无'
 export type ResearchReviewStatus = '免审' | '待审核' | '审核通过'
-export type FormFieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'boolean'|'multi_select'|'year'
+export type FormFieldType = 'text' | 'textarea' | 'select' | 'number' | 'date' | 'boolean'|'multi_select'|'year'|'datetime'
 export type FieldConfigStatus = 'enabled' | 'disabled'
 
 export interface FieldOptionConfig {

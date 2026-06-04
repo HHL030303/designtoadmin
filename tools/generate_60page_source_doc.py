@@ -34,7 +34,7 @@ NEW_MODULES: dict[str, str] = {
         """
         from datetime import datetime
 
-        from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+        from sqlalchemy import Boolean, Datetime, ForeignKey, Integer, String, Text
         from sqlalchemy.orm import Mapped, mapped_column, relationship
 
         from app.core.database import Base
@@ -48,8 +48,8 @@ NEW_MODULES: dict[str, str] = {
             project_name: Mapped[str] = mapped_column(String(100), index=True)
             description: Mapped[str | None] = mapped_column(Text(), nullable=True)
             status: Mapped[str] = mapped_column(String(20), default="enabled")
-            created_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
-            updated_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
+            created_at: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
+            updated_at: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
 
             workflow_templates: Mapped[list["WorkflowTemplateRecord"]] = relationship(
                 back_populates="project",
@@ -74,8 +74,8 @@ NEW_MODULES: dict[str, str] = {
             order_type: Mapped[str] = mapped_column(String(20), default="new")
             is_default: Mapped[bool] = mapped_column(Boolean(), default=False)
             status: Mapped[str] = mapped_column(String(20), default="enabled")
-            created_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
-            updated_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
+            created_at: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
+            updated_at: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
 
             project: Mapped[ProjectRecord] = relationship(back_populates="workflow_templates")
             stages: Mapped[list["WorkflowStageRecord"]] = relationship(
@@ -127,7 +127,7 @@ NEW_MODULES: dict[str, str] = {
             user_id: Mapped[int] = mapped_column(ForeignKey("user_account.id", ondelete="CASCADE"))
             role_code: Mapped[str] = mapped_column(String(50))
             role_name: Mapped[str] = mapped_column(String(50))
-            created_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
+            created_at: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
 
             project: Mapped[ProjectRecord] = relationship(back_populates="members")
         """
@@ -136,7 +136,7 @@ NEW_MODULES: dict[str, str] = {
         """
         from datetime import datetime
 
-        from sqlalchemy import DateTime, ForeignKey, Integer, String
+        from sqlalchemy import Datetime, ForeignKey, Integer, String
         from sqlalchemy.orm import Mapped, mapped_column
 
         from app.core.database import Base
@@ -156,7 +156,7 @@ NEW_MODULES: dict[str, str] = {
             pending_count: Mapped[int] = mapped_column(Integer(), default=0)
             processing_count: Mapped[int] = mapped_column(Integer(), default=0)
             completed_count: Mapped[int] = mapped_column(Integer(), default=0)
-            snapshot_date: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
+            snapshot_date: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
 
 
         class DesignerWorkloadSnapshot(Base):
@@ -169,7 +169,7 @@ NEW_MODULES: dict[str, str] = {
             task_total: Mapped[int] = mapped_column(Integer(), default=0)
             assigned_pages: Mapped[int] = mapped_column(Integer(), default=0)
             completed_pages: Mapped[int] = mapped_column(Integer(), default=0)
-            snapshot_date: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow)
+            snapshot_date: Mapped[datetime] = mapped_column(Datetime(), default=datetime.utcnow)
         """
     ),
     "app/schemas/project.py": code_block(

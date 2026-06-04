@@ -1701,22 +1701,22 @@
 
 .ant-table-thead > tr > th {
   height: 40px;
-  padding: 10px 16px !important;
+  padding: 4px 12px !important;
   border-bottom: 1px solid #e5e7eb !important;
   background: #f9fafb !important;
   color: #374151;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
 }
 
-.ant-table-tbody > tr > td {
+
+/* .ant-table-tbody > tr > td {
   padding: 12px 16px !important;
   border-bottom: 1px solid #f1f5f9 !important;
   height: 52px;
-  font-size: 14px;
+  font-size: 12px;
   color: #374151;
   vertical-align: middle;
-}
+} */
 
 .ant-table-tbody > tr:nth-child(even) > td {
   background: #f9fafb;
@@ -2610,8 +2610,68 @@
   color: #64748b;
 }
 
-.ant-popover .ant-popover-container{
-  --ant-popover-inner-padding:2px !important;
+.ant-popconfirm .ant-popover-inner {
+  border: 1px solid #dbe6f3;
+  border-radius: 16px;
+  box-shadow:
+    0 18px 36px rgba(15, 23, 42, 0.12),
+    0 8px 18px rgba(15, 23, 42, 0.08);
+  padding: 18px 18px 16px;
+}
+
+.ant-popconfirm .ant-popover-inner-content {
+  min-width: 280px;
+}
+
+.ant-popconfirm .ant-popconfirm-message {
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ant-popconfirm .ant-popconfirm-message-icon {
+  margin-top: 2px;
+  color: #f59e0b;
+  font-size: 18px;
+}
+
+.ant-popconfirm .ant-popconfirm-title {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.ant-popconfirm .ant-popconfirm-description {
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 0;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons .ant-btn {
+  /* border-radius: 12px;
+  font-weight: 500;
+  height: 36px;
+  min-width: 88px; */
+  font-weight: 500;
+    height: 26px;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons .ant-btn-default {
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.ant-popconfirm .ant-popconfirm-buttons .ant-btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color: transparent;
 }
 
 .project-field-config-action.ant-btn:hover {

@@ -384,7 +384,7 @@ export const adminService = {
     page?: number
     pageSize?: number
   }) {
-    const data = await apiRequest<PaginatedResponse<ProjectListItem>>('/api/projects', {
+    const data = await apiRequest<PaginatedResponse<ProjectListItem>>('/admin_api/projects', {
       query: {
         keyword: options?.keyword?.trim() || undefined,
         page: options?.page ?? 1,
@@ -745,6 +745,24 @@ export const adminService = {
 
   async listTaskFields(projectId: string) {
     const data = await apiRequest<TaskFieldListResponse | TaskFieldItem[]>('/admin_api/task_fields', {
+      method: 'GET',
+      projectHeaderId: projectId,
+    })
+
+    const items = Array.isArray(data)
+      ? data
+      : Array.isArray(data.fields)
+        ? data.fields
+        : Array.isArray(data.items)
+          ? data.items
+          : []
+
+    return items
+      .map(mapTaskFieldRecord)
+      .sort((left, right) => left.sort_value - right.sort_value)
+  },
+  async listTaskFieldsnormal(projectId: string) {
+    const data = await apiRequest<TaskFieldListResponse | TaskFieldItem[]>('/api/task_fields', {
       method: 'GET',
       projectHeaderId: projectId,
     })

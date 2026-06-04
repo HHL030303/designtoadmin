@@ -1,6 +1,6 @@
 import type { ProjectOption } from '../types'
 
-const TASK_LIST_EXTENSION_PROJECT_CODES = ['医护设计项目'] as const
+const TASK_LIST_EXTENSION_PROJECT_CODES = ['医护设计项目','科研线'] as const
 
 export function shouldShowTaskListExtensionColumns(
   project: Pick<ProjectOption, 'name'> | null | undefined,

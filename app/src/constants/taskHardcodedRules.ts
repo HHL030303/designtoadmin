@@ -6,7 +6,7 @@ import type {
   YesNoOption,
 } from '../types'
 
-const MEDICAL_DESIGN_PROJECT_CODES = ['医护设计项目'] as const
+const MEDICAL_DESIGN_PROJECT_CODES = ['医护设计项目','科研线'] as const
 const MEDICAL_SUB_ITEM_OPERATOR_ROLES: UserRole[] = ['wuhan_design_cooperation']
 
 export const MEDICAL_TASK_SUB_ITEM_TYPE_OPTIONS: FieldOptionConfig[] = [

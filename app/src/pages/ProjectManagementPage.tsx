@@ -519,7 +519,7 @@ export function ProjectManagementPage() {
       title: '项目信息',
       render: (_, record) => (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{record.name}</Typography.Text>
+          <span>  {record.name}</span>
         </Space>
       ),
     },

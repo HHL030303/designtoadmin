@@ -33,7 +33,8 @@ const VALID_FIELD_TYPES: FormFieldType[] = [
   'date',
   'boolean',
   'multi_select',
-  'year'
+  'year',
+  'datetime'
 ]
 
 const VALID_STATUSES: FieldConfigStatus[] = ['enabled', 'disabled']

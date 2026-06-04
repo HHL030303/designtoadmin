@@ -22,7 +22,7 @@ import { useAppState } from '../../context/AppStateContext'
 import { adminService } from '../../services/adminService'
 import { taskService } from '../../services/taskService'
 import { TaskProcessModal } from './TaskProcessModal'
-import type { ProjectMemberRecord, TaskDetailRecord } from '../../types'
+import type { FieldConfig, ProjectMemberRecord, TaskDetailRecord } from '../../types'
 import { makeDemoDownload } from '../../utils/attachments'
 import './TaskHistoryDetailPanel.css'
 
@@ -32,14 +32,8 @@ type CurrentAssigneeFormValues = {
 }
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
-  archived: { color: 'green', label: '已归档' },
-  assigned: { color: 'blue', label: '已指派' },
   completed: { color: 'green', label: '已完成' },
-  in_progress: { color: 'processing', label: '进行中' },
-  page_in_progress: { color: 'cyan', label: '内页制作中' },
   pending: { color: 'default', label: '待开始' },
-  submitted: { color: 'orange', label: '待处理' },
-  unpublished: { color: 'default', label: '未发布' },
 }
 
 function resolveCurrentWorkflowStage(detail: TaskDetailRecord) {
@@ -86,6 +80,37 @@ function isStageOverdue(completedAt?: string | null, dueDate?: string) {
   return dayjs().isAfter(dayjs(dueDate), 'day')
 }
 
+function formatTaskFieldDisplayValue(value: unknown, field?: FieldConfig): string {
+  if (value === null || value === undefined || value === '') {
+    return '未填写'
+  }
+
+  if (field?.field_type === 'boolean') {
+    if (typeof value === 'boolean') {
+      return value ? '是' : '否'
+    }
+
+    const normalizedValue = String(value).trim().toLowerCase()
+    if (['true', '1', 'yes', 'y', '是', '有'].includes(normalizedValue)) {
+      return '是'
+    }
+    if (['false', '0', 'no', 'n', '否', '无'].includes(normalizedValue)) {
+      return '否'
+    }
+  }
+
+  if (field?.field_type === 'select') {
+    const matchedOption = field.option_config?.find((option) => option.value === String(value))
+    return matchedOption?.label ?? String(value)
+  }
+
+  if (field?.field_type === 'multi_select' && Array.isArray(value)) {
+    return value.length > 0 ? value.map((item) => String(item)).join(' / ') : '未填写'
+  }
+
+  return String(value)
+}
+
 export function TaskHistoryDetailPanel({
   detail,
   loading,
@@ -109,8 +134,81 @@ export function TaskHistoryDetailPanel({
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [candidateMembers, setCandidateMembers] = useState<ProjectMemberRecord[]>([])
+  const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
   const [versionMenuOpen, setVersionMenuOpen] = useState(false)
   const versionMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const projectId = currentProject?.id
+  const detailForHooks = detail
+  const selectedHistoryVersionId = selectedVersionId ?? detailForHooks?.currentVersion.id
+  const versionHistory = useMemo(() => {
+    if (!detailForHooks) {
+      return []
+    }
+
+    const versions = detailForHooks.versionHistory.length > 0
+      ? detailForHooks.versionHistory
+      : [detailForHooks.currentVersion]
+
+    const uniqueVersions = new Map<string, typeof versions[number]>()
+
+    versions.forEach((version) => {
+      if (!uniqueVersions.has(version.id)) {
+        uniqueVersions.set(version.id, version)
+      }
+    })
+
+    if (!uniqueVersions.has(detailForHooks.currentVersion.id)) {
+      uniqueVersions.set(detailForHooks.currentVersion.id, detailForHooks.currentVersion)
+    }
+
+    return Array.from(uniqueVersions.values())
+  }, [detailForHooks])
+  const hasVersionHistory = versionHistory.length > 1
+  const versionMenuItems = useMemo<MenuProps['items']>(
+    () =>
+      versionHistory.map((version) => ({
+        key: version.id,
+        label: version.versionNo,
+      })),
+    [versionHistory],
+  )
+
+  useEffect(() => {
+    if (!projectId) {
+      setTaskFieldConfigs([])
+      return
+    }
+
+    const nextProjectId = projectId
+    let cancelled = false
+
+    async function loadTaskFieldConfigs(): Promise<void> {
+      try {
+        const fields = await adminService.listTaskFieldsnormal(nextProjectId)
+
+        if (!cancelled) {
+          setTaskFieldConfigs(fields)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          message.error(error instanceof Error ? error.message : '任务字段加载失败')
+          setTaskFieldConfigs([])
+        }
+      }
+    }
+
+    void loadTaskFieldConfigs()
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (!hasVersionHistory) {
+      setVersionMenuOpen(false)
+    }
+  }, [hasVersionHistory])
 
   if (loading) {
     return (
@@ -158,41 +256,18 @@ export function TaskHistoryDetailPanel({
       resolvedDetail.task.ownerId == currentUser?.id,
   )
   const canEditCompletedStage = role === 'admin' || role === 'planner'
-  const selectedHistoryVersionId = selectedVersionId ?? resolvedDetail.currentVersion.id
-  const versionHistory = useMemo(() => {
-    const versions = resolvedDetail.versionHistory.length > 0
-      ? resolvedDetail.versionHistory
-      : [resolvedDetail.currentVersion]
+  const taskFieldMap = new Map(taskFieldConfigs.map((field) => [field.field_key, field]))
+  const taskDetailRows = Object.entries(resolvedDetail.fieldValues)
+    .map(([fieldKey, value]) => {
+      const field = taskFieldMap.get(fieldKey)
 
-    const uniqueVersions = new Map<string, typeof versions[number]>()
-
-    versions.forEach((version) => {
-      if (!uniqueVersions.has(version.id)) {
-        uniqueVersions.set(version.id, version)
+      return {
+        key: fieldKey,
+        label: field?.field_name ?? fieldKey,
+        value: formatTaskFieldDisplayValue(value, field),
       }
     })
-
-    if (!uniqueVersions.has(resolvedDetail.currentVersion.id)) {
-      uniqueVersions.set(resolvedDetail.currentVersion.id, resolvedDetail.currentVersion)
-    }
-
-    return Array.from(uniqueVersions.values())
-  }, [resolvedDetail.currentVersion, resolvedDetail.versionHistory])
-  const hasVersionHistory = versionHistory.length > 1
-  const versionMenuItems = useMemo<MenuProps['items']>(
-    () =>
-      versionHistory.map((version) => ({
-        key: version.id,
-        label: version.versionNo,
-      })),
-    [versionHistory],
-  )
-
-  useEffect(() => {
-    if (!hasVersionHistory) {
-      setVersionMenuOpen(false)
-    }
-  }, [hasVersionHistory])
+    .filter((item) => item.value !== '未填写')
 
   function renderVersionLabel() {
     if (!hasVersionHistory || !onSelectVersion) {
@@ -378,9 +453,20 @@ export function TaskHistoryDetailPanel({
           resolvedDetail.currentVersion?.workflow_template &&   <Descriptions.Item label="关联流程">
             {resolvedDetail.currentVersion?.workflow_template?.name ?? '-'}
           </Descriptions.Item>
-          }
+         }
        
         </Descriptions>
+        {taskDetailRows.length > 0 ? (
+          <>
+            <Descriptions column={4} size="small" className="panel-descriptions">
+              {taskDetailRows.map((item) => (
+                <Descriptions.Item key={item.key} label={item.label}>
+                  {item.value}
+                </Descriptions.Item>
+              ))}
+            </Descriptions>
+          </>
+        ) : null}
         <div
           className="task-history-panel__workflow-grid"
           style={{

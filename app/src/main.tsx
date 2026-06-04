@@ -12,10 +12,18 @@ import { AppStateProvider } from './context/AppStateContext'
 
 dayjs.locale('zh-cn')
 
+const appLocale = {
+  ...zhCN,
+  Popconfirm: {
+    cancelText: '取消',
+    okText: '确认',
+  },
+}
+
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter>
     <ConfigProvider
-      locale={zhCN}
+      locale={appLocale}
       theme={{
         algorithm: theme.defaultAlgorithm,
         token: {
@@ -54,6 +62,12 @@ createRoot(document.getElementById('root')!).render(
             defaultBorderColor: '#d1d5db',
             defaultColor: '#374151',
             primaryShadow: 'none',
+          },
+          Popconfirm: {
+            colorBgElevated: '#ffffff',
+          },
+          Popover: {
+            colorBgElevated: '#ffffff',
           },
           Input: {
             activeBorderColor: '#3b82f6',

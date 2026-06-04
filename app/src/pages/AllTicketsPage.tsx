@@ -1,27 +1,27 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import {
   Button,
-  Card,
+  // Card,
   Empty,
   Input,
-  Row,
-  Col,
+  // Row,
+  // Col,
   Select,
   Space,
   Spin,
   Table,
   Tag,
-  Typography,
+  // Typography,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { TablePaginationConfig } from 'antd/es/table'
 import {
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  ExclamationCircleOutlined,
+  // CheckCircleOutlined,
+  // ClockCircleOutlined,
+  // ExclamationCircleOutlined,
   SearchOutlined,
-  SnippetsOutlined,
+  // SnippetsOutlined,
 } from '@ant-design/icons'
 import { useSearchParams } from 'react-router-dom'
 import { useAppState } from '../context/AppStateContext'
@@ -487,55 +487,55 @@ export function AllTicketsPage() {
     tickets,
   ])
 
-  const summary = useMemo(() => ({
-    total: isCustomMenuPage ? customMenuTotal : filteredTickets.length,
-    completed: filteredTickets.filter((ticket) => ticket.status === 'completed').length,
-    bEnd: filteredTickets.filter((ticket) => getBooleanFieldValue(ticket, 'isBEnd') === true).length,
-    inService: filteredTickets.filter((ticket) => getServiceStateText(ticket) !== '无').length,
-  }), [customMenuTotal, filteredTickets, isCustomMenuPage])
+  // const summary = useMemo(() => ({
+  //   total: isCustomMenuPage ? customMenuTotal : filteredTickets.length,
+  //   completed: filteredTickets.filter((ticket) => ticket.status === 'completed').length,
+  //   bEnd: filteredTickets.filter((ticket) => getBooleanFieldValue(ticket, 'isBEnd') === true).length,
+  //   inService: filteredTickets.filter((ticket) => getServiceStateText(ticket) !== '无').length,
+  // }), [customMenuTotal, filteredTickets, isCustomMenuPage])
 
-  const summaryCards = useMemo(() => {
-    const total = summary.total || 1
-    const processing = Math.max(summary.total - summary.completed, 0)
-    const pending = summary.inService
-    const completedRate = summary.total > 0
-      ? `${Math.round((summary.completed / total) * 100)}%`
-      : '0%'
-    const processingRate = summary.total > 0
-      ? `${Math.round((processing / total) * 100)}%`
-      : '0%'
+  // const summaryCards = useMemo(() => {
+  //   const total = summary.total || 1
+  //   const processing = Math.max(summary.total - summary.completed, 0)
+  //   const pending = summary.inService
+  //   const completedRate = summary.total > 0
+  //     ? `${Math.round((summary.completed / total) * 100)}%`
+  //     : '0%'
+  //   const processingRate = summary.total > 0
+  //     ? `${Math.round((processing / total) * 100)}%`
+  //     : '0%'
 
-    return [
-      {
-        accent: 'blue',
-        // caption: '较昨日 +3',
-        icon: <SnippetsOutlined />,
-        label: '工单总数',
-        value: summary.total,
-      },
-      {
-        accent: 'green',
-        caption: `完成率 ${completedRate}`,
-        icon: <CheckCircleOutlined />,
-        label: '已完成',
-        value: summary.completed,
-      },
-      {
-        accent: 'cyan',
-        caption: `占比 ${processingRate}`,
-        icon: <ClockCircleOutlined />,
-        label: '进行中',
-        value: processing,
-      },
-      {
-        accent: 'orange',
-        caption: pending > 0 ? '需关注' : '状态稳定',
-        icon: <ExclamationCircleOutlined />,
-        label: '待处理',
-        value: pending,
-      },
-    ]
-  }, [summary.completed, summary.inService, summary.total])
+  //   return [
+  //     {
+  //       accent: 'blue',
+  //       // caption: '较昨日 +3',
+  //       icon: <SnippetsOutlined />,
+  //       label: '工单总数',
+  //       value: summary.total,
+  //     },
+  //     {
+  //       accent: 'green',
+  //       caption: `完成率 ${completedRate}`,
+  //       icon: <CheckCircleOutlined />,
+  //       label: '已完成',
+  //       value: summary.completed,
+  //     },
+  //     {
+  //       accent: 'cyan',
+  //       caption: `占比 ${processingRate}`,
+  //       icon: <ClockCircleOutlined />,
+  //       label: '进行中',
+  //       value: processing,
+  //     },
+  //     {
+  //       accent: 'orange',
+  //       caption: pending > 0 ? '需关注' : '状态稳定',
+  //       icon: <ExclamationCircleOutlined />,
+  //       label: '待处理',
+  //       value: pending,
+  //     },
+  //   ]
+  // }, [summary.completed, summary.inService, summary.total])
 
   const columns = useMemo<ColumnsType<TaskListRecord>>(() => [
     {
@@ -545,10 +545,10 @@ export function AllTicketsPage() {
       width: 280,
       render: (_, record) => (
         <Space direction="vertical" size={2}>
-          <Typography.Text strong>{record.title}</Typography.Text>
-          <Typography.Text type="secondary">
+         <span title={record.title}>{record.title}</span>
+          <span >
             #{record.id} · {getTextFieldValue(record, 'series') || '未配置系列'} · {record.currentVersion.versionNo}
-          </Typography.Text>
+          </span>
         </Space>
       ),
     },
@@ -568,7 +568,7 @@ export function AllTicketsPage() {
       width: 110,
       render: (_, record) => {
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
-        return assigneeNames.length > 0 ? assigneeNames.join(' / ') : '-'
+        return assigneeNames.length > 0 ? assigneeNames.join(' / ') : '暂无'
       },
     },
     // {
@@ -650,12 +650,11 @@ export function AllTicketsPage() {
   }, [currentPage, currentPageSize, customMenuTotal, filteredTickets.length, isCustomMenuPage])
 
   return (
-    <Card
+    <div
       title={pageTitle}
       className="panel-card all-tickets-page-card"
-      bordered={false}
     >
-      <Row gutter={[18, 18]} className="all-tickets-page__stats">
+      {/* <Row gutter={[18, 18]} className="all-tickets-page__stats">
         {summaryCards.map((item) => (
           <Col key={item.label} xs={24} sm={12} xl={6}>
             <div className={`all-tickets-page__stat-card all-tickets-page__stat-card--${item.accent}`}>
@@ -672,7 +671,7 @@ export function AllTicketsPage() {
             </div>
           </Col>
         ))}
-      </Row>
+      </Row> */}
 
       {!isCustomMenuPage ? (
         <div className="all-tickets-page__filters-card">
@@ -799,6 +798,6 @@ export function AllTicketsPage() {
         />
         </Spin>
       </div>
-    </Card>
+    </div>
   )
 }

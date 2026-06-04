@@ -95,6 +95,16 @@ const notBeforeTodayFieldKeys = new Set(['researchDueDate', 'finalDueDate'])
 const mandatoryTaskColumnKeys = ['task']
 const TASK_OWNER_MEMBER_PAGE_SIZE = 100
 const SECOND_STAGE_MEMBER_PAGE_SIZE = 100
+const PROCESSING_STAGE_COLORS = [
+  '#2563eb',
+  '#7c3aed',
+  '#0891b2',
+  '#ea580c',
+  '#dc2626',
+  '#16a34a',
+  '#c026d3',
+  '#0f766e',
+] as const
 const TASK_STATUS_FILTER_OPTIONS: FieldOptionConfig[] = [
   { label: '处理中', value: 'processing' },
   { label: '已完成', value: 'completed' },
@@ -117,6 +127,13 @@ function getTaskStatusMeta(status: string) {
     ...DEFAULT_TASK_STATUS_META,
     label: status || DEFAULT_TASK_STATUS_META.label,
   }
+}
+
+function collectProcessingStageNames(tasks: TaskListRecord[]): string[] {
+  return tasks
+    .filter((task) => task.status === 'processing' && task.currentStage?.stageName)
+    .map((task) => task.currentStage?.stageName?.trim() ?? '')
+    .filter((stageName) => stageName.length > 0)
 }
 
 function normalizeBooleanLike(value: unknown): boolean | undefined {
@@ -156,7 +173,7 @@ function formatTaskFieldValue(
   optionConfig?: FieldOptionConfig[],
 ): string {
   if (value === undefined || value === null || value === '') {
-    return '-'
+    return '暂无'
   }
 
   if (fieldType === 'boolean') {
@@ -238,7 +255,11 @@ function buildFormInitialValues(
       return accumulator
     }
 
-    if (field.field_type === 'date' || field.field_type === 'year') {
+    if (
+      field.field_type === 'date' ||
+      field.field_type === 'year' ||
+      field.field_type === 'datetime'
+    ) {
       if (typeof rawValue === 'number') {
         const normalizedYearValue = String(rawValue).trim()
 
@@ -251,6 +272,18 @@ function buildFormInitialValues(
 
           if (parsedYear.isValid()) {
             accumulator[field.field_key] = parsedYear
+          }
+
+          return accumulator
+        }
+
+        if (field.field_type === 'datetime') {
+          const parsedDateTime = rawValue > 1_000_000_000_000
+            ? dayjs(rawValue)
+            : dayjs.unix(rawValue)
+
+          if (parsedDateTime.isValid()) {
+            accumulator[field.field_key] = parsedDateTime
           }
 
           return accumulator
@@ -270,6 +303,16 @@ function buildFormInitialValues(
       // 编辑任务时，DatePicker / YearPicker 都必须收到 dayjs 实例；
       // 否则字符串原值会在 antd 内部触发 isValid is not a function。
       const normalizedRawValue = String(rawValue).trim()
+      if (field.field_type === 'datetime') {
+        const parsedDateTime = dayjs(normalizedRawValue)
+
+        if (parsedDateTime.isValid()) {
+          accumulator[field.field_key] = parsedDateTime
+        }
+
+        return accumulator
+      }
+
       const parsedDate = (
         field.field_type === 'year' ||
         field.type === 'year' ||
@@ -311,6 +354,9 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
     if (field.field_type === 'year' && dayjs.isDayjs(value)) {
       return value.format('YYYY')
     }
+    if (field.field_type === 'datetime' && dayjs.isDayjs(value)) {
+      return value.format('YYYY-MM-DD HH:mm:ss')
+    }
 
     if (field.field_type === 'date' && dayjs.isDayjs(value)) {
         if (field.type === 'year') {
@@ -326,6 +372,11 @@ function serializeFieldValue(field: FieldConfig, value: TaskFormValue): unknown 
 
   if (field.field_type === 'boolean') {
     return normalizeBooleanLike(value) ?? value
+  }
+
+  if (typeof value === 'string') {
+    const normalizedText = value.trim()
+    return normalizedText.length > 0 ? normalizedText : undefined
   }
 
   return value
@@ -527,6 +578,18 @@ function renderFieldControl(field: FieldConfig) {
         picker={field.type === 'year' ? 'year' : 'date'}
         format={field.type === 'year' ? 'YYYY' : 'YYYY-MM-DD'}
         placeholder={field.type === 'year' ? `请选择${field.field_name}年份` : selectPlaceholder}
+        disabledDate={isNotBeforeTodayField(field) ? getDisabledPastDate : undefined}
+      />
+    )
+  }
+  if (field.field_type === 'datetime') {
+    return (
+      <DatePicker
+        locale={datePickerZhCN}
+        className="control-full-width"
+        showTime
+        format="YYYY-MM-DD HH:mm:ss"
+        placeholder={selectPlaceholder}
         disabledDate={isNotBeforeTodayField(field) ? getDisabledPastDate : undefined}
       />
     )
@@ -794,7 +857,6 @@ function getActiveSubTaskTypeMeta(subTaskType: string) {
       label: '迭代',
     }
   }
-
   return {
     color: 'default',
     label: subTaskType,
@@ -1129,6 +1191,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [taskRowOverrides, setTaskRowOverrides] = useState<Record<string, TaskListRecord>>({})
   const [selectedVersionIds, setSelectedVersionIds] = useState<Record<string, string | undefined>>({})
   const [taskFieldConfigs, setTaskFieldConfigs] = useState<FieldConfig[]>([])
+  const [processingStageNames, setProcessingStageNames] = useState<string[]>([])
   const [fieldConfigLoading, setFieldConfigLoading] = useState(false)
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(mandatoryTaskColumnKeys)
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateRecord[]>([])
@@ -1166,16 +1229,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const watchedTaskFormValues = Form.useWatch([], form) as TaskFormValues | undefined
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
   const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin'||role==='wuhan_design_cooperation')
-  const previewAll = role==='operation'||role==='presales'
+  const previewAll = role==='operation'||role==='presales' ||role==='coordinator'||role==='designcooperation'
   const taskListActionPermission = getTaskListActionPermission(currentProject)
   const canManageTaskListButtons = taskListActionPermission
     ? taskListActionPermission.allowedRoles.includes(role)
     : false
+  const canDeleteButton = taskListActionPermission
+  ? taskListActionPermission?.deleteRoles.includes(role)
+  : false
   const shouldShowTaskTabs = (!canManageTaskActions &&!previewAll)
   const shouldShowCompletedTab = shouldShowCompletedTaskTab(role)
   const shouldShowMedicalTaskActions =
     !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject) && role==='design'
-    const shouldShowMedicalcomplaintActions =isMyTasksPage&& shouldEnableMedicalTaskSpecialActions(currentProject) && role==='wuhan_design_cooperation'
+    const shouldShowMedicalcomplaintActions = shouldEnableMedicalTaskSpecialActions(currentProject) && role==='wuhan_design_cooperation'
   const shouldShowMedicalTaskColumns =
     !isMyTasksPage && shouldShowTaskListExtensionColumns(currentProject)
   const taskOwnerOptions = useMemo(
@@ -1200,7 +1266,22 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     ),
     [editingSecondStageOption, secondStageMembers],
   )
+  const processingStageColorMap = useMemo(
+    () =>
+      Object.fromEntries(
+        processingStageNames.map((stageName, index) => [
+          stageName,
+          PROCESSING_STAGE_COLORS[index % PROCESSING_STAGE_COLORS.length],
+        ]),
+      ) as Record<string, string>,
+    [processingStageNames],
+  )
   // const activeTaskCount = tasks.filter((task) => task.status !== 'completed').length
+
+  useEffect(() => {
+    // 颜色池按项目维度维护，翻页保留，切项目后再重建。
+    setProcessingStageNames([])
+  }, [currentProject?.id, mode])
 
   const loadTasks = useCallback(
     async (
@@ -1243,6 +1324,25 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
 
         setTasks(response.items)
+        setProcessingStageNames((currentStageNames) => {
+          const nextStageNames = collectProcessingStageNames(response.items)
+
+          if (nextStageNames.length === 0) {
+            return currentStageNames
+          }
+
+          const stageNameSet = new Set(currentStageNames)
+          let hasNewStageName = false
+
+          nextStageNames.forEach((stageName) => {
+            if (!stageNameSet.has(stageName)) {
+              stageNameSet.add(stageName)
+              hasNewStageName = true
+            }
+          })
+
+          return hasNewStageName ? Array.from(stageNameSet) : currentStageNames
+        })
         setCurrentPage(response.page)
         setPageSize(response.pageSize)
         setTotal(response.total)
@@ -2120,7 +2220,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         column: {
       key: 'task',
       title: '任务',
-      width:200,
+      width:180,
       dataIndex: 'title',
       render: (_, record) => {
         const selectedVersionId = selectedVersionIds[record.id]
@@ -2147,7 +2247,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   })
                 }}
               >
-                <span className="task-table__title">{record.title}</span>
+                <span className="task-table__title" title={record.title}>{record.title}</span>
               </button>
               {/* {activeSubTaskTypes.map((subTaskType) => {
                 const meta = getActiveSubTaskTypeMeta(subTaskType)
@@ -2189,9 +2289,16 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         const activeSubTaskTypes = Array.from(
           new Set(record.activeSubTasks.map((subTask) => subTask.subTaskType).filter(Boolean)),
         )
-        
+        const processingStageName = record.currentStage?.stageName?.trim()
         const displayLabel = record.currentStage?.stageName || getTaskStatusMeta(status).label
-        const meta = getTaskStatusMeta(record.currentStage?.status || status)
+        const baseMeta = getTaskStatusMeta(record.currentStage?.status || status)
+        const meta =
+          status === 'processing' && processingStageName && processingStageColorMap[processingStageName]
+            ? {
+                ...baseMeta,
+                color: processingStageColorMap[processingStageName],
+              }
+            : baseMeta
         return (
           <>
            {activeSubTaskTypes.map((subTaskType) => {
@@ -2227,7 +2334,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         const assigneeNames = record.currentStage?.assignees.map((assignee) => assignee.userName) ?? []
         return (
           <span className="task-table__assignee">
-            {assigneeNames.length > 0 ? assigneeNames.join(' / ') : '-'}
+            {assigneeNames.length > 0 ? assigneeNames.join(' / ') : '暂无'}
           </span>
         )
       },
@@ -2358,7 +2465,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
             return ''
           },
-          width: 120,
+          width: 90,
         },
         defaultVisible: true,
         key: 'packageInfo',
@@ -2463,7 +2570,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
              
             {completedTask ? (
               <>
-                {canManageTaskListButtons ? (
+                {canManageTaskListButtons  &&currentProject?.name!='素材生产'? (
                   <>
                     <Button
                       size="small"
@@ -2486,7 +2593,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               </>
             ) : canProcessTask ? (
               <Button
-                danger
+                type='primary'
+                color='green'
                 size="small"
                 variant="solid"
                 onClick={() => {
@@ -2507,7 +2615,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 编辑
               </Button>
             ) : null}
-            {canManageTaskActions 
+            {canManageTaskActions ||canDeleteButton
             // && canDeleteTask  删除目前只有计划员和管理员
             ? (
               <Button
@@ -2845,7 +2953,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         accept=".xlsx"
         onChange={(event) => void handleImportChange(event)}
       /> */}
-
+      
       {shouldShowTaskTabs ? (
         <Tabs
           activeKey={tabKey}
