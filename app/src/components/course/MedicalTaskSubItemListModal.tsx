@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Modal, Popconfirm, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { shouldShowMedicalSubItemActionColumn } from '../../constants/taskHardcodedRules'
 import { useAppState } from '../../context/AppStateContext'
 import { taskService } from '../../services/taskService'
 import type { MedicalTaskSubItemRecord, UpdateMedicalTaskSubItemPayload } from '../../types'
@@ -10,17 +9,17 @@ import { MedicalTaskSubItemConfirmModal } from './MedicalTaskSubItemConfirmModal
 const PAGE_SIZE = 20
 
 const STATUS_LABELS: Record<string, string> = {
-  confirmed: '已确认',
+  confirmed: '已完成并确认',
   cancelled: '已取消',
-  completed: '已完成',
+  completed: '已确认待完成',
   pending: '待处理',
   processing: '处理中',
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  confirmed: 'blue',
+  confirmed: 'green',
   cancelled: 'default',
-  completed: 'green',
+  completed: 'blue',
   pending: 'gold',
   processing: 'processing',
 }
@@ -52,7 +51,7 @@ export function MedicalTaskSubItemListModal({
   onCancel: () => void
   onChanged?: () => Promise<void> | void
 }) {
-  const { currentUser, role } = useAppState()
+  const { currentUser, hasButtonPermissionAction } = useAppState()
   const [items, setItems] = useState<MedicalTaskSubItemRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
@@ -63,6 +62,7 @@ export function MedicalTaskSubItemListModal({
     pageSize: PAGE_SIZE,
     total: 0,
   })
+  const canUpdateAdditionalWork = hasButtonPermissionAction('additional_work', 'update')
 
   async function loadItems(page = 1, pageSize = pagination.pageSize): Promise<void> {
     if (!taskId) {
@@ -204,7 +204,7 @@ export function MedicalTaskSubItemListModal({
       width: 180,
       render: (value?: string) => value || '-',
     },
-    ...(shouldShowMedicalSubItemActionColumn(role)
+    ...(canUpdateAdditionalWork
       ? [{
           key: 'actions',
           title: '操作',
@@ -274,6 +274,7 @@ export function MedicalTaskSubItemListModal({
     <Modal
       title="子项列表"
       open={open}
+      maskClosable={false}
       onCancel={onCancel}
       destroyOnHidden
       footer={null}

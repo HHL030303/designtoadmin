@@ -67,6 +67,7 @@ export function MedicalTaskSubItemConfirmModal({
     <Modal
       title="确认子项需求"
       open={open}
+      maskClosable={false}
       onCancel={onCancel}
       destroyOnHidden
       footer={null}

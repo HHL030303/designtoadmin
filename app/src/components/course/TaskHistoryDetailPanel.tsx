@@ -19,6 +19,7 @@ import type { MenuProps } from 'antd'
 import { DownOutlined, EditOutlined } from '@ant-design/icons'
 import { AttachmentList } from '../common/AttachmentList'
 import { useAppState } from '../../context/AppStateContext'
+import { shouldHideTaskDetailField } from '../../constants/taskDetailFieldVisibility'
 import { adminService } from '../../services/adminService'
 import { taskService } from '../../services/taskService'
 import { TaskProcessModal } from './TaskProcessModal'
@@ -28,7 +29,7 @@ import './TaskHistoryDetailPanel.css'
 
 type CurrentAssigneeFormValues = {
   dueDays?: number
-  userId?: string
+  userId?: string | string[]
 }
 
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
@@ -236,8 +237,10 @@ export function TaskHistoryDetailPanel({
     (stage) => stage.id === currentWorkflowStage?.id,
   )
   const currentRoleCode = currentWorkflowStage?.operatorRoleCode ?? ''
+  const currentStageAssignees = currentWorkflowStage?.stageAssignees ?? []
   const currentPrimaryAssignee = currentWorkflowStage?.stageAssignees.find((assignee) => assignee.isPrimary)
     ?? currentWorkflowStage?.stageAssignees[0]
+  const shouldUseMultiAssigneeSelect = currentStageAssignees.length > 1
   // 只有当前 current_stage 的执行人就是当前登录账号时，才允许显示编辑入口。
   // const currentStageBelongsToUser = Boolean(
   //   currentWorkflowStage &&
@@ -260,14 +263,16 @@ export function TaskHistoryDetailPanel({
   const taskDetailRows = Object.entries(resolvedDetail.fieldValues)
     .map(([fieldKey, value]) => {
       const field = taskFieldMap.get(fieldKey)
+      const fieldLabel = field?.field_name ?? fieldKey
 
       return {
         key: fieldKey,
-        label: field?.field_name ?? fieldKey,
+        label: fieldLabel,
+        hidden: shouldHideTaskDetailField(role, fieldLabel),
         value: formatTaskFieldDisplayValue(value, field),
       }
     })
-    .filter((item) => item.value !== '未填写')
+    .filter((item) => !item.hidden && item.value !== '未填写')
 
   function renderVersionLabel() {
     if (!hasVersionHistory || !onSelectVersion) {
@@ -323,7 +328,9 @@ export function TaskHistoryDetailPanel({
 
     currentAssigneeForm.setFieldsValue({
       dueDays: currentWorkflowStage.dueDays,
-      userId: currentPrimaryAssignee?.userId,
+      userId: shouldUseMultiAssigneeSelect
+        ? currentStageAssignees.map((assignee) => assignee.userId)
+        : currentPrimaryAssignee?.userId,
     })
     setModalOpen(true)
 
@@ -354,17 +361,26 @@ export function TaskHistoryDetailPanel({
       return
     }
 
+    const selectedUserIds = Array.isArray(values.userId)
+      ? values.userId
+      : [values.userId]
+    const normalizedUserIds = selectedUserIds
+      .map((userId) => String(userId).trim())
+      .filter(Boolean)
+
+    if (normalizedUserIds.length === 0) {
+      return
+    }
+
     try {
       setSubmitting(true)
       await taskService.assignWorkflowStage(currentWorkflowStage.id, {
         due_days: values.dueDays,
-        assignees: [
-          {
-            user_id: Number(values.userId),
-            assignee_role: 'operator',
-            is_primary: true,
-          },
-        ],
+        assignees: normalizedUserIds.map((userId, index) => ({
+          user_id: Number(userId),
+          assignee_role: 'operator',
+          is_primary: index === 0,
+        })),
       })
       message.success('当前责任人已更新')
       handleCloseModal()
@@ -399,9 +415,11 @@ export function TaskHistoryDetailPanel({
           </Descriptions.Item>
           <Descriptions.Item label="当前责任人">
             <span className="task-history-panel__owner">
-              <span className="task-history-panel__owner-text">
-                {currentPrimaryAssignee?.userName ?? '未指派'}
-              </span>
+                <span className="task-history-panel__owner-text">
+                {currentStageAssignees.length > 0
+                  ? currentStageAssignees.map((assignee) => assignee.userName).join(',')
+                  : '暂无'}
+                </span>
               {canEditCurrentAssignee ? (
                 <Button
                   type="text"
@@ -459,11 +477,13 @@ export function TaskHistoryDetailPanel({
         {taskDetailRows.length > 0 ? (
           <>
             <Descriptions column={4} size="small" className="panel-descriptions">
-              {taskDetailRows.map((item) => (
-                <Descriptions.Item key={item.key} label={item.label}>
-                  {item.value}
-                </Descriptions.Item>
-              ))}
+              {taskDetailRows.map((item) =>
+                item.key === 'totalPrice' && role === 'design' ? null : (
+                  <Descriptions.Item key={item.key} label={item.label}>
+                    {item.value}
+                  </Descriptions.Item>
+                ),
+              )}
             </Descriptions>
           </>
         ) : null}
@@ -542,10 +562,13 @@ export function TaskHistoryDetailPanel({
       <Modal
         title="编辑当前责任人"
         open={modalOpen}
+        maskClosable={false}
         onCancel={handleCloseModal}
         onOk={() => void currentAssigneeForm.submit()}
         confirmLoading={submitting}
         destroyOnClose
+        okText='确定'
+        cancelText='取消'
       >
         <Form
           form={currentAssigneeForm}
@@ -558,6 +581,7 @@ export function TaskHistoryDetailPanel({
             rules={[{ required: true, message: '请选择当前责任人' }]}
           >
             <Select
+              mode={shouldUseMultiAssigneeSelect ? 'multiple' : undefined}
               placeholder="请选择当前责任人"
               loading={candidateLoading}
               options={candidateMembers.map((member) => ({

@@ -137,31 +137,37 @@ export function DynamicTaskFormPreview(
               label={(
                 <div className="project-field-config-label">
                   <Typography.Text strong>{field.field_name}</Typography.Text>
-                  <Space size={4}>
-                    <Tooltip title="编辑字段">
-                      <Button
-                        size="small"
-                        type="text"
-                        className="project-field-config-action"
-                        icon={<EditOutlined />}
-                        onClick={() => props.onEditField?.(field)}
-                      />
-                    </Tooltip>
-                    <Popconfirm
-                      title={`确认删除字段“${field.field_name}”吗？`}
-                      onConfirm={() => props.onDeleteField?.(field.field_key)}
-                    >
-                      <Tooltip title="删除字段">
-                        <Button
-                          size="small"
-                          type="text"
-                          danger
-                          className="project-field-config-action"
-                          icon={<DeleteOutlined />}
-                        />
-                      </Tooltip>
-                    </Popconfirm>
-                  </Space>
+                  {props.onEditField || props.onDeleteField ? (
+                    <Space size={4}>
+                      {props.onEditField ? (
+                        <Tooltip title="编辑字段">
+                          <Button
+                            size="small"
+                            type="text"
+                            className="project-field-config-action"
+                            icon={<EditOutlined />}
+                            onClick={() => props.onEditField?.(field)}
+                          />
+                        </Tooltip>
+                      ) : null}
+                      {props.onDeleteField ? (
+                        <Popconfirm
+                          title={`确认删除字段“${field.field_name}”吗？`}
+                          onConfirm={() => props.onDeleteField?.(field.field_key)}
+                        >
+                          <Tooltip title="删除字段">
+                            <Button
+                              size="small"
+                              type="text"
+                              danger
+                              className="project-field-config-action"
+                              icon={<DeleteOutlined />}
+                            />
+                          </Tooltip>
+                        </Popconfirm>
+                      ) : null}
+                    </Space>
+                  ) : null}
                 </div>
               )}
               name={field.field_key}

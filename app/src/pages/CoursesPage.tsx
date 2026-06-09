@@ -39,6 +39,11 @@ import { useAppState } from '../context/AppStateContext'
 import { adminService } from '../services/adminService'
 import { taskService } from '../services/taskService'
 import { makeDemoDownload } from '../utils/attachments'
+import {
+  buildPerPageSettlementUpdates,
+  resolveTaskSettlementChangeSource,
+  resolveTaskSettlementFieldKeys,
+} from '../utils/taskSettlementCalculator'
 // import {
 //   parseCourseImportFile,
 // } from '../utils/courseImport'
@@ -49,9 +54,8 @@ import { MedicalTaskComplaintModal } from '../components/course/MedicalTaskCompl
 import { MedicalTaskComplaintListModal } from '../components/course/MedicalTaskComplaintListModal'
 import { MedicalTaskSubItemModal } from '../components/course/MedicalTaskSubItemModal'
 import { MedicalTaskSubItemListModal } from '../components/course/MedicalTaskSubItemListModal'
-import { shouldEnableMedicalTaskSpecialActions } from '../constants/taskHardcodedRules'
-import { getTaskListActionPermission } from '../constants/taskListActionPermissions'
-import { shouldShowTaskListExtensionColumns } from '../constants/taskListExtensionColumnPermissions'
+import { FinancialReviewModal } from '../components/course/FinancialReviewModal'
+import { shouldShowTaskListExtensionColumns,shouldShowButtonTaskListExtensionColumns} from '../constants/taskListExtensionColumnPermissions'
 import { shouldShowCompletedTaskTab } from '../constants/taskListTabPermissions'
 import './CoursesPage.css'
 import type {
@@ -82,6 +86,12 @@ type SelectOption = {
   value: string
 }
 
+type CurrentStageFilterOption = {
+  label: string
+  templateStageIds: string[]
+  value: string
+}
+
 const taskStatusMeta: Record<string, { color: string; label: string }> = {
   archived: { color: 'green', label: '已归档' },
   completed: { color: 'green', label: '已完成' },
@@ -105,10 +115,37 @@ const PROCESSING_STAGE_COLORS = [
   '#c026d3',
   '#0f766e',
 ] as const
-const TASK_STATUS_FILTER_OPTIONS: FieldOptionConfig[] = [
-  { label: '处理中', value: 'processing' },
-  { label: '已完成', value: 'completed' },
-]
+const financialReviewDateFieldKeys = new Set([
+  'financeArrivalDate',
+  'financeDepositCheckDate',
+  'financeDepositDate',
+  'financeFinalCheckDate',
+])
+const financialReviewNumberFieldKeys = new Set([
+  'financeDepositAmount',
+  'financeDepositCheckAmount',
+  'financeFinalCheckAmount',
+  'financeReceivedAmount',
+])
+const financialReviewFieldKeys = [
+  'financeArrivalCategory',
+  'financeArrivalDate',
+  'financeCustomerPayer',
+  'financeDepositAccountLocation',
+  'financeDepositAmount',
+  'financeDepositCheckAmount',
+  'financeDepositCheckDate',
+  'financeDepositCheckStatus',
+  'financeDepositDate',
+  'financeDepositIssueRemark',
+  'financeFinalAccountLocation',
+  'financeFinalCheckAmount',
+  'financeFinalCheckDate',
+  'financeFinalCheckStatus',
+  'financeFinalIssueRemark',
+  'financePayerName',
+  'financeReceivedAmount',
+] as const
 
 type TaskColumnDefinition = {
   column: ColumnsType<TaskListRecord>[number]
@@ -794,6 +831,73 @@ function buildTaskPayload(
   }
 }
 
+function buildFinancialReviewInitialValues(
+  rawValues?: Record<string, unknown>,
+): TaskFormValues {
+  if (!rawValues) {
+    return {}
+  }
+
+  return financialReviewFieldKeys.reduce<TaskFormValues>((accumulator, key) => {
+    const rawValue = rawValues[key]
+
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return accumulator
+    }
+
+    if (financialReviewDateFieldKeys.has(key)) {
+      const parsedDate = dayjs(String(rawValue).trim())
+
+      if (parsedDate.isValid()) {
+        accumulator[key] = parsedDate
+      }
+
+      return accumulator
+    }
+
+    accumulator[key] = rawValue as TaskFormValue
+    return accumulator
+  }, {})
+}
+
+function serializeFinancialReviewValues(values: TaskFormValues): Record<string, unknown> {
+  return financialReviewFieldKeys.reduce<Record<string, unknown>>((accumulator, key) => {
+    const value = values[key]
+
+    if (value === undefined || value === null || value === '') {
+      return accumulator
+    }
+
+    if (financialReviewDateFieldKeys.has(key) && dayjs.isDayjs(value)) {
+      accumulator[key] = value.format('YYYY-MM-DD')
+      return accumulator
+    }
+
+    if (financialReviewNumberFieldKeys.has(key)) {
+      const numericValue = Number(value)
+
+      if (Number.isFinite(numericValue)) {
+        accumulator[key] = numericValue
+      }
+
+      return accumulator
+    }
+
+    if (typeof value === 'string') {
+      const normalizedText = value.trim()
+
+      if (normalizedText.length > 0) {
+        accumulator[key] = normalizedText
+      }
+
+      return accumulator
+    }
+
+    accumulator[key] = value
+    return accumulator
+  }, {})
+}
+
 // function buildImportTaskPayload(payload: CreateCoursePayload) {
 //     const fieldValues = {
 //         artCopyright: normalizeBooleanLike(payload.artCopyright),
@@ -872,15 +976,23 @@ function resolveCancelableSubTask(task: TaskListRecord) {
 
 
 
-function resolveTaskStatusQuery(
-  _tabKey: 'todo' | 'joined' | 'completed',
-  statusFilter: string,
+function resolveCurrentStageIdsByFilter(
+  statusFilter: string[],
+  stageOptions: CurrentStageFilterOption[],
 ) {
-  if (statusFilter !== 'all') {
-    return statusFilter
+  if (statusFilter.length === 0) {
+    return []
   }
 
-  return undefined
+  const selectedValueSet = new Set(statusFilter)
+
+  return Array.from(
+    new Set(
+      stageOptions
+        .filter((option) => selectedValueSet.has(option.value))
+        .flatMap((option) => option.templateStageIds),
+    ),
+  )
 }
 
 function buildStageAssignment(
@@ -1148,7 +1260,14 @@ function HistoryVersionDropdown({
 export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks' }) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { currentProject, canCreateCourse, currentUser, role } = useAppState()
+  const {
+    currentProject,
+    // canCreateCourse,
+    currentUser,
+    role,
+    hasButtonPermissionAction,
+    hasProjectPermissionAction,
+  } = useAppState()
   const initialSearchParams = useMemo(
     () => new URLSearchParams(location.search),
     [location.search],
@@ -1166,7 +1285,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [mutating, setMutating] = useState(false)
   const [fieldFilters, setFieldFilters] = useState<Record<string, unknown>>({})
   const [searchExpanded, setSearchExpanded] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilterOptions, setStatusFilterOptions] = useState<CurrentStageFilterOption[]>([])
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [tabKey, setTabKey] = useState<'todo' | 'joined' | 'completed'>('todo')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
@@ -1174,6 +1294,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [serviceDrawerOpen, setServiceDrawerOpen] = useState(false)
   const [serviceDrawerTaskId, setServiceDrawerTaskId] = useState<string>('')
   const [serviceDrawerType, setServiceDrawerType] = useState<ServiceType>('售后')
+  const [financialReviewOpen, setFinancialReviewOpen] = useState(false)
+  const [financialReviewTaskId, setFinancialReviewTaskId] = useState<string>('')
+  const [financialReviewInitialValues, setFinancialReviewInitialValues] = useState<TaskFormValues>(
+    {},
+  )
+  const [financialReviewLoading, setFinancialReviewLoading] = useState(false)
   const [medicalSubItemModalOpen, setMedicalSubItemModalOpen] = useState(false)
   const [medicalComplaintModalOpen, setMedicalComplaintModalOpen] = useState(false)
   const [medicalActionTaskId, setMedicalActionTaskId] = useState<string>('')
@@ -1218,6 +1344,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   }>({})
   // const importInputRef = useRef<HTMLInputElement | null>(null)
   const listRequestIdRef = useRef(0)
+  const previousTaskFormValuesRef = useRef<TaskFormValues | undefined>(undefined)
   const taskOwnerLoadingRef = useRef(false)
   const taskOwnerRequestIdRef = useRef(0)
   const taskOwnerSearchTimerRef = useRef<number | null>(null)
@@ -1228,22 +1355,42 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   const [searchForm] = Form.useForm<TaskSearchFormValues>()
   const watchedTaskFormValues = Form.useWatch([], form) as TaskFormValues | undefined
   const selectedWorkflowTemplateId = Form.useWatch('workflowTemplateId', form)
-  const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin'||role==='wuhan_design_cooperation')
+  // canManageTaskActions 新增任务触发相关的权限操作
+  const canManageTaskActions = !isMyTasksPage && (role === 'planner' || role === 'admin'||role==='wuhan_design_cooperation'||role==='keyan_bussiness')
   const previewAll = role==='operation'||role==='presales' ||role==='coordinator'||role==='designcooperation'
-  const taskListActionPermission = getTaskListActionPermission(currentProject)
-  const canManageTaskListButtons = taskListActionPermission
-    ? taskListActionPermission.allowedRoles.includes(role)
-    : false
-  const canDeleteButton = taskListActionPermission
-  ? taskListActionPermission?.deleteRoles.includes(role)
-  : false
+  // const canDeleteButton = taskListActionPermission
+  // ? taskListActionPermission?.deleteRoles.includes(role)
+  // : false
   const shouldShowTaskTabs = (!canManageTaskActions &&!previewAll)
   const shouldShowCompletedTab = shouldShowCompletedTaskTab(role)
-  const shouldShowMedicalTaskActions =
-    !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject) && role==='design'
-    const shouldShowMedicalcomplaintActions = shouldEnableMedicalTaskSpecialActions(currentProject) && role==='wuhan_design_cooperation'
+  // const shouldShowMedicalTaskActions =
+  //   !isMyTasksPage && shouldEnableMedicalTaskSpecialActions(currentProject) && role==='design'
+    // const shouldShowMedicalcomplaintActions = shouldEnableMedicalTaskSpecialActions(currentProject) && role==='wuhan_design_cooperation'
   const shouldShowMedicalTaskColumns =
     !isMyTasksPage && shouldShowTaskListExtensionColumns(currentProject)
+  const showfinianceButton =shouldShowButtonTaskListExtensionColumns(currentProject)
+  const canCreateTaskButton = hasProjectPermissionAction('task', 'create')
+  const canUpdateTaskButton = hasProjectPermissionAction('task', 'update')
+  const canDeleteTaskButton = hasProjectPermissionAction('task', 'delete')
+  const canCreateAftersalesButton = hasButtonPermissionAction('aftersales', 'create')
+  const canUpdateAftersalesButton = hasButtonPermissionAction('aftersales', 'update')
+  const canCreateIterationButton = hasButtonPermissionAction('iteration', 'create')
+  const canCreateAdditionalWorkButton = hasButtonPermissionAction('additional_work', 'create')
+  const canCreateComplaintButton = hasButtonPermissionAction('complaint', 'create')
+  const hasAdditionalWorkButtonPermission =
+    hasButtonPermissionAction('additional_work', 'create') ||
+    hasButtonPermissionAction('additional_work', 'update') ||
+    hasButtonPermissionAction('additional_work', 'delete') ||
+    hasButtonPermissionAction('additional_work', 'view')
+  const hasComplaintButtonPermission =
+    hasButtonPermissionAction('complaint', 'create') ||
+    hasButtonPermissionAction('complaint', 'update') ||
+    hasButtonPermissionAction('complaint', 'delete') ||
+    hasButtonPermissionAction('complaint', 'view')
+  const shouldShowMedicalSubItemColumn =
+    shouldShowMedicalTaskColumns && hasAdditionalWorkButtonPermission
+  const shouldShowMedicalComplaintColumn =
+    shouldShowMedicalTaskColumns && hasComplaintButtonPermission
   const taskOwnerOptions = useMemo(
     () => mergeSelectOptions(
       taskOwnerMembers.map((member) => ({
@@ -1289,7 +1436,8 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         currentPage: number
         fieldFilters: Record<string, unknown>
         pageSize: number
-        statusFilter: string
+        statusFilter: string[]
+        statusFilterOptions: CurrentStageFilterOption[]
         tabKey: 'todo' | 'joined' | 'completed'
       }>,
     ) => {
@@ -1297,6 +1445,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       const nextPageSize = overrides?.pageSize ?? pageSize
       const nextFieldFilters = overrides?.fieldFilters ?? fieldFilters
       const nextStatusFilter = overrides?.statusFilter ?? statusFilter
+      const nextStatusFilterOptions = overrides?.statusFilterOptions ?? statusFilterOptions
       const nextTabKey = overrides?.tabKey ?? tabKey
       const requestId = listRequestIdRef.current + 1
       listRequestIdRef.current = requestId
@@ -1304,6 +1453,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       try {
         setTasksLoading(true)
         const response = await taskService.listTasks({
+          currentStageIds: resolveCurrentStageIdsByFilter(
+            nextStatusFilter,
+            nextStatusFilterOptions,
+          ),
           fieldFilters: nextFieldFilters,
           // 管理员和计划员直接查看全部任务，其他角色按 mine_scope 切换接口视图。
           mineScope:
@@ -1316,7 +1469,6 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               : undefined,
           page: nextPage,
           pageSize: nextPageSize,
-          status: resolveTaskStatusQuery(nextTabKey, nextStatusFilter),
         })
 
         if (requestId !== listRequestIdRef.current) {
@@ -1354,7 +1506,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
       }
     },
-    [currentPage, fieldFilters, pageSize, shouldShowTaskTabs, statusFilter, tabKey],
+    [
+      currentPage,
+      fieldFilters,
+      pageSize,
+      shouldShowTaskTabs,
+      statusFilter,
+      statusFilterOptions,
+      tabKey,
+    ],
   )
 
   useEffect(() => {
@@ -1368,6 +1528,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       setTaskFieldConfigs([])
       searchForm.resetFields()
       setFieldFilters({})
+      setStatusFilter([])
       setSearchExpanded(false)
       return
     }
@@ -1386,6 +1547,31 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
 
     void loadTaskFields()
+  }, [currentProject?.id, searchForm])
+
+  useEffect(() => {
+    const projectId = currentProject?.id ?? ''
+
+    setStatusFilter([])
+    searchForm.setFieldValue('status', undefined)
+
+    if (!projectId) {
+      setStatusFilterOptions([])
+      setStatusFilter([])
+      return
+    }
+
+    async function loadCurrentStageOptions() {
+      try {
+        const options = await taskService.listCurrentStageOptions()
+        setStatusFilterOptions(options)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '筛选状态加载失败')
+        setStatusFilterOptions([])
+      }
+    }
+
+    void loadCurrentStageOptions()
   }, [currentProject?.id, searchForm])
 
   useEffect(() => {
@@ -1472,7 +1658,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
       if (
         !projectId ||
-        !canManageTaskActions ||
+        // !canManageTaskActions ||
         !selectedWorkflowTemplate ||
         (append && taskOwnerLoadingRef.current)
       ) {
@@ -1523,11 +1709,12 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
       }
     },
-    [canManageTaskActions, currentProject?.id, selectedWorkflowTemplate],
+    [ currentProject?.id, selectedWorkflowTemplate],
   )
 
   useEffect(() => {
-    if (!currentProject?.id || !canManageTaskActions || !selectedWorkflowTemplate) {
+    // console.log(canManageTaskActions,'canManageTaskActions')
+    if (!currentProject?.id  || !selectedWorkflowTemplate) {
       setTaskOwnerMembers([])
       setTaskOwnerSearchValue('')
       setTaskOwnerMemberPage(1)
@@ -1537,7 +1724,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
     void loadTaskOwnerMembers(1, false, '')
   }, [
-    canManageTaskActions,
+    // canManageTaskActions,
     currentProject?.id,
     editingTaskId,
     loadTaskOwnerMembers,
@@ -1563,7 +1750,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
       if (
         !projectId ||
-        !canManageTaskActions ||
+        // !canManageTaskActions ||
         !selectedWorkflowTemplate ||
         !roleCode ||
         (append && secondStageLoadingRef.current)
@@ -1616,11 +1803,15 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         }
       }
     },
-    [canManageTaskActions, currentProject?.id, firstWorkflowRoleCode, selectedWorkflowTemplate],
+    [
+      // canManageTaskActions,
+       currentProject?.id, firstWorkflowRoleCode, selectedWorkflowTemplate],
   )
 
   useEffect(() => {
-    if (!currentProject?.id || !canManageTaskActions || !selectedWorkflowTemplate || !firstWorkflowRoleCode) {
+    if (!currentProject?.id 
+      // || !canManageTaskActions
+       || !selectedWorkflowTemplate || !firstWorkflowRoleCode) {
       setSecondStageMembers([])
       setSecondStageSearchValue('')
       setSecondStageMemberPage(1)
@@ -1630,7 +1821,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
 
     void loadSecondStageMembers(1, false, '')
   }, [
-    canManageTaskActions,
+    // canManageTaskActions,
     currentProject?.id,
     editingTaskId,
     firstWorkflowRoleCode,
@@ -1673,6 +1864,39 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       }
     })
   }, [activeRelatedFieldKeys, enabledFieldConfigs, form, relatedTargetFieldKeys])
+
+  useEffect(() => {
+    if (!watchedTaskFormValues || enabledFieldConfigs.length === 0) {
+      previousTaskFormValuesRef.current = watchedTaskFormValues
+      return
+    }
+
+    const settlementFieldKeys = resolveTaskSettlementFieldKeys(enabledFieldConfigs)
+    const changeSource = resolveTaskSettlementChangeSource(
+      settlementFieldKeys,
+      previousTaskFormValuesRef.current,
+      watchedTaskFormValues,
+    )
+    const settlementUpdates = buildPerPageSettlementUpdates(
+      enabledFieldConfigs,
+      watchedTaskFormValues,
+      {
+        changeSource,
+      },
+    )
+    const nextEntries = Object.entries(settlementUpdates).filter(([fieldKey, nextValue]) => {
+      const currentValue = watchedTaskFormValues[fieldKey]
+      return currentValue !== nextValue
+    })
+
+    previousTaskFormValuesRef.current = watchedTaskFormValues
+
+    if (nextEntries.length === 0) {
+      return
+    }
+
+    form.setFieldsValue(Object.fromEntries(nextEntries))
+  }, [enabledFieldConfigs, form, watchedTaskFormValues])
 
   // const statusOptions = Array.from(new Set(tasks.map((task) => task.status))).map((status) => ({
   //   label: getTaskStatusMeta(status).label,
@@ -1823,6 +2047,13 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     setServiceFirstStageAssignmentMeta({})
   }
 
+  function handleCloseFinancialReviewModal() {
+    setFinancialReviewOpen(false)
+    setFinancialReviewTaskId('')
+    setFinancialReviewInitialValues({})
+    setFinancialReviewLoading(false)
+  }
+
   function handleCloseMedicalSubItemModal() {
     setMedicalSubItemModalOpen(false)
     setMedicalActionTaskId('')
@@ -1927,6 +2158,28 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     }
   }
 
+  async function openFinancialReviewModal(task: TaskListRecord) {
+    setFinancialReviewTaskId(task.id)
+    setFinancialReviewOpen(true)
+    setFinancialReviewLoading(true)
+
+    try {
+      const detail = await refreshTaskDetail(task.id)
+      setFinancialReviewInitialValues({
+        ...buildFormInitialValues(enabledFieldConfigs, detail.fieldValues, {
+          useDefaultValue: false,
+        }),
+        ...buildFinancialReviewInitialValues(detail.fieldValues),
+        title: detail.task.title,
+      })
+    } catch (error) {
+      handleCloseFinancialReviewModal()
+      message.error(error instanceof Error ? error.message : '财务审核信息加载失败')
+    } finally {
+      setFinancialReviewLoading(false)
+    }
+  }
+
   async function openMedicalSubItemModal(taskId: string) {
     setMedicalActionTaskId(taskId)
     setMedicalSubItemModalOpen(true)
@@ -1978,6 +2231,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
     Modal.confirm({
       title: '确认取消当前子任务吗？',
       content: '取消后该售后/迭代子任务会停止流转，请谨慎操作。',
+      maskClosable: false,
       okButtonProps: { danger: true },
       okText: '确认取消',
       cancelText: '返回',
@@ -2139,6 +2393,37 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
       handleCloseMedicalComplaintModal()
     } catch (error) {
       message.error(error instanceof Error ? error.message : '发起客诉失败')
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  async function handleSubmitFinancialReview(values: Record<string, unknown>) {
+    if (!financialReviewTaskId) {
+      message.warning('缺少任务信息，暂时无法确认')
+      return
+    }
+
+    const taskValues = values as TaskFormValues
+    const basePayload = buildTaskPayload(enabledFieldConfigs, taskValues, {
+      firstStage: firstWorkflowStage,
+    })
+    const payload = {
+      ...basePayload,
+      field_values: {
+        ...basePayload.field_values,
+        ...serializeFinancialReviewValues(taskValues),
+      },
+    }
+
+    try {
+      setMutating(true)
+      await taskService.updateTask(financialReviewTaskId, payload)
+      await Promise.all([loadTasks(), refreshTaskDetail(financialReviewTaskId)])
+      message.success('财务审核已确认')
+      handleCloseFinancialReviewModal()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '财务审核确认失败')
     } finally {
       setMutating(false)
     }
@@ -2362,7 +2647,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         key: `field:${field.field_key}`,
         title: field.field_name,
       })),
-      ...(shouldShowMedicalTaskColumns
+      ...(shouldShowMedicalSubItemColumn
         ? [
             {
               column: {
@@ -2387,6 +2672,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
               key: 'medicalSubItems',
               title: '子项',
             },
+          ] satisfies TaskColumnDefinition[]
+        : []),
+      ...(shouldShowMedicalComplaintColumn
+        ? [
             {
               column: {
                 key: 'medicalComplaints',
@@ -2504,21 +2793,21 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
           </Popover>
         </div>
       ),
-      width: 240,
+      width: 320,
       render: (_, record) => {
         // const canDeleteTask = canDeleteTaskRecord(record, currentUser?.id, role)
         const completedTask = isCompletedTask(record)
         const cancelableSubTask = resolveCancelableSubTask(record)
-        const canCancelServiceTask = Boolean(
-          !completedTask &&
-            cancelableSubTask &&
-            currentUser?.id &&
-            (
-              record.ownerId === currentUser.id ||
-              role === 'admin' ||
-              role === 'planner'
-            ),
-        )
+        // const canCancelServiceTask = Boolean(
+        //   !completedTask &&
+        //     cancelableSubTask &&
+        //     currentUser?.id &&
+        //     (
+        //       record.ownerId === currentUser.id ||
+        //       role === 'admin' ||
+        //       role === 'planner'
+        //     ),
+        // )
         const canProcessTask = Boolean(
           currentUser?.id &&
             record.currentStage?.assignees.some((assignee) => assignee.userId === currentUser.id),
@@ -2544,50 +2833,71 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 详情
               </Button>
             ) : null}
-            {shouldShowMedicalTaskActions ? (
-              <>
-                <Button
-                  size="small"
-                  variant="solid"
-                  color="geekblue"
-                  onClick={() => void openMedicalSubItemModal(record.id)}
-                >
-                  需求变更
-                </Button>
-              
-              </>
-            ) : null}
             {
-              shouldShowMedicalcomplaintActions &&  <Button
+              showfinianceButton &&isCompletedTask(record) ? <Button
               size="small"
               variant="solid"
-              color="magenta"
-              onClick={() => void openMedicalComplaintModal(record.id)}
+              color="gold"
+              onClick={() => void openFinancialReviewModal(record)}
             >
-              客诉
-            </Button>
+              财务审核
+            </Button>:null
             }
+           
+            {
+            // shouldShowMedicalTaskActions ? (
+              <>
+                {canCreateAdditionalWorkButton ? (
+                  <Button
+                    size="small"
+                    variant="solid"
+                    color="geekblue"
+                    onClick={() => void openMedicalSubItemModal(record.id)}
+                  >
+                    需求变更
+                  </Button>
+                ) : null}
+              
+              </>
+            // ) : null
+            }
+            {canCreateComplaintButton ? (
+              <Button
+                size="small"
+                variant="solid"
+                color="magenta"
+                onClick={() => void openMedicalComplaintModal(record.id)}
+              >
+                客诉
+              </Button>
+            ) : null}
              
             {completedTask ? (
               <>
-                {canManageTaskListButtons  &&currentProject?.name!='素材生产'? (
+                {
+                // currentProject?.name!='素材生产' &&
+                (canCreateAftersalesButton || canCreateIterationButton) ? (
                   <>
-                    <Button
-                      size="small"
-                      variant="solid"
-                      color='geekblue'
-                      onClick={() => void openServiceDrawer('售后', record.id)}
-                    >
-                      售后
-                    </Button>
-                    <Button
-                      size="small"
-                       color='volcano'
-                       variant="solid"
-                      onClick={() => void openServiceDrawer('迭代', record.id)}
-                    >
-                      迭代
-                    </Button>
+                    {canCreateAftersalesButton ? (
+                      <Button
+                        size="small"
+                        variant="solid"
+                        color='geekblue'
+                        onClick={() => void openServiceDrawer('售后', record.id)}
+                      >
+                        售后
+                      </Button>
+                    ) : null}
+                    {canCreateIterationButton ? (
+                      <Button
+                        size="small"
+                        color='volcano'
+                        variant="solid"
+                        onClick={() => void openServiceDrawer('迭代', record.id)}
+                      >
+                        迭代
+                      </Button>
+                    ) : null}
                   </>
                 ) : null}
               </>
@@ -2604,7 +2914,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 处理
               </Button>
             ) : null}
-            {canManageTaskListButtons ? (
+            {canUpdateTaskButton ? (
               <Button
                 type="primary"
                 size="small"
@@ -2615,7 +2925,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 编辑
               </Button>
             ) : null}
-            {canManageTaskActions ||canDeleteButton
+            {canDeleteTaskButton 
             // && canDeleteTask  删除目前只有计划员和管理员
             ? (
               <Button
@@ -2628,6 +2938,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   Modal.confirm({
                     title: '确认删除该任务吗？',
                     content: '删除后不可恢复，请谨慎操作。',
+                    maskClosable: false,
                     okButtonProps: { danger: true, loading: mutating },
                     okText: '删除',
                     cancelText: '取消',
@@ -2640,7 +2951,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 删除
               </Button>
             ) : null}
-            {canCancelServiceTask ? (
+            {
+            // canCancelServiceTask && 
+            cancelableSubTask &&  canUpdateAftersalesButton ? (
               <Button
                 danger
                 variant="solid"
@@ -2862,13 +3175,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
   function handleReset() {
     searchForm.resetFields()
     setFieldFilters({})
-    setStatusFilter('all')
+    setStatusFilter([])
     setCurrentPage(1)
   }
 
   function handleQuery(values: TaskSearchFormValues) {
     setFieldFilters(buildTaskFieldFilters(searchableTaskFieldConfigs, values))
-    setStatusFilter(typeof values.status === 'string' && values.status ? values.status : 'all')
+    setStatusFilter(
+      Array.isArray(values.status)
+        ? values.status
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+        : [],
+    )
     setCurrentPage(1)
   }
 
@@ -2901,9 +3220,10 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                     className="task-search-form__item"
                   >
                     <Select
+                      mode="multiple"
                       placeholder='请选择'
                       allowClear
-                      options={TASK_STATUS_FILTER_OPTIONS}
+                      options={statusFilterOptions}
                     />
                   </Form.Item>
                 </Col>
@@ -2918,7 +3238,9 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                   查询
                 </Button>
                 <Button onClick={handleReset}>重置</Button>
-                {canCreateCourse && canManageTaskActions ? (
+                {
+                // canCreateCourse && 
+                canCreateTaskButton ? (
                   <Button
                     type="primary"
                     variant="solid"
@@ -3044,6 +3366,7 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
         placement="right"
         size={560}
         open={drawerOpen}
+        maskClosable={false}
         onClose={handleCloseDrawer}
         destroyOnClose
       >
@@ -3175,15 +3498,19 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
                 </Form.Item>
               </Col>
             ) : null}
-            <Col span='12'>
+            {
+              currentProject?.name!=='素材生产'
+              && currentProject?.name!=='科研线项目' &&  <Col span='12'>
               <Form.Item
                   label="任务名称"
                   name="title"
-                  rules={[{ required: true, message: '请填写任务名称' }]}
+                  rules={[{ required: false, message: '请填写任务名称' }]}
                 >
                   <Input type="text"  />
                 </Form.Item>
             </Col>
+            }
+          
             {/* {JSON.stringify(enabledFieldConfigs)} */}
             {enabledFieldConfigs.flatMap((field) => {
               if (relatedTargetFieldKeys.has(field.field_key)) {
@@ -3263,6 +3590,14 @@ export function CoursesPage({ mode = 'default' }: { mode?: 'default' | 'myTasks'
             label: template.name,
             value: template.id,
           }))}
+      />
+      <FinancialReviewModal
+        open={financialReviewOpen}
+        loading={mutating || financialReviewLoading}
+        fieldConfigs={enabledFieldConfigs}
+        initialValues={financialReviewInitialValues}
+        onCancel={handleCloseFinancialReviewModal}
+        onSubmit={handleSubmitFinancialReview}
       />
       <MedicalTaskSubItemModal
         open={medicalSubItemModalOpen}

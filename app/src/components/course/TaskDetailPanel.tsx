@@ -14,6 +14,7 @@ import {
     message,
 } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
+import { shouldHideTaskDetailField } from '../../constants/taskDetailFieldVisibility'
 import { useAppState } from '../../context/AppStateContext'
 import { adminService } from '../../services/adminService'
 import { fileService } from '../../services/fileService'
@@ -65,7 +66,11 @@ const roleLabelMap: Record<UserRole, string> = {
     wuhan_design_cooperation:"武汉商务",
     customer_planner:"商务",
     presales:"售前",
-    operation:"运营"
+    operation:"运营",
+    keyan_design:'科研设计',
+    keyan_design_cooration:'科研统筹',
+    keyan_settlement:'科研结算',
+    keyan_bussiness:'科研商务'
 }
 
 const preferredSummaryFieldKeys = [
@@ -120,18 +125,21 @@ function buildFieldMap(fieldConfigs: FieldConfig[]) {
 function buildSummaryRows(
     detail: TaskDetailRecord,
     fieldConfigs: FieldConfig[],
+    role: UserRole,
 ): Array<{ key: string; label: string; value: string }> {
     const fieldMap = buildFieldMap(fieldConfigs)
     const configuredRows = preferredSummaryFieldKeys
         .filter((fieldKey) => detail.fieldValues[fieldKey] !== undefined)
         .map((fieldKey) => {
             const field = fieldMap.get(fieldKey)
+            const fieldLabel = field?.field_name ?? fieldKey
             return {
                 key: fieldKey,
-                label: field?.field_name ?? fieldKey,
+                label: fieldLabel,
                 value: formatDisplayValue(detail.fieldValues[fieldKey], field),
             }
         })
+        .filter((row) => !shouldHideTaskDetailField(role, row.label))
 
     return [
         { key: 'taskId', label: '任务 ID', value: detail.task.id },
@@ -635,6 +643,7 @@ function RoleTaskCard({
             Modal.confirm({
                 cancelText: '取消',
                 content: `当前已存在重名文件“${file.name}”，继续上传将会覆盖，是否继续？`,
+                maskClosable: false,
                 okText: '继续上传',
                 onCancel: () => resolve(false),
                 onOk: () => resolve(true),
@@ -990,6 +999,7 @@ function RoleTaskCard({
             <Modal
                 title="编辑当前责任人"
                 open={currentAssigneeModalOpen}
+                maskClosable={false}
                 onCancel={handleCloseCurrentAssigneeModal}
                 onOk={() => void currentAssigneeForm.submit()}
                 confirmLoading={currentAssigneeSubmitting}
@@ -1050,8 +1060,8 @@ export function TaskDetailPanel({
     taskOwnerId?: string
 }) {
     const summaryRows = useMemo(
-        () => buildSummaryRows(detail, fieldConfigs),
-        [detail, fieldConfigs],
+        () => buildSummaryRows(detail, fieldConfigs, role),
+        [detail, fieldConfigs, role],
     )
     const shouldShowRoleTaskCard = role !== 'planner'
 

@@ -114,6 +114,7 @@ export function ServiceTicketDrawer({
     <Modal
       title={drawerTitle}
       open={open}
+      maskClosable={false}
       onCancel={onClose}
       destroyOnHidden
       footer={null}

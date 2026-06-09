@@ -44,6 +44,7 @@ export function MedicalTaskSubItemModal({
     <Modal
       title="增加子项"
       open={open}
+      maskClosable={false}
       onCancel={onCancel}
       destroyOnHidden
       footer={null}

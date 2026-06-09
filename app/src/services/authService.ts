@@ -20,9 +20,11 @@ type AuthProjectResponse = {
     name: string
   }>
   permissions: Array<{
-    resource: string
+    actions?: string[]
+    action?: string
+    resource?: string
+    resource_code?: string
     resource_name: string
-    action: string
   }>
 }
 
@@ -61,10 +63,16 @@ function mapProjectRole(role: AuthProjectResponse['roles'][number]): ProjectRole
 function mapProjectPermission(
   permission: AuthProjectResponse['permissions'][number],
 ): ProjectPermission {
+  const actions = Array.isArray(permission.actions)
+    ? permission.actions.filter((action): action is string => typeof action === 'string')
+    : typeof permission.action === 'string' && permission.action.trim()
+      ? [permission.action.trim()]
+      : []
+
   return {
-    resource: permission.resource,
+    actions,
+    resource: permission.resource_code ?? permission.resource ?? '',
     resourceName: permission.resource_name,
-    action: permission.action,
   }
 }
 

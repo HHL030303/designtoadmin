@@ -20,12 +20,14 @@ import {
   canAdvanceCourse,
   canCreateCourse as canCreateCourseByRole,
   canCreateTicket,
-  canEditResearchTask,
-  canManageDispatch,
-  canUploadPageDraft,
-  canUploadStyleDraft,
   getAvailableViews,
 } from '../domain/permissions'
+import {
+  getCurrentProjectPermissions,
+  hasButtonPermissionAction as hasButtonPermissionActionByResource,
+  hasProjectPermissionAction as hasProjectPermissionActionByResource,
+  type PermissionAction,
+} from '../domain/menuPermissions'
 import { useCourseStore } from '../hooks/useCourseStore'
 import { authService } from '../services/authService'
 import type {
@@ -36,11 +38,8 @@ import type {
   CreateTicketResult,
   CourseRecord,
   CourseStatus,
-  DispatchPayload,
   ProjectOption,
   UpdateResearchPayload,
-  UploadPagePayload,
-  UploadStylePayload,
   UserRole,
   ViewKey,
 } from '../types'
@@ -149,13 +148,13 @@ type AppStateContextValue = {
   availableRoles: AvailableProjectRole[]
   currentUser: AuthUser | null
   currentProject: ProjectOption | null
+  currentProjectPermissions: ProjectOption['permissions']
   projects: ProjectOption[]
   isAuthenticated: boolean
   hasSelectedProject: boolean
   authenticating: boolean
   courses: CourseRecord[]
   selectedCourse?: CourseRecord
-  selectedResearchCourse?: CourseRecord
   stats: ReturnType<typeof useCourseStore>['stats']
   loading: boolean
   mutating: boolean
@@ -178,15 +177,11 @@ type AppStateContextValue = {
   advanceCourse: (courseId: string) => Promise<void>
   createTicket: (payload: CreateServiceTicketPayload, courseId?: string) => Promise<void>
   updateResearch: (courseId: string, payload: UpdateResearchPayload) => Promise<void>
-  saveStyleDispatch: (courseId: string, payload: DispatchPayload) => Promise<void>
-  savePageDispatch: (courseId: string, payload: DispatchPayload) => Promise<void>
-  uploadStyle: (courseId: string, payload: UploadStylePayload) => Promise<void>
-  uploadPage: (courseId: string, payload: UploadPagePayload) => Promise<void>
   canAdvanceSelected: boolean
   canCreateAftersales: boolean
   canCreateIteration: boolean
-  canEditResearchSelected: boolean
-  canManageSelected: boolean
+  hasProjectPermissionAction: (resourceCode: string, action: PermissionAction) => boolean
+  hasButtonPermissionAction: (resourceCode: string, action: PermissionAction) => boolean
 }
 
 const AppStateContext = createContext<AppStateContextValue | null>(null)
@@ -283,6 +278,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
   const projects = currentUser?.projects ?? []
+  const currentProjectPermissions = useMemo(
+    () => getCurrentProjectPermissions(currentProject, projects),
+    [currentProject, projects],
+  )
   const availableRoles = useMemo(() => getProjectRoles(currentProject), [currentProject])
   const storedProjectRole = useMemo(
     () => (currentProject ? getStoredProjectRoleMap()[currentProject.id] : undefined),
@@ -301,9 +300,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [activeRole, availableRoles, currentProject, currentUser?.role, storedProjectRole])
   const matchedView = useMemo(() => getViewForPath(location.pathname), [location.pathname])
   const view = useMemo<ViewKey>(() => {
-    const availableViews = getAvailableViews(role)
+    const availableViews = getAvailableViews(role, currentProjectPermissions)
     return matchedView ?? availableViews[0] ?? 'dashboard'
-  }, [matchedView, role])
+  }, [currentProjectPermissions, matchedView, role])
   const courseStore = useCourseStore()
 
   const {
@@ -317,10 +316,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     updateCourse: updateCourseRecord,
     advanceCourse: advanceCourseRecord,
     updateResearch: updateResearchTask,
-    saveStyleDispatch: saveStyleDispatchRecord,
-    savePageDispatch: savePageDispatchRecord,
-    uploadPage: uploadPageDraft,
-    uploadStyle: uploadStyleDraft,
     createTicket: createServiceTicket,
   } = courseStore
 
@@ -386,14 +381,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     () => courses.find((course) => course.id === selectedCourseId) ?? courses[0],
     [courses, selectedCourseId],
   )
-  const selectedResearchCourse = useMemo(
-    () =>
-      courses.find(
-        (course) => course.id === selectedCourseId && course.status === 'research',
-      ) ?? courses.find((course) => course.status === 'research'),
-    [courses, selectedCourseId],
-  )
   const canCreateCourse = useMemo(() => canCreateCourseByRole(role), [role])
+  const hasProjectPermissionAction = useMemo(
+    () => (resourceCode: string, action: PermissionAction) =>
+      hasProjectPermissionActionByResource(currentProjectPermissions, resourceCode, action),
+    [currentProjectPermissions],
+  )
+  const hasButtonPermissionAction = useMemo(
+    () => (resourceCode: string, action: PermissionAction) =>
+      hasButtonPermissionActionByResource(currentProjectPermissions, resourceCode, action),
+    [currentProjectPermissions],
+  )
   const isAuthenticated = Boolean(currentUser)
   const hasSelectedProject = Boolean(currentProject)
   const currentFullPath = `${location.pathname}${location.search}${location.hash}`
@@ -409,18 +407,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
 
     if (hasSelectedProject && location.pathname === '/project-select') {
-      const redirectPath = getStoredLoginRedirectPath()
-
-      if (redirectPath) {
-        navigate(redirectPath, { replace: true })
-        return
-      }
-
       window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
 
-      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW)
+      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW, currentProjectPermissions)
         ? DEFAULT_AUTHORIZED_VIEW
-        : getAvailableViews(role)[0]
+        : getAvailableViews(role, currentProjectPermissions)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
@@ -432,15 +423,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY)
     }
 
-    if (matchedView && !canAccessView(role, matchedView)) {
-      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW)
+    if (matchedView && !canAccessView(role, matchedView, currentProjectPermissions)) {
+      const nextView = canAccessView(role, DEFAULT_AUTHORIZED_VIEW, currentProjectPermissions)
         ? DEFAULT_AUTHORIZED_VIEW
-        : getAvailableViews(role)[0]
+        : getAvailableViews(role, currentProjectPermissions)[0]
       if (nextView) {
         navigate(getPathForView(nextView), { replace: true })
       }
     }
-  }, [currentFullPath, hasSelectedProject, isAuthenticated, location.pathname, matchedView, navigate, role])
+  }, [
+    currentFullPath,
+    currentProjectPermissions,
+    hasSelectedProject,
+    isAuthenticated,
+    location.pathname,
+    matchedView,
+    navigate,
+    role,
+  ])
 
   function navigateToView(nextView: ViewKey) {
     navigate(getPathForView(nextView))
@@ -512,13 +512,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (matchedView && canAccessView(nextRole, matchedView)) {
+    if (matchedView && canAccessView(nextRole, matchedView, matched.permissions)) {
       return
     }
 
-    const nextView = canAccessView(nextRole, DEFAULT_AUTHORIZED_VIEW)
+    const nextView = canAccessView(nextRole, DEFAULT_AUTHORIZED_VIEW, matched.permissions)
       ? DEFAULT_AUTHORIZED_VIEW
-      : getAvailableViews(nextRole)[0]
+      : getAvailableViews(nextRole, matched.permissions)[0]
     if (nextView) {
       navigate(getPathForView(nextView), { replace: true })
     }
@@ -617,56 +617,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSelectedCourseId(updated.id)
   }
 
-  async function saveStyleDispatch(courseId: string, payload: DispatchPayload) {
-    const current = courses.find((course) => course.id === courseId)
-    if (!current || !canManageDispatch(role, current)) {
-      return
-    }
-
-    const updated = await saveStyleDispatchRecord(courseId, payload)
-    setSelectedCourseId(updated.id)
-
-    if (current.status === 'pendingStyleDispatch') {
-      const progressed = await advanceCourseRecord(courseId)
-      setSelectedCourseId(progressed.id)
-    }
-  }
-
-  async function savePageDispatch(courseId: string, payload: DispatchPayload) {
-    const current = courses.find((course) => course.id === courseId)
-    if (!current || !canManageDispatch(role, current)) {
-      return
-    }
-
-    const updated = await savePageDispatchRecord(courseId, payload)
-    setSelectedCourseId(updated.id)
-
-    if (current.status === 'pendingPageDispatch') {
-      const progressed = await advanceCourseRecord(courseId)
-      setSelectedCourseId(progressed.id)
-    }
-  }
-
-  async function uploadStyle(courseId: string, payload: UploadStylePayload) {
-    const current = courses.find((course) => course.id === courseId)
-    if (!current || !canUploadStyleDraft(role, current)) {
-      return
-    }
-
-    const updated = await uploadStyleDraft(courseId, payload)
-    setSelectedCourseId(updated.id)
-  }
-
-  async function uploadPage(courseId: string, payload: UploadPagePayload) {
-    const current = courses.find((course) => course.id === courseId)
-    if (!current || !canUploadPageDraft(role, current)) {
-      return
-    }
-
-    const updated = await uploadPageDraft(courseId, payload)
-    setSelectedCourseId(updated.id)
-  }
-
   const value = useMemo<AppStateContextValue>(
     () => ({
       view,
@@ -674,13 +624,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       availableRoles,
       currentUser,
       currentProject,
+      currentProjectPermissions,
       projects,
       isAuthenticated,
       hasSelectedProject,
       authenticating,
       courses,
       selectedCourse,
-      selectedResearchCourse,
       stats,
       loading,
       mutating,
@@ -703,17 +653,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       advanceCourse,
       createTicket,
       updateResearch,
-      saveStyleDispatch,
-      savePageDispatch,
-      uploadStyle,
-      uploadPage,
       canAdvanceSelected: selectedCourse ? canAdvanceCourse(role, selectedCourse) : false,
       canCreateAftersales: selectedCourse ? canCreateTicket(role, '售后', selectedCourse) : false,
       canCreateIteration: selectedCourse ? canCreateTicket(role, '迭代', selectedCourse) : false,
-      canEditResearchSelected: selectedResearchCourse
-        ? canEditResearchTask(role, selectedResearchCourse)
-        : false,
-      canManageSelected: selectedCourse ? canManageDispatch(role, selectedCourse) : false,
+      hasButtonPermissionAction,
+      hasProjectPermissionAction,
     }),
     [
       view,
@@ -721,13 +665,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       availableRoles,
       currentUser,
       currentProject,
+      currentProjectPermissions,
       projects,
       isAuthenticated,
       hasSelectedProject,
       authenticating,
       courses,
       selectedCourse,
-      selectedResearchCourse,
       stats,
       loading,
       mutating,
@@ -748,10 +692,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       advanceCourse,
       createTicket,
       updateResearch,
-      saveStyleDispatch,
-      savePageDispatch,
-      uploadStyle,
-      uploadPage,
+      hasButtonPermissionAction,
+      hasProjectPermissionAction,
     ],
   )
 

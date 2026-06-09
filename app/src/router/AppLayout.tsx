@@ -14,6 +14,7 @@ export function AppLayout() {
     availableRoles,
     currentUser,
     currentProject,
+    currentProjectPermissions,
     projects,
     loading,
     error,
@@ -29,6 +30,7 @@ export function AppLayout() {
       <Sidebar
         role={role}
         currentProjectId={currentProject?.id ?? null}
+        permissions={currentProjectPermissions}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         onChange={(nextPath) => navigate(nextPath)}
@@ -40,6 +42,7 @@ export function AppLayout() {
             <Topbar
               view={view}
               role={role}
+              permissions={currentProjectPermissions}
               availableRoles={availableRoles}
               currentUser={currentUser}
               currentProject={currentProject}

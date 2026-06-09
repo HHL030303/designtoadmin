@@ -27,6 +27,7 @@ import { authService, type WorkwxConfig } from '../../services/authService'
 import type {
   AuthUser,
   AvailableProjectRole,
+  ProjectPermission,
   ProjectOption,
   UserRole,
   ViewKey,
@@ -36,6 +37,7 @@ import { roleLabelMap } from '../../constants/roles'
 export function Topbar({
   view,
   role,
+  permissions,
   availableRoles,
   currentUser,
   currentProject,
@@ -47,6 +49,7 @@ export function Topbar({
 }: {
   view: ViewKey
   role: UserRole
+  permissions: ProjectPermission[]
   availableRoles: AvailableProjectRole[]
   currentUser: AuthUser | null
   currentProject: ProjectOption | null
@@ -67,9 +70,13 @@ export function Topbar({
   const bindStateRef = useRef('')
   const handledCodeRef = useRef('')
   const { current, parent } = getNavItemByView(view)
-  const defaultHomeView = getAvailableViews(role).includes('dashboard')
+  const currentRoleName = useMemo(
+    () => availableRoles.find((item) => item.role === role)?.name ?? roleLabelMap[role],
+    [availableRoles, role],
+  )
+  const defaultHomeView = getAvailableViews(role, permissions).includes('dashboard')
     ? 'dashboard'
-    : getAvailableViews(role)[0]
+    : getAvailableViews(role, permissions)[0]
   const isCourseDetailPage =
     location.pathname.startsWith('/courses/') && location.pathname !== '/courses'
   const courseListReturnSearch = useMemo(() => {
@@ -309,7 +316,7 @@ export function Topbar({
               <Typography.Text className="topbar-user-name">
                 {currentUser?.name ?? '未登录'}
               </Typography.Text>
-              <Tag className="topbar-role-tag">{roleLabelMap[role]}</Tag>
+              <Tag className="topbar-role-tag">{currentRoleName}</Tag>
             </Space>
             <Typography.Text className="topbar-role-label">
               账号：{currentUser?.email ?? '-'}
@@ -385,10 +392,10 @@ export function Topbar({
             <Avatar size={36} className="topbar-avatar" icon={<UserOutlined />} />
             <div className="topbar-user-meta">
               <Typography.Text className="topbar-user-name">
-                {currentUser?.name ?? '未登录'}
+                {currentUser?.name }
               </Typography.Text>
               <Typography.Text className="topbar-role-label">
-                {roleLabelMap[role]} · {currentProject?.name ?? '未选项目'}
+                {currentRoleName}· {currentProject?.name ?? '未选项目'}
               </Typography.Text>
             </div>
             <DownOutlined className="topbar-trigger-icon" />
@@ -399,6 +406,7 @@ export function Topbar({
       <Modal
         title="绑定项目企业微信"
         open={bindingModalOpen}
+        maskClosable={false}
         onCancel={() => {
           if (bindingWorkwx) {
             return

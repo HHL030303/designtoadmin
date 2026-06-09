@@ -1,0 +1,184 @@
+.financial-review-modal .ant-modal-content {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+}
+
+.financial-review-modal .ant-modal-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eef2f7;
+  background: #ffffff;
+}
+
+.financial-review-modal .ant-modal-title {
+  color: #111827;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.financial-review-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px 10px;
+}
+
+.financial-review-form__collapse.ant-collapse {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafafa;
+  overflow: hidden;
+}
+
+.financial-review-form__collapse .ant-collapse-item {
+  border-bottom: none;
+}
+
+.financial-review-form__collapse .ant-collapse-header {
+  align-items: flex-start !important;
+  padding: 8px 16px !important;
+  background: #fafafa;
+}
+
+.financial-review-form__collapse .ant-collapse-content {
+  border-top: 1px solid #eef2f7;
+  background: #ffffff;
+}
+
+.financial-review-form__collapse .ant-collapse-content-box {
+  padding: 0 !important;
+}
+
+.financial-review-form__collapse-title {
+  padding-right: 8px;
+}
+
+.financial-review-form__section {
+  padding: 0px 16px 1px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.financial-review-form__section--accent {
+  border-color: #dbe2ea;
+  background: #fcfcfd;
+}
+
+.financial-review-form__section--plain {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.financial-review-form__section-head {
+  margin-bottom: 12px;
+}
+
+.financial-review-form__section-title {
+  color: #111827;
+  font-size: 14px;
+  /* padding-top: 6px; */
+}
+
+.financial-review-form__section-copy {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 12px;
+  /* line-height: 1.5; */
+}
+
+.financial-review-form__field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.financial-review-form__field-clear {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.financial-review-form__field-clear:hover {
+  color: #2563eb;
+}
+
+.financial-review-form .ant-form-item {
+  margin-bottom: 12px;
+}
+
+.financial-review-form .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.financial-review-form .ant-form-item-label > label {
+  color: #374151;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.financial-review-form .ant-input,
+.financial-review-form .ant-input-number,
+.financial-review-form .ant-picker,
+.financial-review-form .ant-select-selector {
+  border-color: #d1d5db !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.financial-review-form .ant-input,
+.financial-review-form .ant-picker,
+.financial-review-form .ant-select-selector,
+.financial-review-form .ant-input-number {
+  /* min-height: 38px; */
+}
+
+.financial-review-form .ant-input-number-input {
+  /* height: 36px; */
+}
+
+.financial-review-form .ant-input:hover,
+.financial-review-form .ant-input-number:hover,
+.financial-review-form .ant-picker:hover,
+.financial-review-form .ant-select:not(.ant-select-disabled):hover .ant-select-selector {
+  border-color: #9ca3af !important;
+}
+
+.financial-review-form .ant-input:focus,
+.financial-review-form .ant-input-focused,
+.financial-review-form .ant-input-number-focused,
+.financial-review-form .ant-picker-focused,
+.financial-review-form .ant-select-focused .ant-select-selector {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08) !important;
+}
+
+.financial-review-form__status-checkbox {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 2px;
+  color: #374151;
+  font-size: 13px;
+}
+
+.financial-review-form__status-checkbox .ant-checkbox {
+  top: 0;
+}
+
+/* @media (max-width: 768px) {
+  .financial-review-modal .ant-modal-content {
+    border-radius: 12px;
+  }
+
+  .financial-review-form__section {
+    padding: 14px 14px 2px;
+  }
+} */

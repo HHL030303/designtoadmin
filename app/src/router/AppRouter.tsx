@@ -22,7 +22,7 @@ function persistLoginRedirectPath(pathname: string): void {
 }
 
 export function AppRouter() {
-  const { role, isAuthenticated, hasSelectedProject } = useAppState()
+  const { role, isAuthenticated, hasSelectedProject, currentProjectPermissions } = useAppState()
   const location = useLocation()
   const currentFullPath = `${location.pathname}${location.search}${location.hash}`
   const normalizedPathname =
@@ -30,12 +30,14 @@ export function AppRouter() {
       ? '/'
       : location.pathname.replace(/\/+$/, '') || '/'
   const fallbackPath =
-    getAvailableViews(role).includes('courses')
+    getAvailableViews(role, currentProjectPermissions).includes('courses')
       ? DEFAULT_AUTHORIZED_PATH
-      : getPathForView(getAvailableViews(role)[0])
+      : getPathForView(getAvailableViews(role, currentProjectPermissions)[0])
   const matchedView = getViewForPath(normalizedPathname)
   const preservedPrivatePath =
-    matchedView && canAccessView(role, matchedView) ? normalizedPathname : fallbackPath
+    matchedView && canAccessView(role, matchedView, currentProjectPermissions)
+      ? normalizedPathname
+      : fallbackPath
   const loginRoute = publicRoutes.find((route) => route.path === '/login')
   const projectSelectRoute = publicRoutes.find((route) => route.path === '/project-select')
 

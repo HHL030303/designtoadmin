@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button, Modal, Popconfirm, Space, Table, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { MedicalTaskComplaintRecord } from '../../types'
+import { useAppState } from '../../context/AppStateContext'
 import { taskService } from '../../services/taskService'
 
 const PAGE_SIZE = 20
@@ -43,6 +44,7 @@ export function MedicalTaskComplaintListModal({
   onCancel: () => void
   onChanged?: () => Promise<void> | void
 }) {
+  const { hasButtonPermissionAction } = useAppState()
   const [items, setItems] = useState<MedicalTaskComplaintRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
@@ -51,6 +53,7 @@ export function MedicalTaskComplaintListModal({
     pageSize: PAGE_SIZE,
     total: 0,
   })
+  const canUpdateComplaint = hasButtonPermissionAction('complaint', 'update')
 
   async function loadItems(page = 1, pageSize = pagination.pageSize): Promise<void> {
     if (!taskId) {
@@ -168,64 +171,67 @@ export function MedicalTaskComplaintListModal({
       width: 180,
       render: (value?: string) => value || '-',
     },
-    {
-      key: 'actions',
-      title: '操作',
-      width: 180,
-      render: (_, record) => (
-        <Space size="small">
-          <Popconfirm
-            title="确认将当前客诉标记为已解决？"
-            okText="确认"
-            cancelText="取消"
-            disabled={!canResolve(record.status)}
-            onConfirm={() => runAction(
-              () => taskService.resolveMedicalComplaint(record.id, {
-                handling_method: record.processingMethod,
-                refund_amount: record.refundAmount,
-                remark: record.remark,
-              }),
-              '客诉已解决',
-              '解决客诉失败',
-            )}
-          >
-            <Button
-              size="small"
-              type="link"
-              disabled={!canResolve(record.status) || actionLoading}
-            >
-              解决客诉
-            </Button>
-          </Popconfirm>
-          <Popconfirm
-            title="确认取消当前客诉？"
-            okText="确认"
-            cancelText="取消"
-            disabled={!canCancel(record.status)}
-            onConfirm={() => runAction(
-              () => taskService.cancelMedicalComplaint(record.id),
-              '客诉已取消',
-              '取消客诉失败',
-            )}
-          >
-            <Button
-              size="small"
-              type="link"
-              danger
-              disabled={!canCancel(record.status) || actionLoading}
-            >
-              取消客诉
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(canUpdateComplaint
+      ? [{
+          key: 'actions',
+          title: '操作',
+          width: 180,
+          render: (_: unknown, record: MedicalTaskComplaintRecord) => (
+            <Space size="small">
+              <Popconfirm
+                title="确认将当前客诉标记为已解决？"
+                okText="确认"
+                cancelText="取消"
+                disabled={!canResolve(record.status)}
+                onConfirm={() => runAction(
+                  () => taskService.resolveMedicalComplaint(record.id, {
+                    handling_method: record.processingMethod,
+                    refund_amount: record.refundAmount,
+                    remark: record.remark,
+                  }),
+                  '客诉已解决',
+                  '解决客诉失败',
+                )}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={!canResolve(record.status) || actionLoading}
+                >
+                  解决客诉
+                </Button>
+              </Popconfirm>
+              <Popconfirm
+                title="确认取消当前客诉？"
+                okText="确认"
+                cancelText="取消"
+                disabled={!canCancel(record.status)}
+                onConfirm={() => runAction(
+                  () => taskService.cancelMedicalComplaint(record.id),
+                  '客诉已取消',
+                  '取消客诉失败',
+                )}
+              >
+                <Button
+                  size="small"
+                  type="link"
+                  danger
+                  disabled={!canCancel(record.status) || actionLoading}
+                >
+                  取消客诉
+                </Button>
+              </Popconfirm>
+            </Space>
+          ),
+        }]
+      : []),
   ]
 
   return (
     <Modal
       title="客诉列表"
       open={open}
+      maskClosable={false}
       onCancel={onCancel}
       destroyOnHidden
       footer={null}

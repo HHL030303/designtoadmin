@@ -22,10 +22,7 @@ const adminViewAccess: ViewKey[] = [
   'myTasks',
   'allTickets',
   'taskStatistics',
-  'research',
   'courses',
-  'dispatch',
-  'designers',
   'projectManagement',
   'settingsUsers',
   'settingsProjectMembers',
@@ -60,7 +57,11 @@ export const roleViewAccess: Record<UserRole, ViewKey[]> = {
   wuhan_design_cooperation:adminViewAccess,
   customer_planner:adminViewAccess,
   presales:saleViewAcess,
-  operation:saleViewAcess
+  operation:saleViewAcess,
+  keyan_design:taskOnlyViewAccess,
+  keyan_design_cooration:adminViewAccess,
+  keyan_settlement:taskOnlyViewAccess,
+  keyan_bussiness:adminViewAccess
 }
 
 export const roleLabelMap: Record<UserRole, string> = Object.fromEntries(
@@ -81,5 +82,9 @@ export const backendRoleMap: Record<string, UserRole> = {
   design:'design',
   wuhan_design_cooperation:'wuhan_design_cooperation',
   customer_planner:"customer_planner",
-  operation:'operation'
+  operation:'operation',
+  keyan_design:"keyan_design",
+  keyan_design_cooration:"keyan_design_cooration",
+  keyan_settlement:"keyan_settlement",
+  keyan_bussiness:"keyan_bussiness"
 }

@@ -20,8 +20,8 @@ import {
   Typography,
   message,
 } from 'antd'
-import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useAppState } from '../../context/AppStateContext'
+import { resolveNextStageAssignmentMode } from '../../constants/taskProcessNextStageAssignment'
 import { adminService } from '../../services/adminService'
 import { fileService } from '../../services/fileService'
 import { taskService } from '../../services/taskService'
@@ -34,6 +34,7 @@ import type {
   TaskWorkflowStageRecord,
 } from '../../types'
 import { AttachmentList } from '../common/AttachmentList'
+import { NextStageAssigneeList } from './NextStageAssigneeList'
 import { ObjectStorageUploadField } from '../common/ObjectStorageUploadField'
 import './TaskProcessModal.css'
 
@@ -207,8 +208,17 @@ function buildEmptyFilesByRuleId(fileRules: TaskWorkflowFileRuleRecord[]) {
   return filesByRuleId
 }
 
-function buildPackageNameTags(fieldValues: Record<string, unknown>): string[] {
+function buildPackageNameTags(
+  fieldValues: Record<string, unknown>,
+  taskTitle?: string | null,
+): string[] {
   const tags: string[] = []
+
+  const normalizedTaskTitle = taskTitle?.trim()
+
+  if (normalizedTaskTitle) {
+    tags.push(normalizedTaskTitle)
+  }
 
   Object.values(fieldValues).forEach((value) => {
     if (value === null || value === undefined || value === '') {
@@ -668,11 +678,17 @@ export function TaskProcessModal({
     shouldSelectNextStageAssignee &&
       currentStage?.allowPageAssignment,
   )
+  const nextStageAssignmentMode = useMemo(
+    () => resolveNextStageAssignmentMode(currentProject, nextStage, { allowPageAssignment }),
+    [allowPageAssignment, currentProject, nextStage],
+  )
+  const shouldUseNextStageAssigneeList = nextStageAssignmentMode !== 'default_single'
+  const shouldShowAssignedPageCount = nextStageAssignmentMode === 'multi_with_page_count'
   const shouldCollectTotalPageCount = Boolean(
     !isHistoricalStageEdit && currentStage?.collectTotalPageCount,
   )
   const packageNameTags = useMemo(
-    () => (detail ? buildPackageNameTags(detail.fieldValues) : []),
+    () => (detail ? buildPackageNameTags(detail.fieldValues, detail.task.title) : []),
     [detail],
   )
   const enabledTaskFieldConfigs = useMemo(
@@ -837,7 +853,7 @@ export function TaskProcessModal({
     }
 
     form.setFieldValue('nextStageUserId', undefined)
-    if (allowPageAssignment) {
+    if (shouldUseNextStageAssigneeList) {
       form.setFieldValue('nextStageAssignees', buildDefaultNextStageAssignees())
     }
 
@@ -848,6 +864,7 @@ export function TaskProcessModal({
     form,
     loadNextStageMembers,
     nextStage?.operatorRoleCode,
+    shouldUseNextStageAssigneeList,
     shouldSelectNextStageAssignee,
   ])
 
@@ -897,12 +914,13 @@ export function TaskProcessModal({
     }
 
     const shouldContinueUpload = await new Promise<boolean>((resolve) => {
-      Modal.confirm({
-        cancelText: '取消',
-        content: `当前已存在重名文件“${file.name}”，继续上传将会覆盖，是否继续？`,
-        okText: '继续上传',
-        onCancel: () => resolve(false),
-        onOk: () => resolve(true),
+            Modal.confirm({
+                cancelText: '取消',
+                content: `当前已存在重名文件“${file.name}”，继续上传将会覆盖，是否继续？`,
+                maskClosable: false,
+                okText: '继续上传',
+                onCancel: () => resolve(false),
+                onOk: () => resolve(true),
         title: '发现重名文件',
       })
     })
@@ -1023,6 +1041,14 @@ export function TaskProcessModal({
             is_primary: assignee.isPrimary,
             user_id: Number(assignee.userId),
           }))
+        } else if (nextStageAssignmentMode === 'multi_without_page_count') {
+          nextStageAssignments = (values.nextStageAssignees ?? [])
+            .filter((item) => item?.userId)
+            .map((item, index) => ({
+              assignee_role: 'operator' as const,
+              is_primary: index === 0,
+              user_id: Number(item.userId),
+            }))
         } else if (allowPageAssignment) {
           nextStageAssignments = (values.nextStageAssignees ?? [])
             .filter((item) => item?.userId)
@@ -1091,6 +1117,13 @@ export function TaskProcessModal({
       //    return message.error(`总页数不能大于预定的${detail.currentVersion?.totalPageCount}页`)
       //   }
       // }
+    } else if (nextStageAssignmentMode === 'multi_without_page_count') {
+      const invalidAssignee = (values.nextStageAssignees ?? []).find((item) => !item?.userId)
+
+      if (invalidAssignee) {
+        message.warning('请完整填写下一阶段任务人员')
+        return
+      }
     }
 
     if (shouldCollectTotalPageCount && typeof values.total_page_count !== 'number') {
@@ -1169,6 +1202,7 @@ export function TaskProcessModal({
     <Modal
       title={isHistoricalStageEdit ? '编辑已完成阶段(可修改上传文件）' : '处理任务'}
       open={open}
+      maskClosable={false}
       onCancel={onClose}
       footer={null}
       width={920}
@@ -1453,129 +1487,48 @@ export function TaskProcessModal({
                     </div>
                   ) : null}
                   {!isHistoricalStageEdit && currentStage.canAssign && nextStage ? (
-                    allowPageAssignment ? (
+                    shouldUseNextStageAssigneeList ? (
                       <Form.List name="nextStageAssignees">
                         {(fields, { add, remove }) => (
-                          <div className="task-process-modal__assignee-panel">
-                           
-                             <Row gutter={12} align="middle">
-                             <Col span={1}></Col>
-                             <Col span={8}>下一阶段任务人员</Col>
-                             <Col span={8}>分配页数</Col>
-                             <Col span={2}>操作</Col>
-                             </Row>
+                          <NextStageAssigneeList
+                            add={add}
+                            fields={fields.map((field) => ({
+                              key: field.key,
+                              name: field.name,
+                            }))}
+                            loading={nextStageLoading}
+                            memberHasMore={nextStageMemberHasMore}
+                            members={nextStageMembers}
+                            remove={remove}
+                            searchValue={nextStageSearchValue}
+                            showAssignedPageCount={shouldShowAssignedPageCount}
+                            onClearSearch={() => {
+                              if (nextStageSearchTimerRef.current) {
+                                window.clearTimeout(nextStageSearchTimerRef.current)
+                              }
 
-                            {fields.map((field, index) => (
-                              <div
-                                key={field.key}
-                                className="task-process-modal__assignee-row"
-                              >
-                                <Row gutter={12} align="middle">
-                                  <Col span={1}>
-                                    <div className="task-process-modal__assignee-identity">
-                                      {index === 0 ? (
-                                        <Tag
-                                          bordered={false}
-                                          color="blue"
-                                          className="task-process-modal__assignee-role-tag"
-                                        >
-                                          主
-                                        </Tag>
-                                      ) : null}
-                                    </div>
-                                  </Col>
-                                  <Col span={8}>
-                                    <Form.Item
-                                      {...field}
-                                      name={[field.name, 'userId']}
-                                      rules={[{ required: true, message: '请选择任务人员' }]}
-                                    >
-                                      <Select
-                                        showSearch
-                                        allowClear
-                                        filterOption={false}
-                                        placeholder={index === 0 ? '请选择主执行人' : '请选择执行人'}
-                                        loading={nextStageLoading}
-                                        searchValue={nextStageSearchValue}
-                                        options={nextStageMembers.map((member) => ({
-                                          label: `${member.userName} · ${member.userEmail}`,
-                                          value: member.userId,
-                                        }))}
-                                        onSearch={(value) => {
-                                          setNextStageSearchValue(value)
+                              setNextStageSearchValue('')
+                              void loadNextStageMembers(1, false, '')
+                            }}
+                            onLoadMore={() => {
+                              void loadNextStageMembers(
+                                nextStageMemberPage + 1,
+                                true,
+                                nextStageSearchValue,
+                              )
+                            }}
+                            onSearch={(value) => {
+                              setNextStageSearchValue(value)
 
-                                          if (nextStageSearchTimerRef.current) {
-                                            window.clearTimeout(nextStageSearchTimerRef.current)
-                                          }
+                              if (nextStageSearchTimerRef.current) {
+                                window.clearTimeout(nextStageSearchTimerRef.current)
+                              }
 
-                                          nextStageSearchTimerRef.current = window.setTimeout(() => {
-                                            void loadNextStageMembers(1, false, value)
-                                          }, 300)
-                                        }}
-                                        onClear={() => {
-                                          if (nextStageSearchTimerRef.current) {
-                                            window.clearTimeout(nextStageSearchTimerRef.current)
-                                          }
-
-                                          setNextStageSearchValue('')
-                                          void loadNextStageMembers(1, false, '')
-                                        }}
-                                        onPopupScroll={(event) => {
-                                          const target = event.target as HTMLDivElement
-                                          const reachedBottom =
-                                            target.scrollTop + target.clientHeight >= target.scrollHeight - 8
-
-                                          if (!reachedBottom || nextStageLoading || !nextStageMemberHasMore) {
-                                            return
-                                          }
-
-                                          void loadNextStageMembers(nextStageMemberPage + 1, true, nextStageSearchValue)
-                                        }}
-                                      />
-                                    </Form.Item>
-                                  </Col>
-                                  <Col span={8}>
-                                    <Form.Item
-                                      {...field}
-                                      name={[field.name, 'assignedPageCount']}
-                                      rules={[{ required: true, message: '请输入分配页数' }]}
-                                    >
-                                      <InputNumber
-                                        min={1}
-                                        precision={0}
-                                        className="full-width-control"
-                                        placeholder="请输入分配页数"
-                                      />
-                                    </Form.Item>
-                                  </Col>
-                                  <Col span={2}>
-                                    <div className="task-process-modal__assignee-actions">
-                                      {index === 0 ? (
-                                        <Button
-                                          type="text"
-                                          className="task-process-modal__assignee-action-button"
-                                          icon={<PlusOutlined />}
-                                          onClick={() =>
-                                            add({
-                                              assignedPageCount: 0,
-                                              userId: undefined,
-                                            })
-                                          }
-                                        />
-                                      ) : (
-                                        <Button
-                                          type="text"
-                                          className="task-process-modal__assignee-action-button task-process-modal__assignee-action-button--danger"
-                                          icon={<MinusCircleOutlined />}
-                                          onClick={() => remove(field.name)}
-                                        />
-                                      )}
-                                    </div>
-                                  </Col>
-                                </Row>
-                              </div>
-                            ))}
-                          </div>
+                              nextStageSearchTimerRef.current = window.setTimeout(() => {
+                                void loadNextStageMembers(1, false, value)
+                              }, 300)
+                            }}
+                          />
                         )}
                       </Form.List>
                     ) : (
@@ -1583,6 +1536,7 @@ export function TaskProcessModal({
                             label="下一阶段任务人员"
                             name="nextStageUserId"
                             rules={[{ required: true, message: '请选择下一阶段任务人员' }]}
+                            
                           >
                             <Select
                               allowClear

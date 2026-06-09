@@ -1,5 +1,6 @@
 import { Button, Drawer, Empty, Input, Modal, Space, Spin, Typography, message } from 'antd'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useAppState } from '../../context/AppStateContext'
 import { DynamicTaskFormPreview } from './DynamicTaskFormPreview'
 import { parseFormConfigFile, validateFieldConfigJson } from '../../utils/formConfigImport'
 import { adminService } from '../../services/adminService'
@@ -13,6 +14,7 @@ type ProjectFieldConfigDrawerProps = {
 
 export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
   const NEW_FIELD_EDITOR_KEY = '__new__'
+  const { hasButtonPermissionAction } = useAppState()
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [importing, setImporting] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -21,6 +23,11 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
   const [fieldConfigs, setFieldConfigs] = useState<FieldConfig[]>([])
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null)
   const [editingFieldJson, setEditingFieldJson] = useState('')
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const canCreateField = hasButtonPermissionAction('field', 'create')
+  const canUpdateField = hasButtonPermissionAction('field', 'update')
+  const canDeleteField = hasButtonPermissionAction('field', 'delete')
+  const canManageFieldConfig = canCreateField || canUpdateField || canDeleteField
 
   useEffect(() => {
     if (!props.open || !props.project) {
@@ -83,6 +90,10 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
       return
     }
 
+    if ((hasConfigs && !canUpdateField) || (!hasConfigs && !canCreateField)) {
+      return
+    }
+
     if (!hasConfigs) {
       importInputRef.current?.click()
       return
@@ -109,6 +120,10 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
       return
     }
 
+    if (!canManageFieldConfig) {
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -122,17 +137,29 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
   }
 
   function handleDeleteField(fieldKey: string): void {
+    if (!canDeleteField) {
+      return
+    }
+
     const nextConfigs = fieldConfigs.filter((field) => field.field_key !== fieldKey)
     setFieldConfigs(nextConfigs)
     message.success('字段已删除')
   }
 
   function handleEditField(field: FieldConfig): void {
+    if (!canUpdateField) {
+      return
+    }
+
     setEditingFieldKey(field.field_key)
     setEditingFieldJson(JSON.stringify(field, null, 2))
   }
 
   function handleCreateField(): void {
+    if (!canCreateField) {
+      return
+    }
+
     const nextSortValue =
       fieldConfigs.length === 0
         ? 10
@@ -161,10 +188,24 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
     setEditingFieldJson('')
   }
 
+  function handleOpenExportModal(): void {
+    setExportModalOpen(true)
+  }
+
+  function handleCloseExportModal(): void {
+    setExportModalOpen(false)
+  }
+
   function handleApplyFieldJson(): void {
     try {
       const parsed = JSON.parse(editingFieldJson) as unknown
       const isCreatingField = editingFieldKey === NEW_FIELD_EDITOR_KEY
+      const canApplyFieldJson = isCreatingField ? canCreateField : canUpdateField
+
+      if (!canApplyFieldJson) {
+        return
+      }
+
       const currentField = fieldConfigs.find((field) => field.field_key === editingFieldKey)
       const validated = validateFieldConfigJson(parsed, {
         currentFieldKey:
@@ -200,6 +241,7 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
         placement="right"
         size={720}
         open={props.open}
+        maskClosable={false}
         destroyOnClose={false}
         onClose={props.onClose}
         className="project-field-config-drawer"
@@ -218,25 +260,39 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
               <Button
                 type={hasConfigs ? 'default' : 'primary'}
                 loading={importing || resetting}
-                disabled={loading || saving}
+                disabled={
+                  loading ||
+                  saving ||
+                  (hasConfigs ? !canUpdateField : !canCreateField)
+                }
                 onClick={() => void handleImportClick()}
               >
                 {hasConfigs ? '重新导入 Excel' : '导入 Excel'}
               </Button>
+              {canCreateField ? (
+                <Button
+                  disabled={loading || saving || importing || resetting}
+                  onClick={handleCreateField}
+                >
+                  新增字段
+                </Button>
+              ) : null}
               <Button
-                disabled={loading || saving || importing || resetting}
-                onClick={handleCreateField}
-              >
-                新增字段
-              </Button>
-              <Button
-                type="primary"
                 disabled={!hasConfigs || loading}
-                loading={saving}
-                onClick={() => void handleSave()}
+                onClick={handleOpenExportModal}
               >
-                保存
+                导出 JSON
               </Button>
+              {canManageFieldConfig ? (
+                <Button
+                  type="primary"
+                  disabled={!hasConfigs || loading}
+                  loading={saving}
+                  onClick={() => void handleSave()}
+                >
+                  保存
+                </Button>
+              ) : null}
             </Space>
           </div>
 
@@ -256,8 +312,8 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
             <div className="project-field-config-preview-card">
               <DynamicTaskFormPreview
                 fieldConfigs={fieldConfigs}
-                onEditField={handleEditField}
-                onDeleteField={handleDeleteField}
+                onEditField={canUpdateField ? handleEditField : undefined}
+                onDeleteField={canDeleteField ? handleDeleteField : undefined}
               />
             </div>
           ) : (
@@ -269,6 +325,7 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
               <Button
                 type="primary"
                 loading={importing || resetting}
+                disabled={!canCreateField}
                 onClick={() => void handleImportClick()}
               >
                 导入 Excel
@@ -282,9 +339,13 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
         title={editingFieldKey === NEW_FIELD_EDITOR_KEY ? '新增字段 JSON' : '编辑字段 JSON'}
         open={Boolean(editingFieldKey)}
         width={760}
+        maskClosable={false}
         okText="应用"
         cancelText="取消"
         destroyOnClose
+        okButtonProps={{
+          disabled: editingFieldKey === NEW_FIELD_EDITOR_KEY ? !canCreateField : !canUpdateField,
+        }}
         onOk={handleApplyFieldJson}
         onCancel={handleCloseEditor}
       >
@@ -297,7 +358,28 @@ export function ProjectFieldConfigDrawer(props: ProjectFieldConfigDrawerProps) {
           value={editingFieldJson}
           rows={20}
           className="project-field-config-json-editor"
+          disabled={editingFieldKey === NEW_FIELD_EDITOR_KEY ? !canCreateField : !canUpdateField}
           onChange={(event) => setEditingFieldJson(event.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        title="字段配置 JSON"
+        open={exportModalOpen}
+        width={760}
+        maskClosable={false}
+        footer={null}
+        destroyOnClose
+        onCancel={handleCloseExportModal}
+      >
+        <Typography.Paragraph type="secondary">
+          当前弹窗展示的是该项目已配置的全部字段 JSON 数据。
+        </Typography.Paragraph>
+        <Input.TextArea
+          value={JSON.stringify(fieldConfigs, null, 2)}
+          rows={20}
+          readOnly
+          className="project-field-config-json-editor"
         />
       </Modal>
     </>

@@ -99,6 +99,16 @@ type TaskListResponse = {
   total: number
 }
 
+type CurrentStageOptionResponse = {
+  stage_name: string
+  task_count?: number | null
+  template_stage_ids?: Array<number | string> | null
+}
+
+type CurrentStageOptionsResponse = {
+  items?: CurrentStageOptionResponse[] | null
+}
+
 type TaskVersionsResponse =
   | TaskVersionResponse[]
   | {
@@ -631,6 +641,7 @@ function mapTaskListItem(item: TaskListItemResponse): TaskListRecord {
 export const taskService = {
   async listTasks(query: {
     assigneeId?: string
+    currentStageIds?: string[]
     fieldFilters?: Record<string, unknown>
     isOverdue?: boolean
     keyword?: string
@@ -640,6 +651,10 @@ export const taskService = {
     status?: string
     templateStageId?: string
   } = {}) {
+    const normalizedCurrentStageIds = (query.currentStageIds ?? [])
+      .map((stageId) => stageId.trim())
+      .filter(Boolean)
+
     const data = await apiRequest<TaskListResponse>('/api/tasks', {
       query: {
         is_overdue: query.isOverdue ? 1 : undefined,
@@ -652,6 +667,10 @@ export const taskService = {
         page: query.page ?? 1,
         page_size: query.pageSize ?? 100,
         assignee_id: query.assigneeId || undefined,
+        current_stage_ids:
+          normalizedCurrentStageIds.length > 0
+            ? normalizedCurrentStageIds.join(',')
+            : undefined,
         status: query.status || undefined,
         template_stage_id: query.templateStageId || undefined,
       },
@@ -663,6 +682,22 @@ export const taskService = {
       pageSize: data.page_size,
       total: data.total,
     }
+  },
+
+  async listCurrentStageOptions() {
+    const data = await apiRequest<CurrentStageOptionsResponse>('/api/tasks/current_stage_options')
+
+    return (data.items ?? []).map((item) => ({
+      // label:
+      //   typeof item.task_count === 'number'
+      //     ? `${item.stage_name} (${item.task_count})`
+      //     : item.stage_name,
+      label: item.stage_name,
+      templateStageIds: (item.template_stage_ids ?? [])
+        .map((stageId) => String(stageId).trim())
+        .filter(Boolean),
+      value: item.stage_name,
+    }))
   },
 
   async getTaskDetail(taskId: string, options?: { versionId?: string }): Promise<TaskDetailRecord> {

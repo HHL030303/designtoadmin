@@ -4,15 +4,11 @@ import { AllTicketsPage } from '../pages/AllTicketsPage'
 import { CourseTaskDetailPage } from '../pages/CourseTaskDetailPage'
 import { CoursesPage } from '../pages/CoursesPage'
 import { DashboardPage } from '../pages/DashboardPage'
-import { DesignersPage } from '../pages/DesignersPage'
-import { DispatchPage } from '../pages/DispatchPage'
 import { LoginPage } from '../pages/LoginPage'
 import { MyTasksPage } from '../pages/MyTasksPage'
 import { ProjectManagementPage } from '../pages/ProjectManagementPage'
 import { ProjectMembersPage } from '../pages/ProjectMembersPage'
 import { ProjectSelectPage } from '../pages/ProjectSelectPage'
-import { ResearchWorkbenchPage } from '../pages/ResearchWorkbenchPage'
-import { ServicePage } from '../pages/ServicePage'
 import { TaskStatisticsPage } from '../pages/TaskStatisticsPage'
 
 export type AppRouteConfig = {
@@ -53,10 +49,6 @@ export const privateRoutes: AppRouteConfig[] = [
     element: <TaskStatisticsPage />,
   },
   {
-    path: '/research',
-    element: <ResearchWorkbenchPage />,
-  },
-  {
     path: '/my-tasks',
     element: <MyTasksPage />,
   },
@@ -67,18 +59,6 @@ export const privateRoutes: AppRouteConfig[] = [
   {
     path: '/courses/:taskId',
     element: <CourseTaskDetailPage />,
-  },
-  {
-    path: '/dispatch',
-    element: <DispatchPage />,
-  },
-  {
-    path: '/designers',
-    element: <DesignersPage />,
-  },
-  {
-    path: '/service',
-    element: <ServicePage />,
   },
   {
     path: '/project-management/projects',

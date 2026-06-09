@@ -16,6 +16,7 @@ import {
   SearchOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useAppState } from '../context/AppStateContext'
 import type { TablePaginationConfig } from 'antd/es/table'
 import { adminService } from '../services/adminService'
 import type { AdminAccountRecord, SaveAdminAccountPayload } from '../types'
@@ -23,6 +24,7 @@ import type { AdminAccountRecord, SaveAdminAccountPayload } from '../types'
 type AccountFormValues = SaveAdminAccountPayload
 
 export function AccountManagementPage() {
+  const { hasProjectPermissionAction } = useAppState()
   const [accounts, setAccounts] = useState<AdminAccountRecord[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -33,6 +35,8 @@ export function AccountManagementPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loading, setLoading] = useState(false)
   const [form] = Form.useForm<AccountFormValues>()
+  const canCreateAccount = hasProjectPermissionAction('account', 'create')
+  const canUpdateAccount = hasProjectPermissionAction('account', 'update')
 
   async function loadAccounts(options?: {
     keyword?: string
@@ -105,6 +109,7 @@ export function AccountManagementPage() {
       title: '操作',
       width: 120,
       render: (_, record) => (
+        canUpdateAccount ? (
         <Button
           size="small"
           variant='solid'
@@ -122,6 +127,7 @@ export function AccountManagementPage() {
         >
           编辑
         </Button>
+        ) : null
       ),
     },
   ]
@@ -209,9 +215,11 @@ export function AccountManagementPage() {
             <Button onClick={handleReset}>重置</Button>
         </div>
         <div className='workspace-reset'>
-          <Button type="primary" onClick={openCreateDrawer}>
-            新增账号
-          </Button>
+          {canCreateAccount ? (
+            <Button type="primary" onClick={openCreateDrawer}>
+              新增账号
+            </Button>
+          ) : null}
         </div>
       
         
@@ -236,6 +244,7 @@ export function AccountManagementPage() {
         title={editingAccount ? '编辑账号' : '新增账号'}
         size={520}
         open={drawerOpen}
+        maskClosable={false}
         onClose={() => {
           setDrawerOpen(false)
           setEditingAccount(null)

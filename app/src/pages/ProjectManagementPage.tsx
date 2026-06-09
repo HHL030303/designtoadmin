@@ -31,6 +31,7 @@ import type { TablePaginationConfig } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { RolePermissionConfigModal } from '../components/settings/RolePermissionConfigModal'
 import { mergeRolePermissionRecords } from '../constants/rolePermissions'
+import { useAppState } from '../context/AppStateContext'
 import { ProjectFieldConfigDrawer } from '../components/project/ProjectFieldConfigDrawer'
 import { adminService } from '../services/adminService'
 import './ProjectManagementPage.css'
@@ -177,6 +178,7 @@ function renderWorkflowStageCard(
 }
 
 export function ProjectManagementPage() {
+  const { hasButtonPermissionAction, hasProjectPermissionAction } = useAppState()
   const memberPageSize = 10
   const projectPageSize = 10
   const userOptionPageSize = 100
@@ -254,6 +256,26 @@ export function ProjectManagementPage() {
   const [projectForm] = Form.useForm<ProjectFormValues>()
   const [memberForm] = Form.useForm<MemberFormValues>()
   const [roleForm] = Form.useForm<RoleFormValues>()
+  const canCreateProject = hasProjectPermissionAction('project', 'create')
+  const canUpdateProject = hasProjectPermissionAction('project', 'update')
+  const canDeleteProjectAction = hasProjectPermissionAction('project', 'delete')
+  const canViewMembers = hasButtonPermissionAction('member', 'view')
+  const canCreateMembers = hasButtonPermissionAction('member', 'create')
+  const canUpdateMembers = hasButtonPermissionAction('member', 'update')
+  const canDeleteMembers = hasButtonPermissionAction('member', 'delete')
+  const canViewRoles = hasButtonPermissionAction('role', 'view')
+  const canCreateRoles = hasButtonPermissionAction('role', 'create')
+  const canUpdateRoles = hasButtonPermissionAction('role', 'update')
+  const canDeleteRoles = hasButtonPermissionAction('role', 'delete')
+  const canViewFields = hasButtonPermissionAction('field', 'view')
+  const canViewWorkflows = hasButtonPermissionAction('workflow_template', 'view')
+  const canCreateWorkflows = hasButtonPermissionAction('workflow_template', 'create')
+  const canUpdateWorkflows = hasButtonPermissionAction('workflow_template', 'update')
+  const canDeleteWorkflows = hasButtonPermissionAction('workflow_template', 'delete')
+  const canEditWorkflowStages = canCreateWorkflows || canUpdateWorkflows
+  const canSubmitWorkflowEditor = editingWorkflow
+    ? canUpdateWorkflows
+    : canCreateWorkflows
 
   async function loadProjects(options?: {
     page?: number
@@ -539,80 +561,92 @@ export function ProjectManagementPage() {
       width: 560,
       render: (_, record) => (
         <Space size={8} wrap>
-          <Button
-            size="small"
-            color='green'
-            variant='solid'
-            onClick={() => {
-              setEditingProject(record)
-              projectForm.setFieldsValue({
-                name: record.name,
-                status: record.status,
-              })
-              setDrawerOpen(true)
-            }}
-          >
-            编辑
-          </Button>
-          <Button
-            size="small"
-              color='geekblue'
-            variant='solid'
-            onClick={() => {
-              setSelectedProject(record)
-              setMembersModalOpen(true)
-              setEditingMember(null)
-              memberForm.resetFields()
-              void loadMemberContext(record, 1)
-            }}
-          >
-            成员操作
-          </Button>
-          <Button
-            size="small"
-               color='blue'
-            variant='solid'
-            onClick={() => {
-              setSelectedProject(record)
-              setRolesModalOpen(true)
-              setEditingRole(null)
-              roleForm.resetFields()
-              void loadRoleContext(record)
-            }}
-          >
-            角色管理
-          </Button>
-          <Button
-            size="small"
-            variant='solid'
-            color='geekblue'
-            onClick={() => {
-              setSelectedProject(record)
-              setFieldConfigDrawerOpen(true)
-            }}
-          >
-            字段配置
-          </Button>
-          <Button
-            size="small"
-            type="primary"
-            variant='solid'
-            onClick={() => {
-              setSelectedProject(record)
-              setWorkflowsModalOpen(true)
-              void loadWorkflowContext(record)
-            }}
-          >
-            配置工作流程
-          </Button>
-          <Popconfirm
-            title="确认删除该项目吗？"
-            onConfirm={() => void handleDeleteProject(record.id)}
-          >
-            <Button size="small" color='red' variant='solid'>
-              删除
+          {canUpdateProject ? (
+            <Button
+              size="small"
+              color='green'
+              variant='solid'
+              onClick={() => {
+                setEditingProject(record)
+                projectForm.setFieldsValue({
+                  name: record.name,
+                  status: record.status,
+                })
+                setDrawerOpen(true)
+              }}
+            >
+              编辑
             </Button>
-          </Popconfirm>
+          ) : null}
+          {canViewMembers ? (
+            <Button
+              size="small"
+              color='geekblue'
+              variant='solid'
+              onClick={() => {
+                setSelectedProject(record)
+                setMembersModalOpen(true)
+                setEditingMember(null)
+                memberForm.resetFields()
+                void loadMemberContext(record, 1)
+              }}
+            >
+              成员操作
+            </Button>
+          ) : null}
+          {canViewRoles ? (
+            <Button
+              size="small"
+              color='blue'
+              variant='solid'
+              onClick={() => {
+                setSelectedProject(record)
+                setRolesModalOpen(true)
+                setEditingRole(null)
+                roleForm.resetFields()
+                void loadRoleContext(record)
+              }}
+            >
+              角色管理
+            </Button>
+          ) : null}
+          {canViewFields ? (
+            <Button
+              size="small"
+              variant='solid'
+              color='geekblue'
+              onClick={() => {
+                setSelectedProject(record)
+                setFieldConfigDrawerOpen(true)
+              }}
+            >
+              字段配置
+            </Button>
+          ) : null}
+          {canViewWorkflows ? (
+            <Button
+              size="small"
+              type="primary"
+              variant='solid'
+              onClick={() => {
+                setSelectedProject(record)
+                setWorkflowsModalOpen(true)
+                void loadWorkflowContext(record)
+              }}
+            >
+              配置工作流程
+            </Button>
+          ) : null}
+          {canDeleteProjectAction ? (
+            <Popconfirm
+              title="确认删除该项目吗？"
+              onConfirm={() => void handleDeleteProject(record.id)}
+            >
+              <Button size="small" color='red' variant='solid'>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },
@@ -666,27 +700,31 @@ export function ProjectManagementPage() {
       width: 220,
       render: (_, record) => (
         <Space size={8}>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingMember(record)
-              memberForm.setFieldsValue({
-                roleIds: record.roleIds,
-                userIds: undefined,
-              })
-              setMemberDrawerOpen(true)
-            }}
-          >
-            修改权限
-          </Button>
-          <Popconfirm
-            title="确认删除该项目成员吗？"
-            onConfirm={() => void handleDeleteUserMembership(record)}
-          >
-            <Button size="small" danger>
-              删除
+          {canUpdateMembers ? (
+            <Button
+              size="small"
+              onClick={() => {
+                setEditingMember(record)
+                memberForm.setFieldsValue({
+                  roleIds: record.roleIds,
+                  userIds: undefined,
+                })
+                setMemberDrawerOpen(true)
+              }}
+            >
+              修改权限
             </Button>
-          </Popconfirm>
+          ) : null}
+          {canDeleteMembers ? (
+            <Popconfirm
+              title="确认删除该项目成员吗？"
+              onConfirm={() => void handleDeleteUserMembership(record)}
+            >
+              <Button size="small" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },
@@ -717,30 +755,36 @@ export function ProjectManagementPage() {
       width: 260,
       render: (_, record) => (
         <Space size={8}>
-          <Button size="small" onClick={() => void openRolePermissionModal(record)}>
-            权限配置
-          </Button>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingRole(record)
-              roleForm.setFieldsValue({
-                code: record.code,
-                name: record.name,
-              })
-              setRoleDrawerOpen(true)
-            }}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除该角色吗？"
-            onConfirm={() => void handleDeleteRole(record.id)}
-          >
-            <Button size="small" danger>
-              删除
+          {canUpdateRoles ? (
+            <Button size="small" onClick={() => void openRolePermissionModal(record)}>
+              权限配置
             </Button>
-          </Popconfirm>
+          ) : null}
+          {canUpdateRoles ? (
+            <Button
+              size="small"
+              onClick={() => {
+                setEditingRole(record)
+                roleForm.setFieldsValue({
+                  code: record.code,
+                  name: record.name,
+                })
+                setRoleDrawerOpen(true)
+              }}
+            >
+              编辑
+            </Button>
+          ) : null}
+          {canDeleteRoles ? (
+            <Popconfirm
+              title="确认删除该角色吗？"
+              onConfirm={() => void handleDeleteRole(record.id)}
+            >
+              <Button size="small" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },
@@ -1349,17 +1393,21 @@ export function ProjectManagementPage() {
       width: 180,
       render: (_, record) => (
         <Space size={8}>
-          <Button type="link" onClick={() => openWorkflowEditor(record)}>
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除该工作流吗？"
-            onConfirm={() => void handleDeleteWorkflowTemplate(record.id)}
-          >
-            <Button type="link" danger>
-              删除
+          {canUpdateWorkflows ? (
+            <Button type="link" onClick={() => openWorkflowEditor(record)}>
+              编辑
             </Button>
-          </Popconfirm>
+          ) : null}
+          {canDeleteWorkflows ? (
+            <Popconfirm
+              title="确认删除该工作流吗？"
+              onConfirm={() => void handleDeleteWorkflowTemplate(record.id)}
+            >
+              <Button type="link" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },
@@ -1409,9 +1457,11 @@ export function ProjectManagementPage() {
           <Button onClick={() => void handleResetProjects()}>重置</Button>
           </div>
           <div className="workspace-reset">
-          <Button type="primary" onClick={openCreateDrawer}>
-            新增项目
-          </Button>
+          {canCreateProject ? (
+            <Button type="primary" onClick={openCreateDrawer}>
+              新增项目
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -1440,6 +1490,7 @@ export function ProjectManagementPage() {
         title={editingProject ? '编辑项目' : '新增项目'}
         size={520}
         open={drawerOpen}
+        maskClosable={false}
         destroyOnClose
         onClose={() => {
           setDrawerOpen(false)
@@ -1477,6 +1528,7 @@ export function ProjectManagementPage() {
         title={selectedProject ? `${selectedProject.name} · 项目成员` : '项目成员'}
         open={membersModalOpen}
         width={960}
+        maskClosable={false}
         footer={null}
         onCancel={resetMemberModalState}
       >
@@ -1534,9 +1586,11 @@ export function ProjectManagementPage() {
           >
             重置筛选
           </Button>
-          <Button type="primary" className='addopen' onClick={openCreateMemberDrawer}>
+          {canCreateMembers ? (
+            <Button type="primary" className='addopen' onClick={openCreateMemberDrawer}>
               添加成员
             </Button>
+          ) : null}
         </div>
 
         <div className="workspace-headers">
@@ -1556,14 +1610,16 @@ export function ProjectManagementPage() {
                 value: role.id,
               }))}
             />
-            <Button
-              type="primary"
-              disabled={selectedMemberRecords.length === 0}
-              loading={memberSubmitting}
-              onClick={() => void handleBatchAssignRole()}
-            >
-              批量分配角色
-            </Button>
+            {canUpdateMembers ? (
+              <Button
+                type="primary"
+                disabled={selectedMemberRecords.length === 0}
+                loading={memberSubmitting}
+                onClick={() => void handleBatchAssignRole()}
+              >
+                批量分配角色
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1578,7 +1634,7 @@ export function ProjectManagementPage() {
             total: memberPagination.total,
             showTotal: (value) => `共 ${value} 条`,
           }}
-          rowSelection={memberRowSelection}
+          rowSelection={canUpdateMembers ? memberRowSelection : undefined}
           onChange={(pagination) => void handleMemberTableChange(pagination)}
         />
 
@@ -1586,6 +1642,7 @@ export function ProjectManagementPage() {
           title={memberDrawerTitle}
           size={480}
           open={memberDrawerOpen}
+          maskClosable={false}
           destroyOnClose
           onClose={() => {
             setMemberDrawerOpen(false)
@@ -1679,6 +1736,7 @@ export function ProjectManagementPage() {
         title={selectedProject ? `${selectedProject.name} · 角色管理` : '角色管理'}
         open={rolesModalOpen}
         width={860}
+        maskClosable={false}
         footer={null}
         onCancel={resetRoleModalState}
       >
@@ -1699,9 +1757,11 @@ export function ProjectManagementPage() {
             className="workspace-filter-input"
           />
              <div className="workspace-header-side">
-            <Button type="primary" className='addopen' onClick={openCreateRoleDrawer}>
-              新增角色
-            </Button>
+            {canCreateRoles ? (
+              <Button type="primary" className='addopen' onClick={openCreateRoleDrawer}>
+                新增角色
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1719,6 +1779,7 @@ export function ProjectManagementPage() {
           title={editingRole ? '编辑角色' : '新增角色'}
           size={460}
           open={roleDrawerOpen}
+          maskClosable={false}
           destroyOnClose
           onClose={() => {
             setRoleDrawerOpen(false)
@@ -1776,6 +1837,7 @@ export function ProjectManagementPage() {
         title={selectedProject ? `${selectedProject.name} · 工作流配置` : '工作流配置'}
         open={workflowsModalOpen}
         width={980}
+        maskClosable={false}
         footer={null}
         onCancel={resetWorkflowState}
       >
@@ -1786,9 +1848,11 @@ export function ProjectManagementPage() {
             </Typography.Text>
           </div> */}
           <div className="workspace-header-side-pos">
-            <Button type="primary" onClick={() => openWorkflowEditor()}>
-              新建工作流
-            </Button>
+            {canCreateWorkflows ? (
+              <Button type="primary" onClick={() => openWorkflowEditor()}>
+                新建工作流
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -1828,6 +1892,7 @@ export function ProjectManagementPage() {
         open={workflowEditorOpen}
         title={editingWorkflow ? '配置工作流' : '新建工作流'}
         width={1120}
+        maskClosable={false}
         footer={null}
         className="workflow-editor-modal"
         destroyOnClose
@@ -1846,7 +1911,7 @@ export function ProjectManagementPage() {
             <div className="workflow-editor-toolbar__meta">
               <Input
                 value={workflowName}
-                disabled={Boolean(editingWorkflow)}
+                disabled={Boolean(editingWorkflow) || !canSubmitWorkflowEditor}
                 placeholder="输入工作流名称"
                 className="workflow-editor-toolbar__name"
                 onChange={(event) => setWorkflowName(event.target.value)}
@@ -1856,6 +1921,7 @@ export function ProjectManagementPage() {
               <Select
                 value={workflowStatus}
                 style={{ width: 140 }}
+                disabled={!canSubmitWorkflowEditor}
                 options={[
                   { label: '启用', value: 'enabled' },
                   { label: '停用', value: 'disabled' },
@@ -1869,6 +1935,7 @@ export function ProjectManagementPage() {
                 <Select
                 value={type}
                 style={{ width: 140 }}
+                disabled={!canSubmitWorkflowEditor}
                 placeholder='请选择工单类型'
                 options={[
                   { label: '工单', value: 'new' },
@@ -1884,15 +1951,21 @@ export function ProjectManagementPage() {
             <Space>
               <Button
                 danger
-                disabled={!selectedWorkflowStage}
+                disabled={!selectedWorkflowStage || !canEditWorkflowStages}
                 onClick={handleRemoveWorkflowStage}
               >
                 删除当前节点
               </Button>
               <Button onClick={() => setWorkflowEditorOpen(false)}>取消</Button>
-              <Button type="primary" loading={workflowSubmitting} onClick={() => void handleSaveWorkflow()}>
-                保存工作流
-              </Button>
+              {canSubmitWorkflowEditor ? (
+                <Button
+                  type="primary"
+                  loading={workflowSubmitting}
+                  onClick={() => void handleSaveWorkflow()}
+                >
+                  保存工作流
+                </Button>
+              ) : null}
             </Space>
           </div>
 
@@ -1905,9 +1978,11 @@ export function ProjectManagementPage() {
                 节点按顺序串联展示，不再提供中间画布。新增后会自动出现在列表底部。
               </Typography.Text>
               <div className="workflow-editor-palette__creator">
-                <Button type="primary" onClick={handleAddWorkflowStage}>
-                  新增节点
-                </Button>
+                {canSubmitWorkflowEditor ? (
+                  <Button type="primary" onClick={handleAddWorkflowStage}>
+                    新增节点
+                  </Button>
+                ) : null}
               </div>
               <div className="workflow-stage-list">
                 {workflowStages.length === 0 ? (
@@ -1971,6 +2046,7 @@ export function ProjectManagementPage() {
                     <span>节点中文名</span>
                     <Input
                       value={selectedWorkflowStage.stageName}
+                      disabled={!canEditWorkflowStages}
                       onChange={(event) =>
                         handleWorkflowStageChange(selectedWorkflowStage.localId, {
                           stageName: event.target.value,
@@ -1983,6 +2059,7 @@ export function ProjectManagementPage() {
                     <span>节点角色</span>
                     <Select
                       value={selectedWorkflowStage.operatorRoleCode}
+                      disabled={!canEditWorkflowStages}
                       options={workflowRoleOptions}
                       placeholder="选择负责人角色"
                       onChange={(value) =>
@@ -1999,6 +2076,7 @@ export function ProjectManagementPage() {
                       <InputNumber
                         min={0}
                         style={{ width: '100%' }}
+                        disabled={!canEditWorkflowStages}
                         value={selectedWorkflowStage.defaultDueDays}
                         onChange={(value) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
@@ -2012,6 +2090,7 @@ export function ProjectManagementPage() {
                       <InputNumber
                         min={0}
                         style={{ width: '100%' }}
+                        disabled={!canEditWorkflowStages}
                         value={selectedWorkflowStage.sortValue}
                         onChange={(value) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
@@ -2029,6 +2108,7 @@ export function ProjectManagementPage() {
                     <span>启用状态</span>
                     <Select
                       value={selectedWorkflowStage.status}
+                      disabled={!canEditWorkflowStages}
                       options={[
                         { label: '启用', value: 'enabled' },
                         { label: '停用', value: 'disabled' },
@@ -2044,6 +2124,7 @@ export function ProjectManagementPage() {
                       <span>允许派单</span>
                       <Switch
                         checked={selectedWorkflowStage.canAssign}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             canAssign: checked,
@@ -2055,6 +2136,7 @@ export function ProjectManagementPage() {
                       <span>允许跳过</span>
                       <Switch
                         checked={selectedWorkflowStage.canSkip}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             canSkip: checked,
@@ -2067,6 +2149,7 @@ export function ProjectManagementPage() {
                         <span>允许编辑字段</span>
                         <Switch
                           checked={selectedWorkflowStage.canUpdateFields ?? false}
+                          disabled={!canEditWorkflowStages}
                           onChange={(checked) =>
                             handleWorkflowStageChange(selectedWorkflowStage.localId, {
                               canUpdateFields: checked,
@@ -2079,6 +2162,7 @@ export function ProjectManagementPage() {
                       <span>是否分配页数</span>
                       <Switch
                         checked={selectedWorkflowStage.allowPageAssignment}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             allowPageAssignment: checked,
@@ -2090,6 +2174,7 @@ export function ProjectManagementPage() {
                       <span>是否允许为下一阶段分配天数</span>
                       <Switch
                         checked={selectedWorkflowStage.allowCustomDueDays}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             allowCustomDueDays: checked,
@@ -2101,6 +2186,7 @@ export function ProjectManagementPage() {
                       <span>是否需要填写总页数</span>
                       <Switch
                         checked={selectedWorkflowStage.collectTotalPageCount}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             collectTotalPageCount: checked,
@@ -2112,6 +2198,7 @@ export function ProjectManagementPage() {
                       <span>需要上传文件</span>
                       <Switch
                         checked={selectedWorkflowStage.requiresFileUpload}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             fileRules: checked ? selectedWorkflowStage.fileRules : [],
@@ -2135,6 +2222,7 @@ export function ProjectManagementPage() {
                       <span>需要打包</span>
                       <Switch
                         checked={selectedWorkflowStage.triggersPackage}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             triggersPackage: checked,
@@ -2146,6 +2234,7 @@ export function ProjectManagementPage() {
                       <span>合并节点</span>
                       <Switch
                         checked={selectedWorkflowStage.isMerged}
+                        disabled={!canEditWorkflowStages}
                         onChange={(checked) =>
                           handleWorkflowStageChange(selectedWorkflowStage.localId, {
                             isMerged: checked,
@@ -2159,13 +2248,15 @@ export function ProjectManagementPage() {
                     <div className="workflow-stage-file-rules">
                       <div className="workflow-stage-file-rules__header">
                         <Typography.Text strong>文件规则</Typography.Text>
-                        <Button
-                          size="small"
-                          type="dashed"
-                          onClick={() => handleAddWorkflowFileRule(selectedWorkflowStage.localId)}
-                        >
-                          新增规则
-                        </Button>
+                        {canEditWorkflowStages ? (
+                          <Button
+                            size="small"
+                            type="dashed"
+                            onClick={() => handleAddWorkflowFileRule(selectedWorkflowStage.localId)}
+                          >
+                            新增规则
+                          </Button>
+                        ) : null}
                       </div>
 
                       {selectedWorkflowStage.fileRules.length === 0 ? (
@@ -2193,6 +2284,7 @@ export function ProjectManagementPage() {
                                     <Switch
                                       size="small"
                                       checked={rule.required}
+                                      disabled={!canEditWorkflowStages}
                                       onChange={(checked) =>
                                         handleWorkflowFileRuleChange(
                                           selectedWorkflowStage.localId,
@@ -2208,6 +2300,7 @@ export function ProjectManagementPage() {
                                     <Switch
                                       size="small"
                                       checked={rule.excludeFromPackage}
+                                      disabled={!canEditWorkflowStages}
                                       onChange={(checked) =>
                                         handleWorkflowFileRuleChange(
                                           selectedWorkflowStage.localId,
@@ -2217,18 +2310,20 @@ export function ProjectManagementPage() {
                                     />
                                   </Space>
                                 </Space>
-                                <Button
-                                  size="small"
-                                  danger
-                                  type="text"
-                                  onClick={() =>
-                                    handleRemoveWorkflowFileRule(
-                                      selectedWorkflowStage.localId,
-                                      index,
-                                    )}
-                                >
-                                  删除
-                                </Button>
+                                {canEditWorkflowStages ? (
+                                  <Button
+                                    size="small"
+                                    danger
+                                    type="text"
+                                    onClick={() =>
+                                      handleRemoveWorkflowFileRule(
+                                        selectedWorkflowStage.localId,
+                                        index,
+                                      )}
+                                  >
+                                    删除
+                                  </Button>
+                                ) : null}
                               </div>
 
                               <div className="workflow-stage-field-grid">
@@ -2236,6 +2331,7 @@ export function ProjectManagementPage() {
                                   <span>文件名称</span>
                                   <Input
                                     value={rule.itemName}
+                                    disabled={!canEditWorkflowStages}
                                     placeholder="例如：教案文件"
                                     onChange={(event) =>
                                       handleWorkflowFileRuleChange(
@@ -2249,6 +2345,7 @@ export function ProjectManagementPage() {
                                   <span>文件类型</span>
                                   <Input
                                     value={rule.fileCategory}
+                                    disabled={!canEditWorkflowStages}
                                     placeholder="例如：txt"
                                     onChange={(event) =>
                                       handleWorkflowFileRuleChange(
@@ -2266,6 +2363,7 @@ export function ProjectManagementPage() {
                                   <InputNumber
                                     min={1}
                                     style={{ width: '100%' }}
+                                    disabled={!canEditWorkflowStages}
                                     value={rule.requiredCount}
                                     onChange={(value) =>
                                       handleWorkflowFileRuleChange(

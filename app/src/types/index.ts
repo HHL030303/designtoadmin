@@ -2,12 +2,8 @@ export type ViewKey =
   | 'dashboard'
   | 'allTickets'
   | 'taskStatistics'
-  | 'research'
   | 'myTasks'
   | 'courses'
-  | 'dispatch'
-  | 'designers'
-  | 'service'
   | 'projectManagement'
   | 'settingsUsers'
   | 'settingsRoles'
@@ -451,6 +447,10 @@ export type UserRole =
   | 'customer_planner'
   |'presales'
   |'operation'
+  |'keyan_design'
+  |'keyan_design_cooration'
+  |'keyan_settlement'
+  |'keyan_bussiness'
 
 export interface RoleOption {
   key: UserRole
@@ -481,7 +481,7 @@ export interface AvailableProjectRole {
 export interface ProjectPermission {
   resource: string
   resourceName: string
-  action: string
+  actions: string[]
 }
 
 export type RolePermissionAction =

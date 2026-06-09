@@ -55,6 +55,7 @@ export function MedicalTaskComplaintModal({
     <Modal
       title="客诉"
       open={open}
+      maskClosable={false}
       onCancel={onCancel}
       destroyOnHidden
       footer={null}

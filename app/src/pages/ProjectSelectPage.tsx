@@ -1,9 +1,27 @@
+import { useEffect, useRef } from 'react'
 import { AppstoreOutlined, ArrowRightOutlined } from '@ant-design/icons'
-import { Button, Card, Col, Row, Space, Typography } from 'antd'
+import { Button, Card, Col, Modal, Row, Space, Typography } from 'antd'
 import { useAppState } from '../context/AppStateContext'
 
 export function ProjectSelectPage() {
-  const { currentUser, projects, selectProject } = useAppState()
+  const { currentUser, logout, projects, selectProject } = useAppState()
+  const hasShownEmptyProjectModalRef = useRef(false)
+
+  useEffect(() => {
+    if (!currentUser || projects.length > 0 || hasShownEmptyProjectModalRef.current) {
+      return
+    }
+
+    hasShownEmptyProjectModalRef.current = true
+
+    Modal.warning({
+      content: '当前账号没有配置项目，请联系管理员绑定项目成员后再试。',
+      maskClosable: false,
+      okText: '知道了',
+      onOk: () => logout(),
+      title: '暂无可选项目',
+    })
+  }, [currentUser, logout, projects])
 
   return (
     <div className="project-select-shell">

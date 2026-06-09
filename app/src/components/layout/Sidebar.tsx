@@ -17,7 +17,7 @@ import { Button, Layout, Menu, Space, Typography, message } from 'antd'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { navItems } from '../../constants/navigation'
-import type { UserRole } from '../../types'
+import type { ProjectPermission, UserRole } from '../../types'
 import { getAvailableViews } from '../../domain/permissions'
 import {
   dashboardService,
@@ -84,18 +84,20 @@ function normalizePath(pathname: string): string {
 export function Sidebar({
   role,
   currentProjectId,
+  permissions,
   collapsed,
   onToggleCollapsed,
   onChange,
 }: {
   role: UserRole
   currentProjectId: string | null
+  permissions: ProjectPermission[]
   collapsed: boolean
   onToggleCollapsed: () => void
   onChange: (path: string) => void
 }) {
   const location = useLocation()
-  const availableViews = getAvailableViews(role)
+  const availableViews = getAvailableViews(role, permissions)
   const [customMenuList, setCustomMenuList] = useState<DashboardCustomMenuItem[]>([])
   const canViewCustomMenus = customMenuRoles.includes(role)
 

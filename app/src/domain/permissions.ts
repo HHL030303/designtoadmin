@@ -1,7 +1,18 @@
 import { statusMeta } from '../constants/workflow'
-import type { CourseRecord, CourseStatus, RoleActionSummary, ServiceType, UserRole, ViewKey } from '../types'
-import { roleViewAccess } from '../constants/roles'
+import type {
+  CourseRecord,
+  CourseStatus,
+  ProjectPermission,
+  RoleActionSummary,
+  ServiceType,
+  UserRole,
+  ViewKey,
+} from '../types'
 import { canCompleteResearch } from './courseWorkflow'
+import {
+  canAccessViewByProjectPermissions,
+  getAvailableViewsByProjectPermissions,
+} from './menuPermissions'
 
 const advancePermissionMap: Partial<Record<CourseStatus, UserRole[]>> = {
   research: ['researcher', 'admin'],
@@ -20,12 +31,12 @@ const serviceTicketRoles: Record<ServiceType, UserRole[]> = {
   迭代: ['planner', 'admin'],
 }
 
-export function canAccessView(role: UserRole, view: ViewKey) {
-  return roleViewAccess[role].includes(view)
+export function canAccessView(role: UserRole, view: ViewKey, permissions: ProjectPermission[] = []) {
+  return canAccessViewByProjectPermissions(role, view, permissions)
 }
 
-export function getAvailableViews(role: UserRole) {
-  return roleViewAccess[role]
+export function getAvailableViews(role: UserRole, permissions: ProjectPermission[] = []) {
+  return getAvailableViewsByProjectPermissions(role, permissions)
 }
 
 export function canAdvanceCourse(role: UserRole, course: CourseRecord) {
@@ -38,10 +49,6 @@ export function canAdvanceCourse(role: UserRole, course: CourseRecord) {
   }
 
   return true
-}
-
-export function canEditResearchTask(role: UserRole, course: CourseRecord) {
-  return course.status === 'research' && ['researcher', 'admin'].includes(role)
 }
 
 export function canEditStyleDispatch(role: UserRole, course: CourseRecord) {
